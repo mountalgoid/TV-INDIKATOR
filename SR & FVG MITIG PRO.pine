@@ -405,11 +405,156 @@ if show_pd and barstate.islast and not na(latest_supply_top) and not na(latest_d
         array.push(vp_lines, line.new(x1, val_p, x2 + 10, val_p, color=white, style=line.style_dotted))
         array.push(vp_labels, label.new(x2 + 10, val_p, "VAL", style=label.style_label_left, color=color.new(dark, 100), textcolor=white, size=size.small))
 
-// Logo
-color c_start = col_bull, c_end = col_bear
-float t_cyc = timenow / 1000, br = (math.sin(t_cyc * 3) + 1) / 2 
-int p = 200
-float l1 = nz(ta.lowest(low, p)), l2 = nz(ta.lowest(low, p-1)), p2 = (l1 + l2) / 2
-get_c(s) => color.from_gradient(s/18.0 + (br * 0.15), 0, 1, c_start, c_end)
+//═══════════════════════════════════════════════════════════════════════════════
+// LOGO GRADIENT ENHANCED - TOTAL SYNC (LINES & FILL)
+//═══════════════════════════════════════════════════════════════════════════════
+
+color bull_c1 = col_bull
+color bull_c2 = col_bear
+color bear_c1 = col_bull
+color bear_c2 = col_bear
+
+// --- 2. LOGIKA ANIMASI & TREND ---
+bool  trend_check = ta.ema(close, 2) > ta.ema(open, 2)
+color c_start     = trend_check ? bull_c1 : bear_c1
+color c_end       = trend_check ? bull_c2 : bear_c2
+
+// Animasi "Breathing"
+float time_cycle = timenow / 1000
+float breathe    = (math.sin(time_cycle * 3) + 1) / 2
+
+int LG_Line_Widthb = 1
+int periodb        = 200
+
+// --- 3. PERHITUNGAN TITIK STABIL (VOLATILITY & RANGE SYNC) ---
+float logo_base_raw = ta.lowest(low, periodb)
+float logo_range    = ta.highest(high, periodb) - logo_base_raw
+var float h_unit    = na
+
+// Calculate a stable height unit based on a mix of ATR and recent range
+float target_h = math.max(ta.atr(periodb) * 1.5, logo_range * 0.22)
+h_unit := na(h_unit) ? target_h : h_unit * 0.98 + target_h * 0.02
+
+// Offset the logo slightly below the lowest low to prevent price overlap
+float logo_base = logo_base_raw - h_unit * 0.2
+
+// Normalized points
+float point1b  = logo_base + h_unit * 0.71
+float point2b  = logo_base + h_unit * 0.43
+float point3b  = logo_base + h_unit * 0.61
+float point4b  = logo_base + h_unit * 0.32
+float point5b  = logo_base + h_unit * 1.00 // Peak
+float point6b  = logo_base + h_unit * 0.71
+float point7b  = logo_base + h_unit * 0.18 // Base Top
+float point8b  = logo_base + h_unit * 0.21
+float point9b  = logo_base + h_unit * 0.71
+float point1b0 = logo_base + h_unit * 0.86
+
+// Logo Visual Objects
+var line Line1b  = na
+var line Line2b  = na
+var line Line3b  = na
+var line Line4b  = na
+var line Line5b  = na
+var line Line6b  = na
+var line Line7b  = na
+var line Line8b  = na
+var line Line9b  = na
+var line Line1b0 = na
+var line Line1b1 = na
+var line Line1b2 = na
+var line Line1b3 = na
+var line Line1b4 = na
+var line Line1b5 = na
+var line Line1b6 = na
+var line Line1b7 = na
+var line Line1b8 = na
+var label[] brand_labels = array.new_label()
+
+// Hapus Garis Sebelumnya
+if not na(Line1b)
+    line.delete(Line1b)
+    line.delete(Line2b)
+    line.delete(Line3b)
+    line.delete(Line4b)
+    line.delete(Line5b)
+    line.delete(Line6b)
+    line.delete(Line7b)
+    line.delete(Line8b)
+    line.delete(Line9b)
+    line.delete(Line1b0)
+    line.delete(Line1b1)
+    line.delete(Line1b2)
+    line.delete(Line1b3)
+    line.delete(Line1b4)
+    line.delete(Line1b5)
+    line.delete(Line1b6)
+    line.delete(Line1b7)
+    line.delete(Line1b8)
+    while array.size(brand_labels) > 0
+        label.delete(array.pop(brand_labels))
+
+// --- FUNGSI WARNA ---
+get_adv_color(step) =>
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15)
+    if dynamic_ratio > 1
+        dynamic_ratio := 1
+    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+
+get_fade_alpha(float x_rel) =>
+    float dist = math.abs(x_rel - 32)
+    float ratio = dist / 32.0
+    math.round(80 * (1 - ratio))
+
+// --- PEMBUATAN GARIS (HANYA JIKA SHOW_LOGO AKTIF) ---
 if show_logo and barstate.islast
-    label.new(bar_index + 10, p2, '𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤 Pro Mitig', style=label.style_none, textcolor=get_c(1), size=size.auto)
+    int l_off = vp_offset + vp_width + 20
+    // Bagian Atas & Tengah (Head Structure)
+    color c_head_sync = get_adv_color(1)
+
+    Line1b := line.new(x1 = bar_index + l_off + 4, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line2b := line.new(x1 = bar_index + l_off + 8, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, get_fade_alpha(7.5)))
+
+    Line3b := line.new(x1 = bar_index + l_off + 11, y1 = point1b, x2 = bar_index + l_off + 13, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line4b := line.new(x1 = bar_index + l_off + 11, y1 = point2b, x2 = bar_index + l_off + 13, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), get_fade_alpha(12.0)))
+
+    Line5b := line.new(x1 = bar_index + l_off + 13, y1 = point3b, x2 = bar_index + l_off + 19, y2 = point5b, color = col_poc, width = LG_Line_Widthb)
+    Line6b := line.new(x1 = bar_index + l_off + 13, y1 = point4b, x2 = bar_index + l_off + 19, y2 = point6b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), get_fade_alpha(16.0)))
+
+    Line7b := line.new(x1 = bar_index + l_off + 19, y1 = point5b, x2 = bar_index + l_off + 24, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line8b := line.new(x1 = bar_index + l_off + 19, y1 = point6b, x2 = bar_index + l_off + 24, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), get_fade_alpha(21.5)))
+
+    Line9b := line.new(x1 = bar_index + l_off + 24, y1 = point3b, x2 = bar_index + l_off + 26, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line1b0 := line.new(x1 = bar_index + l_off + 24, y1 = point4b, x2 = bar_index + l_off + 26, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), get_fade_alpha(25.0)))
+
+    Line1b1 := line.new(x1 = bar_index + l_off + 26, y1 = point1b, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b2 := line.new(x1 = bar_index + l_off + 26, y1 = point2b, x2 = bar_index + l_off + 32, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), get_fade_alpha(31.0)))
+
+    // --- BAGIAN BASE HORIZONTAL ---
+    Line1b3 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 26, y2 = point7b, color = col_poc, width = LG_Line_Widthb)
+    Line1b4 := line.new(x1 = bar_index + l_off + 0, y1 = logo_base, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, get_fade_alpha(13.0)))
+
+    // Tutup Depan & Belakang Base
+    Line1b5 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 0, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b6 := line.new(x1 = bar_index + l_off + 26, y1 = point7b, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    // Ekor Tambahan & Label
+    Line1b7 := line.new(x1 = bar_index + l_off + 32, y1 = logo_base, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    label l = label.new(bar_index + l_off + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤 Pro Mitig", style=label.style_none, textcolor=col_poc, size=size.huge, textalign = text.align_right)
+    array.push(brand_labels, l)
+
+    // --- LOGO GLOW ---
+    label glow1 = label.new(bar_index + l_off + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
+    label glow2 = label.new(bar_index + l_off + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc, size=size.huge)
+    array.push(brand_labels, glow1)
+    array.push(brand_labels, glow2)
