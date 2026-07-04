@@ -3,25 +3,29 @@
 indicator(title="SR & FVG Mitigation Volume Pro 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="SR/FVG Mitig Pro", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=5000)
 
 //════════════════════════════════════════════════════════════════════════
-// COLOR THEMES
+// COLOR THEMES (Ported from Bookmap)
 //════════════════════════════════════════════════════════════════════════
-GlobalGroup = 'Global Settings'
-color_theme = input.string(defval = 'DEX Deep', title = '⬤ Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup)
+GlobalGroup = "Visual Themes & Global"
+color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup)
 
 // Core Colors
-white  = #c4d3ff
-green  = #179c74
-purple = #5134ff
-gray   = #3d4c74
-red    = #f23645
-yellow = #f3ba2f
-orange = #ff9800
-blue   = #1848cc
-dark   = #000000
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
 
-col_bull = switch color_theme
-    'Spartan Edge Theme' => white
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
     'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
     'Standard Spartan Edge Theme' => green
     'Dark ICT Theme' => green
     'Garuda Gold' => yellow
@@ -30,32 +34,38 @@ col_bull = switch color_theme
     'DEX Deep' => #a1ff3b
     'Deep Sea' => blue
     => blue
-col_bear = switch color_theme
+color col_bear = switch color_theme
     'Spartan Edge Theme' => gray
     'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
     'Standard Spartan Edge Theme' => red
     'Dark ICT Theme' => gray
     'Garuda Gold' => gray
     'MountAlgo Super Premium Theme' => yellow
-    'MountAlgo Orange White Theme' => white
+    'MountAlgo Orange White Theme' => gray
     'DEX Deep' => #ff009a
-    'Deep Sea' => white
+    'Deep Sea' => gray
     => white
-col_poc = switch color_theme
-    'Spartan Edge Theme' => yellow
+color col_poc = switch color_theme
+    'Spartan Edge Theme' => white
     'MountAlgo Themes' => white
-    'Standard Spartan Edge Theme' => yellow
-    'Dark ICT Theme' => yellow
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
     'Garuda Gold' => white
     'MountAlgo Super Premium Theme' => white
     'MountAlgo Orange White Theme' => white
-    'DEX Deep' => yellow
-    'Deep Sea' => purple
-    => yellow
-
-box_col_bull = color.new(col_bull, 85)
-box_col_bear = color.new(col_bear, 85)
-mitigated_color = #3d4c74
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+color box_col_bull = color.new(col_bull, 80)
+color box_col_bear = color.new(col_bear, 80)
+color transparent_col = color.new(dark, 100)
+mitigated_color = gray
 
 //════════════════════════════════════════════════════════════════════════
 // INPUTS
