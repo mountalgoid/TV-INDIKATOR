@@ -15,12 +15,13 @@ color red    = #f23645
 color yellow = #f3ba2f
 color orange = #ff9800
 color blue   = #1848cc
+color brown  = #8b4513
 
 //════════════════════════════════════════════════════════════════════════
 // GROUP & INPUTS
 //════════════════════════════════════════════════════════════════════════
-GlobalGroup = 'Global Settings'
-color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group = GlobalGroup)
+GlobalGroup = 'Visual Themes & Global'
+color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group = GlobalGroup)
 type_ltf_plot_candle = input.string(defval = 'Regular Candles', title = 'Type LTF Plot Candle', options = ['Regular Candles', 'Custom Candles'], group = GlobalGroup)
 type_ltf_color_candle = input.string(defval = 'Based Stochastic RSI', title = 'Type LTF Color Candle', options = ['Regular Color Candles', 'Based Stochastic RSI', 'Based Delta', 'Based EMA'], group = GlobalGroup)
 show_ltf_plot_candle = input.bool(defval = true, title = 'Show LTF Plot Candle', group = GlobalGroup)
@@ -42,6 +43,9 @@ value_area_pct = 70 // input.int(70, title="Value Area %", minval=10, maxval=100
 col_bull = switch color_theme
     'Spartan Edge Theme' => red
     'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
     'Standard Spartan Edge Theme' => green
     'Dark ICT Theme' => green
     'Garuda Gold' => yellow
@@ -53,6 +57,9 @@ col_bull = switch color_theme
 col_bear = switch color_theme
     'Spartan Edge Theme' => gray
     'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
     'Standard Spartan Edge Theme' => red
     'Dark ICT Theme' => gray
     'Garuda Gold' => gray
@@ -64,6 +71,9 @@ col_bear = switch color_theme
 col_poc = switch color_theme
     'Spartan Edge Theme' => white
     'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
     'Standard Spartan Edge Theme' => white
     'Dark ICT Theme' => white
     'Garuda Gold' => white
@@ -112,7 +122,8 @@ get_buy_sell_vol(v, o, h, l, c) =>
 get_table_bg(int c, int r, int total_c, int total_r) =>
     float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
     color base = color.from_gradient(ratio, 0, 1, col_bull, col_bear)
-    int t_alpha = math.round(80 + ratio * 15)
+    // Transparency gradient from 50 (at ratio=0) to 90 (at ratio=1)
+    int t_alpha = math.round(50 + ratio * 40)
     color.new(base, t_alpha)
 
 //════════════════════════════════════════════════════════════════════════
@@ -291,9 +302,9 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         if is_future
             int end_x = axis_x + 35
             // Zoned Background Boxes
-            bx_va_up = box.new(axis_x, s_high, end_x, vah_price, bgcolor=color.new(color_vah, 98), border_color=na)
-            bx_va_mid = box.new(axis_x, vah_price, end_x, val_price, bgcolor=color.new(color_poc, 98), border_color=na)
-            bx_va_dn = box.new(axis_x, val_price, end_x, s_low, bgcolor=color.new(color_val, 98), border_color=na)
+            bx_va_up = box.new(axis_x, s_high, end_x, vah_price, bgcolor=color.new(color_vah, 80), border_color=na)
+            bx_va_mid = box.new(axis_x, vah_price, end_x, val_price, bgcolor=color.new(color_poc, 96), border_color=na)
+            bx_va_dn = box.new(axis_x, val_price, end_x, s_low, bgcolor=color.new(color_val, 80), border_color=na)
             array.push(future_boxes, bx_va_up)
             array.push(future_boxes, bx_va_mid)
             array.push(future_boxes, bx_va_dn)
@@ -332,8 +343,8 @@ if barstate.islast
     if show_buy_sell_volume
         var table info_table = table.new(position.top_right, 2, 5, bgcolor=color.new(dark, 100), border_width=1)
         c_delta = c_bv - c_sv
-        table.cell(info_table, 0, 0, "HTF Flow (Realtime)", text_color=dark, bgcolor=color.new(col_poc, 60))
-        table.cell(info_table, 1, 0, htf_timeframe, text_color=dark, bgcolor=color.new(col_poc, 60))
+        table.cell(info_table, 0, 0, "HTF Flow (Realtime)", text_color=white, bgcolor=color.new(col_poc, 90))
+        table.cell(info_table, 1, 0, htf_timeframe, text_color=white, bgcolor=color.new(col_poc, 90))
         table.cell(info_table, 0, 1, "Buy Vol", text_color=color_text, bgcolor=get_table_bg(0, 1, 2, 5))
         table.cell(info_table, 1, 1, str.tostring(math.round(c_bv)), text_color=col_bull, bgcolor=get_table_bg(1, 1, 2, 5))
         table.cell(info_table, 0, 2, "Sell Vol", text_color=color_text, bgcolor=get_table_bg(0, 2, 2, 5))
