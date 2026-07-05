@@ -287,9 +287,9 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 // 1. Delta-based base color (Organic transition between buy/sell dominance)
                 color delta_col = color.from_gradient(buy_r, 0, 1, col_bear, col_bull)
 
-                // 2. High-Quality Volume Heatmap (The higher the volume, the more it glows towards the POC color)
-                float heat_weight = math.pow(width_ratio, 0.6)
-                color heat_col = color.from_gradient(heat_weight, 0, 1, delta_col, color_poc)
+                // 2. High-Quality Volume Heatmap (Priority for Bull/Bear clarity)
+                // We reserve the POC color for the actual POC to ensure Bull/Bear dominance
+                color heat_col = i == poc_idx and show_poc ? color_poc : delta_col
 
                 // 3. Super Smoothed Glass-Effect Transparency (Ensures low volumes fade seamlessly into the background)
                 // We use a multi-stage alpha calculation for a professional "Heatmap" look
