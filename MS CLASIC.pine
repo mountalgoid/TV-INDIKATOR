@@ -1,0 +1,1968 @@
+//𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤
+//@version=6
+//═══════════════════════════════════════════════════════════════════════════════
+indicator(title            = "Market Structure Clasic V.9.4.5 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤"
+, shorttitle             = "MS Clasic V.9.4.5 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤"
+, overlay                = true
+, max_bars_back          = 2000
+, max_lines_count        = 500
+, max_boxes_count        = 500
+, max_labels_count       = 500)
+//════════════════════════════════════════════════════════════════════════
+// COLOR TYPE
+//════════════════════════════════════════════════════════════════════════
+dark = #000000
+white = #c4d3ff
+green = #179c74
+purple = #5134ff
+gray = #3d4c74
+red = #f23645
+yellow = #ffeb3b
+orange = #ff9800
+brown = #6a5635
+blue = #1848cc
+Transparent_Color = color.new(color.new(white, 0), 100)
+//════════════════════════════════════════════════════════════════════════
+// GROUP
+//════════════════════════════════════════════════════════════════════════
+GlobalGroup = 'Global Settings'
+//════════════════════════════════════════════════════════════════════════
+// INPUT COLOR TYPE THEME
+//════════════════════════════════════════════════════════════════════════
+color_theme = input.string(defval = 'MountAlgo Themes', title = '⬤ Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme','Holy Sincere', 'MountAlgo Orange White Theme'], group = GlobalGroup)
+type_ltf_plot_candle = input.string(defval = 'Regular Candles', title = '⬤ Type LTF Plot Candle', options = ['Regular Candles', 'Custom Candles'], group = GlobalGroup)
+type_ltf_color_candle = input.string('Follow HTF Trend',title = '⬤ Type LTF Color Candle', options=['Regular Color Candles', 'Based Stochastic RSI', 'Follow HTF Trend', 'Follow LTF Trend'],group = GlobalGroup)
+// UPDATED: Default set to FALSE
+show_ltf_plot_candle = input.bool(defval = true, title = 'Show LTF Plot Candle', group = GlobalGroup)
+show_htf_plot_candle = input.bool(defval = false, title = 'Show HTF Plot Candle', group = GlobalGroup)
+//════════════════════════════════════════════════════════════════════════
+// COLOR BASED ON THEME
+//════════════════════════════════════════════════════════════════════════
+col_bull = switch color_theme
+    'Spartan Edge Theme' => white 
+    'MountAlgo Themes' => purple 
+    'Standard Spartan Edge Theme' => green 
+    'Dark ICT Theme' => green 
+    'Garuda Gold' => yellow 
+    'MountAlgo Super Premium Theme' => purple 
+    'MountAlgo Orange White Theme' => orange
+    => blue
+col_bear = switch color_theme
+    'Spartan Edge Theme' => gray 
+    'MountAlgo Themes' => green 
+    'Standard Spartan Edge Theme' => red 
+    'Dark ICT Theme' => gray 
+    'Garuda Gold' => gray 
+    'MountAlgo Super Premium Theme' => yellow 
+    'MountAlgo Orange White Theme' => white
+    => white
+box_col_bull = switch color_theme
+    'Spartan Edge Theme' => color.new(white, 80) 
+    'MountAlgo Themes' => color.new(purple, 80) 
+    'Standard Spartan Edge Theme' => color.new(green, 80) 
+    'Dark ICT Theme' => color.new(green, 80) 
+    'Garuda Gold' => color.new(yellow, 80) 
+    'MountAlgo Super Premium Theme' => color.new(purple, 80) 
+    'MountAlgo Orange White Theme' => color.new(orange, 80)
+    => color.new(blue,80)
+box_col_bear = switch color_theme
+    'Spartan Edge Theme' => color.new(gray, 80) 
+    'MountAlgo Themes' => color.new(green, 80) 
+    'Standard Spartan Edge Theme' => color.new(red, 80) 
+    'Dark ICT Theme' => color.new(gray, 80) 
+    'Garuda Gold' => color.new(gray, 80) 
+    'MountAlgo Super Premium Theme' => color.new(yellow, 80) 
+    'MountAlgo Orange White Theme' => color.new(white, 80)
+    => color.new(white,80)
+mitigated_color = brown
+mitigated_box_color = color.new(brown, 80)
+//═══════════════════════════════════════════════════════════════════════════════
+// USER INPUTS GLOBAL
+//═══════════════════════════════════════════════════════════════════════════════
+// Global Input
+auto_tooltip = "Enabling this feature will ignore the manual input below.\n\n" +
+           "Auto Configuration (Chart ➔ HTF):\n" +
+           "• 1s - 2m ➔ HTF 15m\n" +
+           "• 3m - 4m ➔ HTF 30m\n" +
+           "• 5m - 14m ➔ HTF 1 Hour (1H)\n" +
+           "• 15m - 1H ➔ HTF 4 Hour (4H)\n" +
+           "• > 1H (2H+) ➔ HTF Daily (1D)\n" +
+           "• Daily (1D) ➔ HTF Weekly (1W)\n" +
+           "• Weekly ➔ HTF Monthly (1M)\n\n" +
+           "NOTE: The LTF (Lower Timeframe) will always be the same as the current chart."
+// UPDATED: Default set to FALSE
+auto_htf_mode = input.bool(true, '⬤ Auto Mode (HTF & LTF)', tooltip = auto_tooltip, group = GlobalGroup)
+// 2. INPUT MANUAL (Hanya berfungsi jika Auto Mode = OFF)
+HTFtime_opt = input.string("1H", '⬤ Manual HTF', tooltip = "Only works if Auto Mode = OFF", group = GlobalGroup, options = ["15m","30m","45m","1H","2H","4H","1D","3D","1W","2W","1M","3M","6M"])
+ltf_in_input = input.timeframe('5', '⬤ Manual LTF', tooltip = "Only works if Auto Mode = OFF", group = GlobalGroup)
+// ==========================
+// LOGIC HELPER: CONVERT STRING TO MINUTES (INT)
+// ==========================
+f_str_to_minutes(tf_str) =>
+    if tf_str == "D" or tf_str == "1D"
+        1440
+    else if tf_str == "3D"
+        4320
+    else if tf_str == "W" or tf_str == "1W"
+        10080
+    else if tf_str == "2W"
+        20160
+    else if tf_str == "M" or tf_str == "1M"
+        43200
+    else if tf_str == "3M"
+        129600
+    else if tf_str == "6M"
+        259200
+    else 
+        nz(str.tonumber(tf_str), timeframe.multiplier)
+// ==========================
+// LOGIC 1: MANUAL HTF MAPPING
+// ==========================
+get_manual_tf_string(opt) =>
+    switch opt
+        "15m" => "15"
+        "30m" => "30"
+        "45m" => "45"
+        "1H"  => "60"
+        "2H"  => "120"
+        "4H"  => "240"
+        "1D"  => "D"
+        "3D"  => "3D"
+        "1W"  => "W"
+        "2W"  => "2W"
+        "1M"  => "M"
+        "3M"  => "3M"
+        "6M"  => "6M"
+        => "60"
+// ==========================
+// LOGIC 2: AUTO HTF MAPPING (SMART LOGIC)
+// ==========================
+get_auto_htf() =>
+    if timeframe.isseconds
+        "15" // Detik -> 15m
+    else if timeframe.isminutes
+        int m = timeframe.multiplier
+        if m <= 2
+            "15"  // 1m-2m -> 15m
+        else if m <= 4
+            "30"  // 3m-4m -> 30m
+        else if m <= 14
+            "60"  // 5m-14m -> 1H
+        else if m <= 60
+            "240" // 15m s/d 60m (1H) -> 4H
+        else 
+            "D"   // Di atas 1H -> Daily
+    else if timeframe.isdaily
+        "W"       // Daily -> Weekly
+    else
+        "M"       // Weekly+ -> Monthly
+// ==========================
+// FINAL EXECUTION VARIABLES
+// ==========================
+ltf_in = auto_htf_mode ? timeframe.period : (ltf_in_input == "" ? timeframe.period : ltf_in_input)
+htf_str = auto_htf_mode ? get_auto_htf() : get_manual_tf_string(HTFtime_opt)
+minutes_val = f_str_to_minutes(htf_str)
+x_show = input.int(4, '⬤ Show MS Structures', minval = 1, group = GlobalGroup)
+showms = input.string('Symbol', '⬤ Type Events', options = ['Symbol', 'Name'], group = GlobalGroup)
+gap_threshold = input.float(0.00006, '⬤ Minimum Gap Percentage', minval = 0.0, step = 0.005, tooltip = 'Minimum gap size as a percentage of current price', group = GlobalGroup)
+// UPDATED: Default set to FALSE
+ifvg_selected_high_prob = input.bool(false, 'High Prob IFVG Only', tooltip = "Only displays IFVG if the Gap size is large enough (2x Threshold)", group = GlobalGroup)
+use_snd_mid_filter = input.bool(false, 'Filter 1/2 Body (Strong Imbalance)', tooltip = 'If active: Demand = 1/2 Body Candle > Previous High, Supply = 1/2 Body Candle < Previous Low', group = GlobalGroup)
+pd_group = 'Premium & Discount'
+show_pd_ltf = input.bool(false, 'Show LTF P/D Zones', group = pd_group)
+// UPDATED: Default set to FALSE
+show_pd_htf = input.bool(true, 'Show HTF P/D Zones', group = pd_group)
+eq_group = 'EQH / EQL Settings'
+// UPDATED: Default set to FALSE
+show_eq = input.bool(true, 'Show EQH/EQL', group = eq_group)
+eq_threshold_per = input.float(0.1, '● Tolerance (%)', step=0.01, tooltip="Maximum price difference (percentage) to be considered 'Equal'", group = eq_group)
+eq_len = input.int(4, '● Pivot Length', minval=2, group = eq_group)
+show_connector = true
+// TRENDLINE LIQUIDITY INPUTS
+tl_group = 'Trendline Liquidity'
+// UPDATED: Default set to FALSE
+show_tliq         = input.bool(true, 'Show TL Liquidity', group=tl_group)
+tliq_len          = input.int(4, '● Pivot Length', minval=2, tooltip="Pivot sensitivity for TL liquidity pivots", group=tl_group)
+tliq_width        = input.int(1, '● Line Width', minval=1, group=tl_group)
+tliq_extend       = input.int(8, '● Extend Bars', minval=1, tooltip='How far active TL is extended to the right', group=tl_group)
+tliq_break_mode   = input.string('Wick', '● Sweep Validation', options=['Wick', 'Close'], tooltip='Wick = faster signal, Close = stricter and cleaner confirmation', group=tl_group)
+tliq_break_buffer = input.float(0.05, '● Break Buffer (ATR)', minval=0.0, step=0.01, tooltip='Extra ATR-based distance required to confirm liquidity sweep', group=tl_group)
+tliq_min_move_atr = input.float(0.10, '● Min Pivot Distance (ATR)', minval=0.0, step=0.05, tooltip='Skip flat/noisy TL by requiring minimum pivot-to-pivot distance', group=tl_group)
+show_tliq_tag     = input.bool(false, 'Show T-LIQ Tags', tooltip='Show/hide running T-LIQ label on active trendline', group=tl_group)
+show_tliq_swp     = input.bool(true, 'Show Sweep Mark', tooltip='Show mark when TL liquidity is swept', group=tl_group)
+dsp_group = 'Displacement Candle'
+// UPDATED: Default set to FALSE
+show_dsp_candle = input.bool(false, 'Show Displacement', group=dsp_group)
+dsp_len         = input.int(20, '● ATR Length', minval=1, tooltip="The average period of the candle range", group=dsp_group)
+dsp_mult        = input.float(1.2, '● Range Multiplier', step=0.1, tooltip="The minimum candle size must be X times the average.", group=dsp_group)
+dsp_body_min    = input.float(0.60, '● Min Body Ratio (0-1)', step=0.05, maxval=1.0, tooltip="Minimum percentage of body compared to total range", group=dsp_group)
+col_dsp_buy     = box_col_bull
+col_dsp_sell    = box_col_bear
+ltf_ms_filter_group = 'LTF MSS Midline Filter'
+use_ltf_ms_mid_filter = input.bool(false, 'Use Midline Swing Filter', tooltip='Filter breakout MSS LTF berdasarkan garis tengah antara swing high dan swing low terakhir.', group=ltf_ms_filter_group)
+ltf_ms_swing_len = input.int(5, '● Swing Size', minval=2, tooltip='Ukuran swing/pivot untuk mencari swing high dan swing low.', group=ltf_ms_filter_group)
+ltf_ms_line_extend = input.int(30, '● Line Extend Bars', minval=5, tooltip='Panjang visualisasi garis midline ke kanan.', group=ltf_ms_filter_group)
+show_ltf_ms_midline = input.bool(false, 'Show Midline Visual', group=ltf_ms_filter_group)
+// NEW: INPUT KILL ZONES (VERTICAL LINES)
+kz_group = 'Kill Zone Sessions'
+// UPDATED: Default set to FALSE
+show_kz      = input.bool(false, 'Show Kill Zones', group=kz_group)
+kz_timezone  = input.string("Asia/Jakarta", "● Timezone", options=["Asia/Jakarta", "America/New_York", "Europe/London", "UTC"], tooltip="Select Asia/Jakarta for WIB", group=kz_group)
+sess_asia    = input.session("0700-1400", "● Asia Time", group=kz_group)
+sess_london  = input.session("1400-2200", "● London Time", group=kz_group)
+sess_ny      = input.session("1900-0300", "● New York Time", group=kz_group)
+col_kz_asia  = mitigated_color
+col_kz_lon   = col_bull
+col_kz_ny    = col_bear
+hl_group = 'Point High/Low (Day/Week/Month) (Auto)'
+show_hl_auto = input.bool(true, 'Show High/Low Auto', group=hl_group)
+hl_mode_opt  = input.string("Previous", "⬤ Mode", options=["Previous", "Current"], group=hl_group, tooltip="Previous: High/Low candle then\nCurrent: High/Low candle now")
+// 1. DASHBOARD INPUTS
+table_group = 'Dashboard Panel'
+// UPDATED: Default set to FALSE
+show_table = input.bool(true, 'Show Dashboard', group=table_group)
+table_pos  = input.string(position.top_right, '● Position', options=[position.top_right, position.bottom_right, position.top_left, position.bottom_left], group=table_group)
+table_size = input.string(size.small, '● Size', options=[size.tiny, size.small, size.normal, size.large], group=table_group)
+// --- 0. PENGATURAN TAMPILAN (MODIFIKASI) ---
+show_logo = input.bool(true, "Show Logo", group = "Logo Settings", tooltip = "Enable/Disable visual logo display")
+//═══════════════════════════════════════════════════════════════════════════════
+// STRATEGY INPUTS
+//═══════════════════════════════════════════════════════════════════════════════
+strategyGroup = 'Strategy'
+strategy1_Rules_Group = 'Select Rules Strategy'
+// Strategy Input
+//===> input_strategy rules 1-15 (UPDATED TO "NONE")
+input_rule1_stg1 = input.string(defval = 'HTF MSS', title = '➤ Rules 1', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule2_stg1 = input.string(defval = 'HTF Liquidity Sweep', title = '➤ Rules 2', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule3_stg1 = input.string(defval = 'HTF SnD Created', title = '➤ Rules 3', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule4_stg1 = input.string(defval = 'HTF SnD Mitigated', title = '➤ Rules 4', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule5_stg1 = input.string(defval = 'HTF FVG Mitigated', title = '➤ Rules 5', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule6_stg1 = input.string(defval = 'HTF LTF Inversion FVG', title = '➤ Rules 6', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule7_stg1 = input.string(defval = 'HTF Breaker', title = '➤ Rules 7', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule8_stg1 = input.string(defval = 'LTF MSS', title = '➤ Rules 8', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule9_stg1 = input.string(defval = 'LTF Liquidity Sweep', title = '➤ Rules 9', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule10_stg1 = input.string(defval = 'LTF SnD Created', title = '➤ Rules 10', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule11_stg1 = input.string(defval = 'LTF SnD Mitigated', title = '➤ Rules 11', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule12_stg1 = input.string(defval = 'LTF FVG Mitigated', title = '➤ Rules 12', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule13_stg1 = input.string(defval = 'LTF Breaker', title = '➤ Rules 13', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule14_stg1 = input.string(defval = 'None', title = '➤ Rules 14', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+input_rule15_stg1 = input.string(defval = 'None', title = '➤ Rules 15', options = ['HTF Liquidity Sweep','HTF SnD Created', 'HTF SnD Mitigated', 'HTF FVG Mitigated', 'HTF MSS','HTF Breaker', 'Stochastic RSI', 'LTF Liquidity Sweep', 'LTF SnD Created', 'LTF SnD Mitigated', 'LTF FVG Mitigated', 'LTF MSS','LTF Breaker',  'HTF LTF Inversion FVG','None'], group = strategy1_Rules_Group)
+check_rule(cond_str) =>
+    input_rule1_stg1 == cond_str or input_rule2_stg1 == cond_str or input_rule3_stg1 == cond_str or input_rule4_stg1 == cond_str or input_rule5_stg1 == cond_str or input_rule6_stg1 == cond_str or input_rule7_stg1 == cond_str or input_rule8_stg1 == cond_str or input_rule9_stg1 == cond_str or input_rule10_stg1 == cond_str or input_rule11_stg1 == cond_str or input_rule12_stg1 == cond_str or input_rule13_stg1 == cond_str or input_rule14_stg1 == cond_str or input_rule15_stg1 == cond_str
+ltf_MSS_selected           = check_rule('LTF MSS')
+ltf_snd_created_selected   = check_rule('LTF SnD Created')
+ltf_snd_mitigated_selected = check_rule('LTF SnD Mitigated')
+ltf_fvg_mitigated_selected = check_rule('LTF FVG Mitigated')
+stochastic_rsi_selected    = check_rule('Stochastic RSI')
+htf_MSS_selected           = check_rule('HTF MSS')
+htf_snd_created_selected   = check_rule('HTF SnD Created')
+htf_snd_mitigated_selected = check_rule('HTF SnD Mitigated')
+htf_fvg_mitigated_selected = check_rule('HTF FVG Mitigated')
+ifvg_selected              = check_rule('HTF LTF Inversion FVG')
+ltf_lqs_selected           = check_rule('LTF Liquidity Sweep')
+Htf_lqs_selected           = check_rule('HTF Liquidity Sweep')
+breaker_htf_selected       = check_rule('HTF Breaker')
+breaker_ltf_selected       = check_rule('LTF Breaker')
+//═══════════════════════════════════════════════════════════════════════════════
+// COUNTERS
+//═══════════════════════════════════════════════════════════════════════════════
+// stores the value of a single variable of the last Htf and Ltf candles
+//===> LTF Bullish
+var float[] lastCandleBullishOpenLtf  = array.new_float( )
+var float[] lastCandleBullishHighLtf  = array.new_float( )
+var float[] lastCandleBullishLowLtf   = array.new_float( )
+var float[] lastCandleBullishCloseLtf = array.new_float( )
+//===> LTF Bearish
+var float[] lastCandleBearishOpenLtf  = array.new_float( )
+var float[] lastCandleBearishHighLtf  = array.new_float( )
+var float[] lastCandleBearishLowLtf   = array.new_float( )
+var float[] lastCandleBearishCloseLtf = array.new_float( )
+//===> HTF Bullish
+var float[] lastCandleBullishOpenHtf  = array.new_float( )
+var float[] lastCandleBullishHighHtf  = array.new_float( )
+var float[] lastCandleBullishLowHtf   = array.new_float( )
+var float[] lastCandleBullishCloseHtf = array.new_float( )
+//===> HTF Bearish
+var float[] lastCandleBearishOpenHtf  = array.new_float( )
+var float[] lastCandleBearishHighHtf  = array.new_float( )
+var float[] lastCandleBearishLowHtf   = array.new_float( )
+var float[] lastCandleBearishCloseHtf = array.new_float( )
+// Advanced Arrays for SND Tracking //
+//===> HTF Supply
+var array<float> htf_supply_high = array.new_float(0)
+var array<float> htf_supply_low = array.new_float(0)
+var array<box> htf_supply_box = array.new_box(0)
+var array<bool> htf_supply_mitigated = array.new_bool(0)
+var array<line> htf_ms_bull_line = array.new_line(0)
+var array<label> htf_ms_bull_label = array.new_label(0)
+var array<bool> htf_ms_bull_breakout = array.new_bool(0)
+//===> HTF Demand
+var array<float> htf_demand_high = array.new_float(0)
+var array<float> htf_demand_low = array.new_float(0)
+var array<box> htf_demand_box = array.new_box(0)
+var array<bool> htf_demand_mitigated = array.new_bool(0)
+var array<line> htf_ms_bear_line = array.new_line(0)
+var array<label> htf_ms_bear_label = array.new_label(0)
+var array<bool> htf_ms_bear_breakout = array.new_bool(0)
+//===> LTF Supply
+var array<float> ltf_supply_high = array.new_float(0)
+var array<float> ltf_supply_low = array.new_float(0)
+var array<box> ltf_supply_box = array.new_box(0)
+var array<bool> ltf_supply_mitigated = array.new_bool(0)
+var array<line> ltf_ms_bull_line = array.new_line(0)
+var array<label> ltf_ms_bull_label = array.new_label(0)
+var array<bool> ltf_ms_bull_breakout = array.new_bool(0)
+//===> LTF Supply
+var array<float> ltf_demand_high = array.new_float(0)
+var array<float> ltf_demand_low = array.new_float(0)
+var array<box> ltf_demand_box = array.new_box(0)
+var array<bool> ltf_demand_mitigated = array.new_bool(0)
+var array<line> ltf_ms_bear_line = array.new_line(0)
+var array<label> ltf_ms_bear_label = array.new_label(0)
+var array<bool> ltf_ms_bear_breakout = array.new_bool(0)
+// Advanced Arrays for FVG Tracking
+//===> LTF FVG Down
+var array<float> down_fvg_highsLtf = array.new_float(0)
+var array<float> down_fvg_lowsLtf = array.new_float(0)
+var array<box> down_fvg_boxLtf = array.new_box(0)
+var array<line> down_fvg_midle_linesLtf = array.new_line(0)
+var array<bool> down_fvg_mitigatedLtf = array.new_bool(0)
+//===> LTF FVG Up
+var array<float> up_fvg_highsLtf = array.new_float(0)
+var array<float> up_fvg_lowsLtf = array.new_float(0)
+var array<box> up_fvg_boxLtf = array.new_box(0)
+var array<line> up_fvg_midle_linesLtf = array.new_line(0)
+var array<bool> up_fvg_mitigatedLtf = array.new_bool(0)
+//===> HTF FVG Down
+var array<float> down_fvg_highsHtf = array.new_float(0)
+var array<float> down_fvg_lowsHtf = array.new_float(0)
+var array<box> down_fvg_boxHtf = array.new_box(0)
+var array<line> down_fvg_midle_linesHtf = array.new_line(0)
+var array<bool> down_fvg_mitigatedHtf = array.new_bool(0)
+//===> HTF FVG Up 
+var array<float> up_fvg_highsHtf = array.new_float(0)
+var array<float> up_fvg_lowsHtf = array.new_float(0)
+var array<box> up_fvg_boxHtf = array.new_box(0)
+var array<line> up_fvg_midle_linesHtf = array.new_line(0)
+var array<bool> up_fvg_mitigatedHtf = array.new_bool(0)
+// ===> BREAKER BLOCK ARRAYS
+// HTF
+var array<line> htf_bk_lines = array.new_line(0)
+var array<label> htf_bk_labels = array.new_label(0)
+var array<float> htf_bk_levels = array.new_float(0)
+var array<bool> htf_bk_is_bull = array.new_bool(0) // true = bull breaker, false = bear breaker
+var array<bool> htf_bk_mitigated = array.new_bool(0)
+var array<int> htf_bk_created_at = array.new_int(0) 
+// LTF
+var array<line> ltf_bk_lines = array.new_line(0)
+var array<label> ltf_bk_labels = array.new_label(0)
+var array<float> ltf_bk_levels = array.new_float(0)
+var array<bool> ltf_bk_is_bull = array.new_bool(0)
+var array<bool> ltf_bk_mitigated = array.new_bool(0)
+var array<int> ltf_bk_created_at = array.new_int(0)
+// --- VARIABLES FOR LTF ---
+var line ltf_mid_line = na
+var box ltf_premium_box = na
+var box ltf_discount_box = na
+var label ltf_pd_label_top = na
+var label ltf_pd_label_mid = na
+var label ltf_pd_label_bot = na
+// --- VARIABLES FOR HTF ---
+var line htf_mid_line = na
+var box htf_premium_box = na
+var box htf_discount_box = na
+var label htf_pd_label_top = na
+var label htf_pd_label_mid = na
+var label htf_pd_label_bot = na
+// Arrays to store active EQ lines
+var array<line> eq_lines = array.new_line()
+var array<label> eq_labels = array.new_label()
+var array<float> eq_levels = array.new_float()
+var array<string> eq_types = array.new_string() // "EQH" or "EQL"
+// Variables to store previous pivots
+var float last_pivot_h = na
+var float last_pivot_l = na
+var int last_pivot_h_idx = na
+var int last_pivot_l_idx = na
+// Calculate Pivots
+ph_eq = ta.pivothigh(high, eq_len, eq_len)
+pl_eq = ta.pivotlow(low, eq_len, eq_len)
+// ===> IFVG TRACKING ARRAYS (Simpan Status IFVG)
+// LTF
+var array<bool> down_fvg_is_ifvgLtf = array.new_bool(0)    // Apakah sudah jadi IFVG?
+var array<bool> down_fvg_mit_ifvgLtf = array.new_bool(0)   // Apakah IFVG sudah dimitigasi?
+var array<bool> up_fvg_is_ifvgLtf = array.new_bool(0)
+var array<bool> up_fvg_mit_ifvgLtf = array.new_bool(0)
+// HTF
+var array<bool> down_fvg_is_ifvgHtf = array.new_bool(0)
+var array<bool> down_fvg_mit_ifvgHtf = array.new_bool(0)
+var array<bool> up_fvg_is_ifvgHtf = array.new_bool(0)
+var array<bool> up_fvg_mit_ifvgHtf = array.new_bool(0)
+
+// ===> TRENDLINE LIQUIDITY ARRAYS & VARIABLES
+var array<line>  arr_tl_lines  = array.new_line()
+var array<label> arr_tl_labels = array.new_label()
+var array<bool>  arr_tl_is_res = array.new_bool() 
+var array<bool>  arr_tl_broken = array.new_bool() // Array status Break
+var array<int>   arr_tl_idx    = array.new_int() // created_at bar index
+// Var memori pivot
+var float last_tl_ph = na
+var int   last_tl_ph_idx = na
+var float last_tl_pl = na
+var int   last_tl_pl_idx = na
+// Kalkulasi Pivot
+ph_tl = ta.pivothigh(high, tliq_len, tliq_len)
+pl_tl = ta.pivotlow(low, tliq_len, tliq_len)
+
+// ===> LTF MSS MIDLINE FILTER
+var float ltf_ms_last_swing_high = na
+var float ltf_ms_last_swing_low = na
+var int ltf_ms_last_swing_high_idx = na
+var int ltf_ms_last_swing_low_idx = na
+float ltf_ms_pivot_high = ta.pivothigh(high, ltf_ms_swing_len, ltf_ms_swing_len)
+float ltf_ms_pivot_low = ta.pivotlow(low, ltf_ms_swing_len, ltf_ms_swing_len)
+
+if not na(ltf_ms_pivot_high)
+    ltf_ms_last_swing_high := ltf_ms_pivot_high
+    ltf_ms_last_swing_high_idx := bar_index - ltf_ms_swing_len
+
+if not na(ltf_ms_pivot_low)
+    ltf_ms_last_swing_low := ltf_ms_pivot_low
+    ltf_ms_last_swing_low_idx := bar_index - ltf_ms_swing_len
+
+float ltf_ms_midpoint = na
+if not na(ltf_ms_last_swing_high) and not na(ltf_ms_last_swing_low)
+    ltf_ms_midpoint := (ltf_ms_last_swing_high + ltf_ms_last_swing_low) / 2
+
+plot(show_ltf_ms_midline ? ltf_ms_midpoint : na, title='LTF MSS Swing Midline', color=color.new(mitigated_color, 0), linewidth=1, style=plot.style_line)
+
+
+//═══════════════════════════════════════════════════════════════════════════════
+// GET INFORMATION A CANDLE
+//═══════════════════════════════════════════════════════════════════════════════
+//===> HTF (Tambahkan 'volume' di request)
+[htf_O,htf_O1,htf_O2,htf_O3, htf_H,htf_H1,htf_H2,htf_H3, htf_L,htf_L1,htf_L2,htf_L3, htf_C,htf_C1,htf_C2,htf_C3, htf_Vol_value, htf_HH_value, htf_LW_value] = request.security(syminfo.tickerid, htf_str, [open,open[1],open[2],open[3], high,high[1],high[2],high[3], low,low[1],low[2],low[3], close,close[1],close[2],close[3], volume, ta.highest(high,3), ta.lowest(low,3)], gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+//===> LTF (Tambahkan 'volume' di request)
+[ltf_O,ltf_O1,ltf_O2,ltf_O3, ltf_H,ltf_H1,ltf_H2,ltf_H3, ltf_L,ltf_L1,ltf_L2,ltf_L3, ltf_C,ltf_C1,ltf_C2,ltf_C3, ltf_Vol_value, ltf_HH_value, ltf_LW_value] = request.security(syminfo.tickerid, ltf_in, [open,open[1],open[2],open[3], high,high[1],high[2],high[3], low,low[1],low[2],low[3], close,close[1],close[2],close[3], volume, ta.highest(high,3), ta.lowest(low,3)], gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_off)
+//═══════════════════════════════════════════════════════════════════════════════
+// CONDITIONS (FIXED)
+//═══════════════════════════════════════════════════════════════════════════════
+// FUNCTION: Format Text Info (Volatility, Volume, Delta)
+get_info_text(vol, high_val, low_val, is_bull) =>
+    float range_val = high_val - low_val
+    string vol_str = str.tostring(vol, format.volume)
+    string delta_str = is_bull ? "+" + vol_str : "-" + vol_str
+    string vol_info ="\n═════════════" + "\n〣 Vol: " + vol_str + "\n▲ Delta: " + delta_str + "\nϟ Range: " + str.tostring(range_val, format.mintick) + "\n═════════════"
+    vol_info
+bool isNewHtfBar = ta.change(htf_O) != 0
+// Candle Condition
+// ===> HTF (FIXED: Menggunakan variabel explicit dari request.security)
+bool htf_bull_0 = htf_C > htf_O
+bool htf_bear_0 = htf_C < htf_O
+bool htf_bull_1 = htf_C1 > htf_O1
+bool htf_bear_1 = htf_C1 < htf_O1
+bool htf_bull_2 = htf_C2 > htf_O2
+bool htf_bear_2 = htf_C2 < htf_O2
+bool htf_bull_3 = htf_C3 > htf_O3
+bool htf_bear_3 = htf_C3 < htf_O3
+// ===> LTF (Tetap menggunakan logic original karena ini timeframe chart)
+bool ltf_candle_bull = ltf_C > ltf_O
+bool ltf_candle_bear = ltf_C < ltf_O
+// Supply Demand And MS Condition
+//===> HTF LTF SND FILTER MUNCUL BERKALI KALI 
+bool htf_supply_fltr = (htf_C1 > htf_L2)
+bool htf_demand_fltr = (htf_C1 < htf_H2)
+bool ltf_supply_fltr = (ltf_C2 > ltf_L3)
+bool ltf_demand_fltr = (ltf_C2 < ltf_H3)
+//===> LOGIC 1/2 BODY CALCULATION
+// HTF: Titik tengah body candle saat ini
+htf_body_mid = (htf_O + htf_C) / 2
+// LTF
+ltf_body_mid = (ltf_O1 + ltf_C1) / 2
+// Filter Logic: Jika filter ON, cek 1/2 body < Low[1]. Jika OFF, abaikan (true).
+htf_supply_filter_ok = use_snd_mid_filter ? (htf_body_mid < htf_L1) : true
+htf_demand_filter_ok = use_snd_mid_filter ? (htf_body_mid > htf_H1) : true
+ltf_supply_filter_ok = use_snd_mid_filter ? (ltf_body_mid < ltf_L2) : true
+ltf_demand_filter_ok = use_snd_mid_filter ? (ltf_body_mid > ltf_H2) : true
+
+//===> HTF SND
+bool htf_supply_cond = htf_supply_fltr and (htf_C < htf_L1) and htf_supply_filter_ok and (htf_bull_1 or htf_bull_2) and htf_bear_0
+bool htf_demand_cond = htf_demand_fltr and (htf_C > htf_H1) and htf_demand_filter_ok and (htf_bear_1 or htf_bear_2) and htf_bull_0
+//===> LTF SND
+bool ltf_supply_cond = ta.crossunder(ltf_C1 , ltf_L2) and ltf_supply_filter_ok and ( ltf_candle_bull[2] or ltf_candle_bull[3] or ltf_candle_bull[4]) and ltf_candle_bear[1]
+bool ltf_demand_cond = ta.crossover(ltf_C1 , ltf_H2) and ltf_demand_filter_ok and (ltf_candle_bear[2] or ltf_candle_bear[3] or ltf_candle_bear[4]) and ltf_candle_bull[1]
+
+// FVG Condition
+//===> LTF FVG
+bool down_fvg_condLtf = ltf_L3 > ltf_H1
+bool up_fvg_condLtf = ltf_H3 < ltf_L1
+//======> Detect Line Down And Up FVG with Enhanced Filtering Ltf
+current_priceLtf = ltf_C
+pct_thresholdLtf = current_priceLtf * gap_threshold
+gap_size_down_fvgLtf = ltf_L3 - ltf_H1
+gap_size_up_fvgLtf = ltf_L1 - ltf_H3
+down_fvg_midpointLtf = (ltf_L3 + ltf_H1) / 2
+up_fvg_midpointLtf = (ltf_L1 + ltf_H3) / 2
+//===> HTF FVG 
+bool down_fvg_condHtf = htf_L2 > htf_H
+bool up_fvg_condHtf = htf_H2 < htf_L
+//======> Detect Line Down And Up FVG with Enhanced Filtering Htf
+current_priceHtf = htf_C
+pct_thresholdHtf = current_priceHtf * gap_threshold
+gap_size_down_fvgHtf = htf_L2 - htf_H
+gap_size_up_fvgHtf = htf_L - htf_H2
+down_fvg_midpointHtf = (htf_L2 + htf_H) / 2
+up_fvg_midpointHtf = (htf_L + htf_H2) / 2
+//═══════════════════════════════════════════════════════════════════════════════
+// OPTIMIZED DRAWING ASSETS & LOGIC
+//═══════════════════════════════════════════════════════════════════════════════
+// --- 1. Global Calculation & Safety Checks ---
+// FIX: Gunakan fungsi f_str_to_minutes agar support timeframe D/W/M
+float ltf_val_float = float(f_str_to_minutes(ltf_in))
+// Safety check jika hasil 0 (mencegah pembagian dengan nol)
+ltf_val_float := ltf_val_float <= 0 ? 1.0 : ltf_val_float
+
+// Kalkulasi Multiplier dengan batasan min 1
+int multiplier = math.max(1, int(minutes_val / ltf_val_float - 1))
+
+// Kalkulasi Index yang aman (mencegah error 'negative index')
+// Menggunakan math.max untuk memastikan index tidak kurang dari 0
+int htf_first_bar       = math.max(0, bar_index >= multiplier ? bar_index[multiplier + 1] : bar_index - 1)
+int htf_first_FVG       = math.max(0, bar_index >= (multiplier * 2 + 1) ? bar_index[multiplier * 2 + 1] : bar_index)
+int ltf_first_bar       = math.max(0, bar_index >= 2 ? bar_index[2] : bar_index)
+int target_right_bar    = last_bar_index + 20 // Extend ke masa depan
+
+//═══════════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS (MODULAR SYSTEM)
+//═══════════════════════════════════════════════════════════════════════════════
+
+// Fungsi tunggal untuk menangani Supply & Demand (HTF & LTF)
+// Ini menggantikan 4 fungsi terpisah yang Anda miliki sebelumnya.
+f_draw_snd_block(bool _is_supply, bool _is_htf, bool _cond, float _top, float _btm, float _vol, float _trigger_high, float _trigger_low) =>
+    if _cond
+        // Tentukan atribut berdasarkan Supply/Demand dan HTF/LTF
+        string _type_txt    = _is_supply ? "SUPPLY" : "DEMAND"
+        string _tf_txt      = _is_htf ? "HTF" : "LTF"
+        string _symbol      = _is_supply ? "▼" : "▲"
+        string _mss_sym     = _is_htf ? "●" : "〇"
+        
+        // Warna dinamis
+        color _bg_col       = _is_supply ? box_col_bear : box_col_bull
+        color _main_col     = _is_supply ? col_bear : col_bull
+        
+        // Logika seleksi warna (simplified ternary logic)
+        bool _is_selected   = _is_htf ? htf_snd_created_selected : ltf_snd_created_selected
+        // Cek kompleksitas warna teks
+        bool _show_txt_col  = (_is_htf and htf_snd_created_selected) or (not _is_htf and ((htf_snd_created_selected or htf_snd_mitigated_selected or htf_fvg_mitigated_selected) and ltf_snd_created_selected))
+        
+        color _final_bg     = _is_selected ? _bg_col : Transparent_Color
+        color _final_txt    = _show_txt_col ? _main_col : (_is_selected ? _main_col : Transparent_Color)
+        color _final_border = Transparent_Color
+
+        // Koordinat X
+        int _x1 = _is_htf ? (htf_first_bar - multiplier) : ltf_first_bar
+        
+        // Info Text
+        string _info = get_info_text(_vol, _trigger_high, _trigger_low, not _is_supply) // Asumsi fungsi get_info_text ada
+        string _full_text = (showms == 'Symbol' ? (_symbol + " " + _tf_txt) : (_tf_txt + " " + _type_txt + " ⦿ " + _info ))
+        
+        // Posisi Teks
+        string _valign = _is_supply ? text.align_top : text.align_bottom
+
+        // --- DRAWING ---
+        // 1. Box
+        box _b = box.new(_x1, _top, target_right_bar, _btm, 
+             text = _full_text, 
+             text_size = size.tiny, 
+             text_valign = _valign, 
+             text_halign = text.align_right, 
+             bgcolor = _final_bg, 
+             text_color = _final_txt, 
+             border_color = _final_border, 
+             border_width = 0)
+        
+        // 2. MSS Line
+        float _line_y = _is_supply ? _top : _btm // Supply line di High, Demand di Low (biasanya untuk break)
+        // Perbaiki logika Y line sesuai kebutuhan (Supply biasanya HH, Demand LL untuk struktur)
+        float _draw_y = _is_supply ? _trigger_high : _trigger_low 
+        
+        line _l = line.new(_x1, _draw_y, target_right_bar, _draw_y, 
+             color = _is_selected ? _main_col : Transparent_Color, 
+             style = _is_htf ? line.style_solid : line.style_dotted, 
+             width = 1)
+             
+        // 3. Label MSS
+        label _lbl = label.new(_x1, _draw_y, 
+             text = showms == 'Symbol' ? _mss_sym : (_tf_txt + " MSS " + _mss_sym), 
+             size = _is_htf ? size.tiny : size.tiny, 
+             yloc = yloc.price, 
+             textcolor = Transparent_Color, 
+             color = _is_selected ? _main_col : Transparent_Color, 
+             style = label.style_none)
+
+        // --- ARRAY MANAGEMENT ---
+        // Push ke array yang sesuai (Pointer Reference)
+        // Catatan: Karena variable array global, kita harus if/else push manual di luar atau passing array id.
+        // Untuk efisiensi kode di sini, saya return objectnya, push dilakukan saat pemanggilan.
+        [_b, _l, _lbl]
+    else
+        [box(na), line(na), label(na)]
+
+// Fungsi Universal FVG (FLEXIBLE FIX)
+f_draw_fvg_block(bool _is_up, bool _is_htf, bool _cond, float _p1, float _p2, float _mid, float _gap_size) =>
+    // Auto-Sort: Tentukan mana yang lebih tinggi (Top) dan rendah (Bot) secara otomatis
+    float _top = math.max(_p1, _p2)
+    float _btm = math.min(_p1, _p2)
+    
+    // Validasi Gap: Pastikan Gap > 0 (Top tidak sama dengan Bot)
+    if _top > _btm and _cond
+        bool _is_selected = _is_htf ? htf_fvg_mitigated_selected : ltf_fvg_mitigated_selected
+        // Check threshold
+        bool _valid_size = _is_htf ? true : (_gap_size >= pct_thresholdLtf)
+        
+        if _valid_size and _is_selected
+            string _tf_txt = _is_htf ? "HTF" : "LTF"
+            string _dir_sym = _is_up ? "▲" : "▼"
+            color _col = _is_up ? col_bull : col_bear
+            color _bg_col = _is_up ? box_col_bull : box_col_bear
+            
+            // Logic Warna
+            bool _complex_color_logic = (htf_fvg_mitigated_selected or htf_snd_created_selected or htf_snd_mitigated_selected) and _is_selected
+            color _txt_col = _is_htf ? (_is_selected ? _col : Transparent_Color) : (_complex_color_logic ? _col : (_is_selected ? _col : Transparent_Color))
+
+            // Koordinat X
+            int _x1 = _is_htf ? htf_first_FVG : bar_index[2]
+            if _x1 < 0 
+                _x1 := bar_index
+            
+            // Draw Box dengan koordinat yang sudah diurutkan (_top, _btm)
+            box _b = box.new(_x1, _top, target_right_bar, _btm, 
+                 text = showms == 'Symbol' ? _tf_txt + " FVG" + _dir_sym : _dir_sym + " " + _tf_txt + " FVG\n═══════\n[" + str.tostring(_gap_size, format.mintick) + "]\n═══════", 
+                 text_size = size.auto, 
+                 text_valign = text.align_center, 
+                 text_halign = text.align_right, 
+                 bgcolor = _is_selected ? _bg_col : Transparent_Color, 
+                 text_color = _txt_col, 
+                 border_color = Transparent_Color, 
+                 border_width = 1)
+                 
+            line _l = line.new(_is_htf ? _x1 : bar_index[1], _mid, target_right_bar, _mid, 
+                 color = _col, width = 1, style = _is_htf ? line.style_dashed : line.style_dotted)
+                 
+            [_b, _l]
+        else
+            [box(na), line(na)]
+    else
+        [box(na), line(na)]
+
+//═══════════════════════════════════════════════════════════════════════════════
+// EXECUTION LOGIC
+//═══════════════════════════════════════════════════════════════════════════════
+
+// --- 1. Structure Candle Data ---
+// Menggunakan tuple dan array push langsung untuk efisiensi baris
+if ltf_candle_bull
+    array.push(lastCandleBullishOpenLtf, ltf_O1), array.push(lastCandleBullishHighLtf, ltf_H1)
+    array.push(lastCandleBullishLowLtf, ltf_L1), array.push(lastCandleBullishCloseLtf, ltf_C1)
+if ltf_candle_bear
+    array.push(lastCandleBearishOpenLtf, ltf_O1), array.push(lastCandleBearishHighLtf, ltf_H1)
+    array.push(lastCandleBearishLowLtf, ltf_L1), array.push(lastCandleBearishCloseLtf, ltf_C1)
+
+if htf_bull_0 
+    array.push(lastCandleBullishOpenHtf, htf_O1), array.push(lastCandleBullishHighHtf, htf_H1)
+    array.push(lastCandleBullishLowHtf, htf_L1), array.push(lastCandleBullishCloseHtf, htf_C1)
+if htf_bear_0
+    array.push(lastCandleBearishOpenHtf, htf_O1), array.push(lastCandleBearishHighHtf, htf_H1)
+    array.push(lastCandleBearishLowHtf, htf_L1), array.push(lastCandleBearishCloseHtf, htf_C1)
+
+
+// --- 2. SND Execution (HTF) ---
+// Supply HTF
+if isNewHtfBar
+    // HTF Supply
+    [b_hs, l_hs, lb_hs] = f_draw_snd_block(true, true, htf_supply_cond, htf_HH_value, htf_L1, htf_Vol_value, htf_HH_value, htf_L1)
+    if not na(b_hs)
+        array.push(htf_supply_high, htf_HH_value), array.push(htf_supply_low, htf_L1)
+        array.push(htf_supply_mitigated, false), array.push(htf_ms_bull_breakout, false)
+        array.push(htf_supply_box, b_hs), array.push(htf_ms_bull_line, l_hs), array.push(htf_ms_bull_label, lb_hs)
+
+    // HTF Demand
+    [b_hd, l_hd, lb_hd] = f_draw_snd_block(false, true, htf_demand_cond, htf_H1, htf_LW_value, htf_Vol_value, htf_H1, htf_LW_value)
+    if not na(b_hd)
+        array.push(htf_demand_high, htf_H1), array.push(htf_demand_low, htf_LW_value)
+        array.push(htf_demand_mitigated, false), array.push(htf_ms_bear_breakout, false)
+        array.push(htf_demand_box, b_hd), array.push(htf_ms_bear_line, l_hd), array.push(htf_ms_bear_label, lb_hd)
+
+
+// --- 3. SND Execution (LTF) ---
+// LTF Supply
+[b_ls, l_ls, lb_ls] = f_draw_snd_block(true, false, ltf_supply_cond, ltf_HH_value, ltf_L2, ltf_Vol_value[1], ltf_HH_value, ltf_L2)
+if not na(b_ls)
+    array.push(ltf_supply_high, ltf_HH_value), array.push(ltf_supply_low, ltf_L2)
+    array.push(ltf_supply_mitigated, false), array.push(ltf_ms_bull_breakout, false)
+    array.push(ltf_supply_box, b_ls), array.push(ltf_ms_bull_line, l_ls), array.push(ltf_ms_bull_label, lb_ls)
+
+// LTF Demand
+[b_ld, l_ld, lb_ld] = f_draw_snd_block(false, false, ltf_demand_cond, ltf_H2, ltf_LW_value, ltf_Vol_value[1], ltf_H2, ltf_LW_value)
+if not na(b_ld)
+    array.push(ltf_demand_high, ltf_H2), array.push(ltf_demand_low, ltf_LW_value)
+    array.push(ltf_demand_mitigated, false), array.push(ltf_ms_bear_breakout, false)
+    array.push(ltf_demand_box, b_ld), array.push(ltf_ms_bear_line, l_ld), array.push(ltf_ms_bear_label, lb_ld)
+
+// --- 4. FVG Execution (AUTO-SORTED ARRAYS) ---
+// LTF Down FVG
+[b_lfd, l_lfd] = f_draw_fvg_block(false, false, down_fvg_condLtf, ltf_L3, ltf_H1, down_fvg_midpointLtf, gap_size_down_fvgLtf)
+if not na(b_lfd)
+    // Push Max ke Highs, Min ke Lows (Biar mitigasi akurat)
+    array.push(down_fvg_highsLtf, math.max(ltf_L3, ltf_H1))
+    array.push(down_fvg_lowsLtf, math.min(ltf_L3, ltf_H1))
+    array.push(down_fvg_mitigatedLtf, false)
+    array.push(down_fvg_boxLtf, b_lfd), array.push(down_fvg_midle_linesLtf, l_lfd)
+
+// LTF Up FVG
+[b_lfu, l_lfu] = f_draw_fvg_block(true, false, up_fvg_condLtf, ltf_L1, ltf_H3, up_fvg_midpointLtf, gap_size_up_fvgLtf)
+if not na(b_lfu)
+    array.push(up_fvg_highsLtf, math.max(ltf_L1, ltf_H3))
+    array.push(up_fvg_lowsLtf, math.min(ltf_L1, ltf_H3))
+    array.push(up_fvg_mitigatedLtf, false)
+    array.push(up_fvg_boxLtf, b_lfu), array.push(up_fvg_midle_linesLtf, l_lfu)
+
+// HTF FVG (Only on New Bar)
+if isNewHtfBar
+    // HTF Down (Bearish)
+    [b_hfd, l_hfd] = f_draw_fvg_block(false, true, down_fvg_condHtf, htf_L2, htf_H, down_fvg_midpointHtf, gap_size_down_fvgHtf)
+    if not na(b_hfd)
+        // Gunakan Math.max/min saat push ke array agar konsisten
+        array.push(down_fvg_highsHtf, math.max(htf_L2, htf_H))
+        array.push(down_fvg_lowsHtf, math.min(htf_L2, htf_H))
+        array.push(down_fvg_mitigatedHtf, false)
+        array.push(down_fvg_boxHtf, b_hfd), array.push(down_fvg_midle_linesHtf, l_hfd)
+
+    // HTF Up (Bullish) - Ini yang tadi bermasalah
+    [b_hfu, l_hfu] = f_draw_fvg_block(true, true, up_fvg_condHtf, htf_L, htf_H2, up_fvg_midpointHtf, gap_size_up_fvgHtf)
+    if not na(b_hfu)
+        // Gunakan Math.max/min saat push ke array agar konsisten
+        array.push(up_fvg_highsHtf, math.max(htf_L, htf_H2))
+        array.push(up_fvg_lowsHtf, math.min(htf_L, htf_H2))
+        array.push(up_fvg_mitigatedHtf, false)
+        array.push(up_fvg_boxHtf, b_hfu), array.push(up_fvg_midle_linesHtf, l_hfu)
+//═══════════════════════════════════════════════════════════════════════════════
+// 1. OPTIMIZED LOGIC HELPER FUNCTIONS (CORRECTED)
+//═══════════════════════════════════════════════════════════════════════════════
+
+// A. Universal PD Array (Premium/Discount) Updater
+// FIX: Menambahkan argumen '_target_idx' untuk menggantikan 'last_bar'
+f_update_pd_zones(bool _show, float[] _arr_high, float[] _arr_low, line _mid_line, box _prem_box, box _disc_box, label _l_top, label _l_mid, label _l_bot, string _tf_txt, int _target_idx) =>
+    if _show and array.size(_arr_high) > 0 and array.size(_arr_low) > 0
+        float _h = array.get(_arr_high, array.size(_arr_high) - 1)
+        float _l = array.get(_arr_low, array.size(_arr_low) - 1)
+        float _eq = (_h + _l) / 2
+        
+        int _start = _target_idx - 18 // Mundur sedikit dari target kanan
+        int _end   = _target_idx
+
+        // Update Visuals
+        // Pastikan objek tidak NA sebelum di-set
+        if not na(_mid_line)
+            line.set_xy1(_mid_line, _start, _eq), line.set_xy2(_mid_line, _end, _eq)
+        if not na(_prem_box)
+            box.set_lefttop(_prem_box, _start, _h), box.set_rightbottom(_prem_box, _end, _eq)
+            box.set_bgcolor(_prem_box, color.new(col_bear, 92))
+        if not na(_disc_box)
+            box.set_lefttop(_disc_box, _start, _eq), box.set_rightbottom(_disc_box, _end, _l)
+            box.set_bgcolor(_disc_box, color.new(col_bull, 92))
+        if not na(_l_top)
+            label.set_xy(_l_top, _end + 2, _h), label.set_text(_l_top, _tf_txt + " PREMIUM (1)")
+        if not na(_l_mid)
+            label.set_xy(_l_mid, _end + 2, _eq), label.set_text(_l_mid, _tf_txt + " EQ (0.5)")
+        if not na(_l_bot)
+            label.set_xy(_l_bot, _end + 2, _l), label.set_text(_l_bot, _tf_txt + " DISCOUNT (0)")
+
+// B. Universal SND Mitigation
+f_mitigate_snd_universal(bool _is_supply, bool _is_htf, float[] _levels, bool[] _mit_status, box[] _boxes, line[] _lines, float _price_trigger) =>
+    if array.size(_levels) > 0
+        for i = 0 to array.size(_levels) - 1
+            if not array.get(_mit_status, i)
+                bool _mitigated = _is_supply ? (_price_trigger > array.get(_levels, i)) : (_price_trigger < array.get(_levels, i))
+                if _mitigated
+                    array.set(_mit_status, i, true)
+                    string _tf_str = _is_htf ? "HTF" : "LTF"
+                    string _dir_str = _is_supply ? "▼" : "▲"
+                    string _type_str = _is_supply ? "SUPPLY" : "DEMAND"
+                    bool _is_sel_mit = _is_htf ? htf_snd_mitigated_selected : ltf_snd_mitigated_selected
+                    bool _complex_col = (not _is_htf) and ((htf_fvg_mitigated_selected or htf_snd_created_selected or htf_snd_mitigated_selected) and ltf_snd_mitigated_selected)
+                    color _c_bg = _is_sel_mit ? mitigated_box_color : Transparent_Color
+                    color _c_txt = _complex_col ? mitigated_box_color : (_is_sel_mit ? mitigated_color : Transparent_Color)
+                    color _c_line = _is_sel_mit ? (_is_supply ? col_bear : col_bull) : Transparent_Color 
+                    
+                    box _b = array.get(_boxes, i)
+                    box.set_text(_b, showms == 'Symbol' ? (_tf_str + " " + _dir_str + "  ") : (_tf_str + " " + _type_str + "    "))
+                    box.set_text_size(_b, size.auto)
+                    box.set_right(_b, bar_index)
+                    box.set_bgcolor(_b, _c_bg)
+                    box.set_text_color(_b, _c_txt)
+                    
+                    line _l = array.get(_lines, i)
+                    line.set_x2(_l, bar_index)
+                    line.set_color(_l, _c_line)
+
+// C. Universal FVG Mitigation
+f_mitigate_fvg_universal(bool _is_up, bool _is_htf, float[] _highs, float[] _lows, bool[] _mits, box[] _boxes, line[] _midlines, float _price_trigger) =>
+    if array.size(_highs) > 0
+        for i = 0 to array.size(_highs) - 1
+            if not array.get(_mits, i)
+                float _h = array.get(_highs, i)
+                float _l = array.get(_lows, i)
+                bool _mitigated = _is_up ? (_price_trigger <= _h) : (_price_trigger >= _l)
+                if _mitigated
+                    array.set(_mits, i, true)
+                    float _gap = _h - _l
+                    string _size_txt = "\n[" + str.tostring(_gap, format.mintick) + "]"
+                    string _tf_str = _is_htf ? "HTF" : "LTF"
+                    string _sym = _is_up ? "▲" : "▼"
+                    bool _is_sel = _is_htf ? htf_fvg_mitigated_selected : ltf_fvg_mitigated_selected
+                    color _c_bg = _is_sel ? mitigated_box_color : Transparent_Color
+                    color _c_main = _is_sel ? mitigated_color : Transparent_Color
+                    
+                    box _b = array.get(_boxes, i)
+                    box.set_text(_b,showms == 'Symbol' ? _sym + _tf_str + " FVG" : _sym + " " + _tf_str + (_is_htf ? "" : " FVG") + "\n═══════" + _size_txt + "\n═══════")
+                    box.set_right(_b, bar_index)
+                    box.set_bgcolor(_b, _c_bg)
+                    box.set_text_color(_b, _c_main)
+                    
+                    line _l = array.get(_midlines, i)
+                    line.set_x2(_l, bar_index)
+                    line.set_color(_l, _c_main)
+
+// D. Management Breaker Function (RE-ADDED)
+manage_breakers(line[] _lns, label[] _lbls, float[] _lvls, bool[] _is_bulls, bool[] _mits, int[] _cr_ats, bool _show, string _tf_txt) =>
+    if _show and array.size(_lns) > 0
+        for i = array.size(_lns) - 1 to 0
+            line l = array.get(_lns, i)
+            label lb = array.get(_lbls, i)
+            float lvl = array.get(_lvls, i)
+            bool is_bull = array.get(_is_bulls, i)
+            bool is_mit = array.get(_mits, i)
+            int created_at_idx = array.get(_cr_ats, i)
+            
+            if not is_mit
+                if bar_index > created_at_idx
+                    bool mitigated = false
+                    if is_bull and low <= lvl
+                        mitigated := true
+                    if not is_bull and high >= lvl
+                        mitigated := true      
+                    
+                    if mitigated
+                        array.set(_mits, i, true)             
+                        string type_txt = is_bull ? "▲" : "▼"             
+                        label.set_text(lb, _tf_txt + " " + type_txt + "\n❒ " + "")            
+                        label.set_textcolor(lb, mitigated_color)           
+                        line.set_x2(l, bar_index)
+                        line.set_color(l, mitigated_color) 
+                        label.set_x(lb, bar_index)
+                        label.set_color(lb, mitigated_box_color)
+                    else
+                        line.set_x2(l, bar_index + 5)
+                        label.set_x(lb, bar_index + 5)
+                else
+                    // Keep extending on creation bar
+                    line.set_x2(l, target_right_bar)
+                    label.set_x(lb, target_right_bar)
+// E. Universal IFVG Detection & Drawing
+detect_and_draw_ifvg(float[] _arr_highs, float[] _arr_lows, box[] _arr_boxes, line[] _arr_lines, bool[] _arr_mits, bool[] _arr_is_ifvg, bool[] _arr_mit_ifvg, bool _is_bull_origin, string _tf_label, float _check_price, float _threshold) =>
+    if ifvg_selected and array.size(_arr_boxes) > 0
+        // Sync Arrays (memastikan ukuran array IFVG sama dengan array FVG)
+        while array.size(_arr_is_ifvg) < array.size(_arr_boxes)
+            array.push(_arr_is_ifvg, false), array.push(_arr_mit_ifvg, false)
+
+        for i = array.size(_arr_boxes) - 1 to 0
+            box b = array.get(_arr_boxes, i)
+            line l = array.get(_arr_lines, i)
+            float top = array.get(_arr_highs, i)
+            float bot = array.get(_arr_lows, i)
+            bool is_ifvg = array.get(_arr_is_ifvg, i)
+            bool is_mit_ifvg = array.get(_arr_mit_ifvg, i)
+            float gap = math.abs(top - bot)
+
+            // Filter High Probability (Gap size minimal 2x threshold)
+            bool is_valid_prob = ifvg_selected_high_prob ? (gap >= _threshold * 2) : true
+            // Label Logic: Bull Origin (Demand) -> Break Bawah -> Jadi Bearish IFVG (Resistance)
+            string base_txt = _is_bull_origin ? (_tf_label + " ▼ IFVG") : (_tf_label + " ▲ IFVG") 
+
+            // A. Creation Logic (Terjadi Breakout)
+            if not is_ifvg and is_valid_prob
+                bool triggered = false
+                if not _is_bull_origin // Asli Bearish (Supply) -> Break Atas -> Bullish IFVG
+                    if _check_price > top
+                        triggered := true
+                        box.set_text_color(b, col_bull), line.set_color(l, col_bull)
+                else // Asli Bullish (Demand) -> Break Bawah -> Bearish IFVG
+                    if _check_price < bot
+                        triggered := true
+                        box.set_text_color(b, col_bear), line.set_color(l, col_bear)
+
+                if triggered
+                    array.set(_arr_is_ifvg, i, true)
+                    array.set(_arr_mits, i, true) // Tandai FVG asli sebagai 'invalid/mitigated' agar logika FVG biasa berhenti
+                    
+                    // Visual Change untuk Inversion
+                    box.set_bgcolor(b, Transparent_Color), box.set_border_color(b, Transparent_Color)
+                    box.set_text(b, base_txt), box.set_text_size(b, size.tiny)
+                    box.set_right(b, bar_index + 5), line.set_x2(l, bar_index + 5)
+
+            // B. Mitigation Logic (Retest ke zona IFVG)
+            if is_ifvg and not is_mit_ifvg
+                bool mitigated = false
+                if not _is_bull_origin // Bullish IFVG (Support)
+                    if low <= top
+                        mitigated := true
+                else // Bearish IFVG (Resistance)
+                    if high >= bot
+                        mitigated := true
+
+                if mitigated
+                    array.set(_arr_mit_ifvg, i, true)
+                    // Visual Mitigated (Pudar)
+                    box.set_text(b, base_txt + " "), box.set_text_color(b, mitigated_color)
+                    line.set_color(l, mitigated_color)
+                    box.set_right(b, bar_index), line.set_x2(l, bar_index)
+                else
+                    // Extend ke kanan jika belum retest
+                    box.set_right(b, target_right_bar), line.set_x2(l, target_right_bar)
+
+//═══════════════════════════════════════════════════════════════════════════════
+// 2. EXECUTION LOGIC (RUNS GLOBALLY)
+//═══════════════════════════════════════════════════════════════════════════════
+
+// --- A. PREMIUM / DISCOUNT ZONES ---
+// FIX: Variabel ini sudah dideklarasikan di Global Assets (biasanya). 
+// Kita inisialisasi hanya jika belum ada (NA), agar tidak error "Already Defined".
+if na(ltf_mid_line)
+    ltf_mid_line := line.new(na, na, na, na, style=line.style_dotted, color=mitigated_color)
+    ltf_premium_box := box.new(na, na, na, na, border_width=0)
+    ltf_discount_box := box.new(na, na, na, na, border_width=0)
+    ltf_pd_label_top := label.new(na, na, style=label.style_none, textcolor=col_bear, size=size.tiny)
+    ltf_pd_label_mid := label.new(na, na, style=label.style_none, textcolor=mitigated_color, size=size.tiny)
+    ltf_pd_label_bot := label.new(na, na, style=label.style_none, textcolor=col_bull, size=size.tiny)
+
+if na(htf_mid_line)
+    htf_mid_line := line.new(na, na, na, na, style=line.style_dashed, width=2, color=mitigated_color)
+    htf_premium_box := box.new(na, na, na, na, border_width=1, border_color=box_col_bear)
+    htf_discount_box := box.new(na, na, na, na, border_width=1, border_color=box_col_bull)
+    htf_pd_label_top := label.new(na, na, style=label.style_none, textcolor=col_bear, size=size.tiny)
+    htf_pd_label_mid := label.new(na, na, style=label.style_none, textcolor=mitigated_color, size=size.tiny)
+    htf_pd_label_bot := label.new(na, na, style=label.style_none, textcolor=col_bull, size=size.tiny)
+
+// Update Zones (FIX: passing 'target_right_bar' instead of 'last_bar')
+f_update_pd_zones(show_pd_ltf, ltf_supply_high, ltf_demand_low, ltf_mid_line, ltf_premium_box, ltf_discount_box, ltf_pd_label_top, ltf_pd_label_mid, ltf_pd_label_bot, "LTF", target_right_bar)
+f_update_pd_zones(show_pd_htf, htf_supply_high, htf_demand_low, htf_mid_line, htf_premium_box, htf_discount_box, htf_pd_label_top, htf_pd_label_mid, htf_pd_label_bot, "HTF", target_right_bar)
+
+// --- B. EQUAL HIGHS / LOWS (EQH/EQL) ---
+if show_eq
+    if not na(ph_eq) and not na(last_pivot_h)
+        if (math.abs(ph_eq - last_pivot_h) / ph_eq * 100) <= eq_threshold_per
+            if show_connector
+                line.new(last_pivot_h_idx, last_pivot_h, bar_index - eq_len, ph_eq, color=col_bear, style=line.style_dotted)
+            array.push(eq_lines, line.new(last_pivot_h_idx, last_pivot_h, bar_index - eq_len + 10, last_pivot_h, color=col_bear, style=line.style_dotted))
+            array.push(eq_labels, label.new(bar_index - eq_len + 10, last_pivot_h, text="EQL H", style=label.style_none, textcolor=col_bear, size=size.tiny))
+            array.push(eq_levels, last_pivot_h), array.push(eq_types, "EQH")
+        last_pivot_h := ph_eq, last_pivot_h_idx := bar_index - eq_len
+        
+    if not na(pl_eq) and not na(last_pivot_l)
+        if (math.abs(pl_eq - last_pivot_l) / pl_eq * 100) <= eq_threshold_per
+            if show_connector
+                line.new(last_pivot_l_idx, last_pivot_l, bar_index - eq_len, pl_eq, color=col_bull, style=line.style_dotted)
+            array.push(eq_lines, line.new(last_pivot_l_idx, last_pivot_l, bar_index - eq_len + 10, last_pivot_l, color=col_bull, style=line.style_dotted))
+            array.push(eq_labels, label.new(bar_index - eq_len + 10, last_pivot_l, text="EQL L", style=label.style_none, textcolor=col_bull, size=size.tiny))
+            array.push(eq_levels, last_pivot_l), array.push(eq_types, "EQL")
+        last_pivot_l := pl_eq, last_pivot_l_idx := bar_index - eq_len
+
+// Sweep Check for EQH/EQL
+if array.size(eq_lines) > 0
+    for i = array.size(eq_lines) - 1 to 0
+        float _lvl = array.get(eq_levels, i)
+        string _typ = array.get(eq_types, i)
+        bool _swept = (_typ == "EQH" and high > _lvl) or (_typ == "EQL" and low < _lvl)
+        
+        line _l = array.get(eq_lines, i)
+        label _lb = array.get(eq_labels, i)
+        
+        if _swept
+            line.set_color(_l, mitigated_color), line.set_x2(_l, bar_index)
+            label.set_text(_lb, "✖"), label.set_textcolor(_lb, mitigated_color), label.set_x(_lb, bar_index)
+            array.remove(eq_lines, i), array.remove(eq_labels, i), array.remove(eq_levels, i), array.remove(eq_types, i)
+        else
+            line.set_x2(_l, bar_index + 5), label.set_x(_lb, bar_index + 5)
+
+// --- C. MITIGASI SUPPLY & DEMAND ---
+// HTF
+f_mitigate_snd_universal(true, true, htf_supply_low, htf_supply_mitigated, htf_supply_box, htf_ms_bull_line, high)
+f_mitigate_snd_universal(false, true, htf_demand_high, htf_demand_mitigated, htf_demand_box, htf_ms_bear_line, low)
+// LTF
+f_mitigate_snd_universal(true, false, ltf_supply_low, ltf_supply_mitigated, ltf_supply_box, ltf_ms_bull_line, high)
+f_mitigate_snd_universal(false, false, ltf_demand_high, ltf_demand_mitigated, ltf_demand_box, ltf_ms_bear_line, low)
+
+
+// --- D. MITIGASI FVG ---
+// LTF
+f_mitigate_fvg_universal(false, false, down_fvg_highsLtf, down_fvg_lowsLtf, down_fvg_mitigatedLtf, down_fvg_boxLtf, down_fvg_midle_linesLtf, high)
+f_mitigate_fvg_universal(true, false, up_fvg_highsLtf, up_fvg_lowsLtf, up_fvg_mitigatedLtf, up_fvg_boxLtf, up_fvg_midle_linesLtf, low)
+// HTF
+f_mitigate_fvg_universal(false, true, down_fvg_highsHtf, down_fvg_lowsHtf, down_fvg_mitigatedHtf, down_fvg_boxHtf, down_fvg_midle_linesHtf, high)
+f_mitigate_fvg_universal(true, true, up_fvg_highsHtf, up_fvg_lowsHtf, up_fvg_mitigatedHtf, up_fvg_boxHtf, up_fvg_midle_linesHtf, low)
+
+
+// --- E. MSS & BREAKER LOGIC ---
+// Helper delete opposite
+delete_opposite_breakers(bool _is_new_bull, line[] _lns, label[] _lbls, float[] _lvls, bool[] _is_bulls, bool[] _mits, int[] _cr_ats) =>
+    if array.size(_lns) > 0
+        for i = array.size(_lns) - 1 to 0
+            if (_is_new_bull != array.get(_is_bulls, i)) and not array.get(_mits, i)
+                line.delete(array.get(_lns, i)), label.delete(array.get(_lbls, i))
+                array.remove(_lns, i), array.remove(_lbls, i), array.remove(_lvls, i)
+                array.remove(_is_bulls, i), array.remove(_mits, i), array.remove(_cr_ats, i)
+
+// HTF MSS
+if array.size(htf_supply_high) > 0
+    int i = array.size(htf_supply_high) - 1
+    float _lvl = array.get(htf_supply_high, i)
+    // Breakout Bullish
+    if not array.get(htf_ms_bull_breakout, i) and ta.crossover(htf_C, _lvl)
+        array.set(htf_ms_bull_breakout, i, true)
+        // Visual
+        line.set_x2(array.get(htf_ms_bull_line, i), bar_index), line.set_color(array.get(htf_ms_bull_line, i), htf_MSS_selected ? col_bull : Transparent_Color)
+        label.set_text(array.get(htf_ms_bull_label, i), showms == 'Symbol' ? '●' : 'HTF MSS ▲'), label.set_textcolor(array.get(htf_ms_bull_label, i), htf_MSS_selected ? col_bull : Transparent_Color)
+        // Breaker
+        if breaker_htf_selected
+            delete_opposite_breakers(true, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
+            array.push(htf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bull)), array.push(htf_bk_levels, _lvl)
+            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="HTF BREAKER ▲", textcolor=col_bull, style=label.style_label_left, size=size.tiny,color = box_col_bull))
+            array.push(htf_bk_is_bull, true), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
+    // LQS Logic
+    else if not array.get(htf_ms_bull_breakout, i) and high >= _lvl
+        line.set_x2(array.get(htf_ms_bull_line, i), bar_index), line.set_color(array.get(htf_ms_bull_line, i), Htf_lqs_selected ? col_bear : Transparent_Color)
+        label.set_text(array.get(htf_ms_bull_label, i), showms == 'Symbol' ? '✖' : 'HTF BSL SWEEP'), label.set_textcolor(array.get(htf_ms_bull_label, i), Htf_lqs_selected ? col_bear : Transparent_Color)
+
+if array.size(htf_demand_low) > 0
+    int i = array.size(htf_demand_low) - 1
+    float _lvl = array.get(htf_demand_low, i)
+    // Breakout Bearish
+    if not array.get(htf_ms_bear_breakout, i) and ta.crossunder(htf_C, _lvl)
+        array.set(htf_ms_bear_breakout, i, true)
+        // Visual
+        line.set_x2(array.get(htf_ms_bear_line, i), bar_index), line.set_color(array.get(htf_ms_bear_line, i), htf_MSS_selected ? col_bear : Transparent_Color)
+        label.set_text(array.get(htf_ms_bear_label, i), showms == 'Symbol' ? '●' : 'HTF MSS ▼'), label.set_textcolor(array.get(htf_ms_bear_label, i), htf_MSS_selected ? col_bear : Transparent_Color)
+        // Breaker
+        if breaker_htf_selected
+            delete_opposite_breakers(false, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
+            array.push(htf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bear)), array.push(htf_bk_levels, _lvl)
+            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="HTF BREAKER ▼", textcolor=col_bear, style=label.style_label_left, size=size.tiny,color = box_col_bear ))
+            array.push(htf_bk_is_bull, false), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
+    // LQS Logic
+    else if not array.get(htf_ms_bear_breakout, i) and low <= _lvl
+        line.set_x2(array.get(htf_ms_bear_line, i), bar_index), line.set_color(array.get(htf_ms_bear_line, i), Htf_lqs_selected ? col_bull : Transparent_Color)
+        label.set_text(array.get(htf_ms_bear_label, i), showms == 'Symbol' ? '✖' : 'HTF SSL SWEEP'), label.set_textcolor(array.get(htf_ms_bear_label, i), Htf_lqs_selected ? col_bull : Transparent_Color)
+
+// LTF MSS
+if array.size(ltf_supply_high) > 0
+    int i = array.size(ltf_supply_high) - 1
+    float _lvl = array.get(ltf_supply_high, i)
+    bool ltf_bull_filter_ok = not use_ltf_ms_mid_filter or (not na(ltf_ms_midpoint) and close > ltf_ms_midpoint)
+    if not array.get(ltf_ms_bull_breakout, i) and ta.crossover(close, _lvl) and ltf_bull_filter_ok
+        array.set(ltf_ms_bull_breakout, i, true)
+        line.set_x2(array.get(ltf_ms_bull_line, i), bar_index), line.set_color(array.get(ltf_ms_bull_line, i), ltf_MSS_selected ? col_bull : Transparent_Color)
+        label.set_text(array.get(ltf_ms_bull_label, i), showms == 'Symbol' ? '〇' : 'LTF MSS ▲'), label.set_textcolor(array.get(ltf_ms_bull_label, i), ltf_MSS_selected ? col_bull : Transparent_Color)
+        if breaker_ltf_selected
+            delete_opposite_breakers(true, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
+            array.push(ltf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bull, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
+            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="LTF BREAKER ▲", textcolor=col_bull, style=label.style_label_left, size=size.tiny,color = box_col_bull))
+            array.push(ltf_bk_is_bull, true), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
+    else if not array.get(ltf_ms_bull_breakout, i) and high >= _lvl
+        line.set_x2(array.get(ltf_ms_bull_line, i), bar_index), line.set_color(array.get(ltf_ms_bull_line, i), ltf_lqs_selected ? col_bear : Transparent_Color)
+        label.set_text(array.get(ltf_ms_bull_label, i), showms == 'Symbol' ? '✖' : 'LTF BSL SWEEP'), label.set_textcolor(array.get(ltf_ms_bull_label, i), ltf_lqs_selected ? col_bear : Transparent_Color)
+
+if array.size(ltf_demand_low) > 0
+    int i = array.size(ltf_demand_low) - 1
+    float _lvl = array.get(ltf_demand_low, i)
+    bool ltf_bear_filter_ok = not use_ltf_ms_mid_filter or (not na(ltf_ms_midpoint) and close < ltf_ms_midpoint)
+    if not array.get(ltf_ms_bear_breakout, i) and ta.crossunder(close, _lvl) and ltf_bear_filter_ok
+        array.set(ltf_ms_bear_breakout, i, true)
+        line.set_x2(array.get(ltf_ms_bear_line, i), bar_index), line.set_color(array.get(ltf_ms_bear_line, i), ltf_MSS_selected ? col_bear : Transparent_Color)
+        label.set_text(array.get(ltf_ms_bear_label, i), showms == 'Symbol' ? '〇' : 'LTF MSS ▼'), label.set_textcolor(array.get(ltf_ms_bear_label, i), ltf_MSS_selected ? col_bear : Transparent_Color)
+        if breaker_ltf_selected
+            delete_opposite_breakers(false, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
+            array.push(ltf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bear, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
+            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="LTF BREAKER ▼", textcolor=col_bear, style=label.style_label_left, size=size.tiny,color = box_col_bear))
+            array.push(ltf_bk_is_bull, false), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
+    else if not array.get(ltf_ms_bear_breakout, i) and low <= _lvl
+        line.set_x2(array.get(ltf_ms_bear_line, i), bar_index), line.set_color(array.get(ltf_ms_bear_line, i), ltf_lqs_selected ? col_bull : Transparent_Color)
+        label.set_text(array.get(ltf_ms_bear_label, i), showms == 'Symbol' ? '✖' : 'LTF SSL SWEEP'), label.set_textcolor(array.get(ltf_ms_bear_label, i), ltf_lqs_selected ? col_bull : Transparent_Color)
+
+// --- F. BREAKER MANAGEMENT ---
+manage_breakers(htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at, breaker_htf_selected, "HTF")
+manage_breakers(ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at, breaker_ltf_selected, "LTF")
+
+// --- G. IFVG ---
+detect_and_draw_ifvg(down_fvg_highsLtf, down_fvg_lowsLtf, down_fvg_boxLtf, down_fvg_midle_linesLtf, down_fvg_mitigatedLtf, down_fvg_is_ifvgLtf, down_fvg_mit_ifvgLtf, false, "LTF", close, pct_thresholdLtf)
+detect_and_draw_ifvg(up_fvg_highsLtf, up_fvg_lowsLtf, up_fvg_boxLtf, up_fvg_midle_linesLtf, up_fvg_mitigatedLtf, up_fvg_is_ifvgLtf, up_fvg_mit_ifvgLtf, true, "LTF", close, pct_thresholdLtf)
+detect_and_draw_ifvg(down_fvg_highsHtf, down_fvg_lowsHtf, down_fvg_boxHtf, down_fvg_midle_linesHtf, down_fvg_mitigatedHtf, down_fvg_is_ifvgHtf, down_fvg_mit_ifvgHtf, false, "HTF", htf_C, pct_thresholdHtf)
+detect_and_draw_ifvg(up_fvg_highsHtf, up_fvg_lowsHtf, up_fvg_boxHtf, up_fvg_midle_linesHtf, up_fvg_mitigatedHtf, up_fvg_is_ifvgHtf, up_fvg_mit_ifvgHtf, true, "HTF", htf_C, pct_thresholdHtf)
+
+//═══════════════════════════════════════════════════════════════════════════════
+// 3. CLEANUP (GARBAGE COLLECTION)
+//═══════════════════════════════════════════════════════════════════════════════
+f_clean_arrays() =>
+    // FVG LTF
+    if array.size(down_fvg_highsLtf) > x_show
+        box.delete(array.shift(down_fvg_boxLtf)), line.delete(array.shift(down_fvg_midle_linesLtf))
+        array.shift(down_fvg_highsLtf), array.shift(down_fvg_lowsLtf), array.shift(down_fvg_mitigatedLtf)
+        if array.size(down_fvg_is_ifvgLtf) > 0 
+            array.shift(down_fvg_is_ifvgLtf), array.shift(down_fvg_mit_ifvgLtf)
+
+    if array.size(up_fvg_highsLtf) > x_show
+        box.delete(array.shift(up_fvg_boxLtf)), line.delete(array.shift(up_fvg_midle_linesLtf))
+        array.shift(up_fvg_highsLtf), array.shift(up_fvg_lowsLtf), array.shift(up_fvg_mitigatedLtf)
+        if array.size(up_fvg_is_ifvgLtf) > 0 
+            array.shift(up_fvg_is_ifvgLtf), array.shift(up_fvg_mit_ifvgLtf)
+            
+    // FVG HTF 
+    if array.size(down_fvg_highsHtf) > x_show
+        box.delete(array.shift(down_fvg_boxHtf)), line.delete(array.shift(down_fvg_midle_linesHtf))
+        array.shift(down_fvg_highsHtf), array.shift(down_fvg_lowsHtf), array.shift(down_fvg_mitigatedHtf)
+        if array.size(down_fvg_is_ifvgHtf) > 0 
+            array.shift(down_fvg_is_ifvgHtf), array.shift(down_fvg_mit_ifvgHtf)
+
+    if array.size(up_fvg_highsHtf) > x_show
+        box.delete(array.shift(up_fvg_boxHtf)), line.delete(array.shift(up_fvg_midle_linesHtf))
+        array.shift(up_fvg_highsHtf), array.shift(up_fvg_lowsHtf), array.shift(up_fvg_mitigatedHtf)
+        if array.size(up_fvg_is_ifvgHtf) > 0 
+            array.shift(up_fvg_is_ifvgHtf), array.shift(up_fvg_mit_ifvgHtf)
+
+    // SND HTF
+    if array.size(htf_supply_box) > x_show
+        box.delete(array.shift(htf_supply_box)), line.delete(array.shift(htf_ms_bull_line))
+        if array.size(htf_ms_bull_label) > 0
+            label.delete(array.shift(htf_ms_bull_label))
+        array.shift(htf_supply_high), array.shift(htf_supply_low), array.shift(htf_supply_mitigated), array.shift(htf_ms_bull_breakout)
+        
+    if array.size(htf_demand_box) > x_show
+        box.delete(array.shift(htf_demand_box)), line.delete(array.shift(htf_ms_bear_line))
+        if array.size(htf_ms_bear_label) > 0
+            label.delete(array.shift(htf_ms_bear_label))
+        array.shift(htf_demand_high), array.shift(htf_demand_low), array.shift(htf_demand_mitigated), array.shift(htf_ms_bear_breakout)
+
+    // SND LTF
+    if array.size(ltf_supply_box) > x_show
+        box.delete(array.shift(ltf_supply_box)), line.delete(array.shift(ltf_ms_bull_line))
+        if array.size(ltf_ms_bull_label) > 0
+            label.delete(array.shift(ltf_ms_bull_label))
+        array.shift(ltf_supply_high), array.shift(ltf_supply_low), array.shift(ltf_supply_mitigated), array.shift(ltf_ms_bull_breakout)
+
+    if array.size(ltf_demand_box) > x_show
+        box.delete(array.shift(ltf_demand_box)), line.delete(array.shift(ltf_ms_bear_line))
+        if array.size(ltf_ms_bear_label) > 0
+            label.delete(array.shift(ltf_ms_bear_label))
+        array.shift(ltf_demand_high), array.shift(ltf_demand_low), array.shift(ltf_demand_mitigated), array.shift(ltf_ms_bear_breakout)
+
+    // Breakers
+    if array.size(htf_bk_lines) > x_show
+        line.delete(array.shift(htf_bk_lines)), label.delete(array.shift(htf_bk_labels))
+        array.shift(htf_bk_levels), array.shift(htf_bk_is_bull), array.shift(htf_bk_mitigated), array.shift(htf_bk_created_at)
+        
+    if array.size(ltf_bk_lines) > x_show
+        line.delete(array.shift(ltf_bk_lines)), label.delete(array.shift(ltf_bk_labels))
+        array.shift(ltf_bk_levels), array.shift(ltf_bk_is_bull), array.shift(ltf_bk_mitigated), array.shift(ltf_bk_created_at)
+
+f_clean_arrays()
+
+//═══════════════════════════════════════════════════════════════════════════════
+// AUTOMATIC HIGH/LOW (DAY/WEEK/MONTH) - FINAL FIX
+//═══════════════════════════════════════════════════════════════════════════════
+
+// 1. Logic Penentuan Timeframe Target (Otomatis)
+var string tf_target = ""
+var string txt_lbl_per = ""
+
+if timeframe.isseconds or (timeframe.isminutes and timeframe.multiplier < 60)
+    tf_target := "D"
+    txt_lbl_per := "D" // Daily
+else if (timeframe.isminutes and timeframe.multiplier >= 60) and timeframe.multiplier < 1440
+    tf_target := "W"
+    txt_lbl_per := "W" // Weekly
+else
+    tf_target := "M"
+    txt_lbl_per := "M" // Monthly
+
+// 2. Fetch Data (Current & Previous)
+[htf_h_cur, htf_l_cur, htf_h_prev, htf_l_prev] = request.security(syminfo.tickerid, tf_target, [high, low, high[1], low[1]], lookahead=barmerge.lookahead_off)
+
+// 3. Seleksi Nilai Berdasarkan Input User
+float final_h = hl_mode_opt == "CURRENT" ? htf_h_cur : htf_h_prev
+float final_l = hl_mode_opt == "CURRENT" ? htf_l_cur : htf_l_prev
+string final_lbl_txt = (hl_mode_opt == "CURRENT" ? "C" : "P") + txt_lbl_per 
+
+// 4. Hitung Mundur Bar Index (FIXED)
+// Perubahan: Menambahkan '!= 0' agar hasil ta.change menjadi boolean (True/False)
+bool is_new_auto_period = ta.change(time(tf_target)) != 0
+int bars_since_start = ta.barssince(is_new_auto_period)
+int safe_bars_since_start = math.min(nz(bars_since_start, 10), 1900)
+
+// Koordinat X1: Mundur ke awal sesi
+int x1_loc = bar_index - safe_bars_since_start
+
+// 5. Drawing Lines & Labels (Update Realtime)
+var line l_high_auto = na
+var line l_low_auto  = na
+var label lb_high_auto = na
+var label lb_low_auto  = na
+
+if show_hl_auto and barstate.islast
+    // Hapus gambar lama
+    line.delete(l_high_auto), line.delete(l_low_auto)
+    label.delete(lb_high_auto), label.delete(lb_low_auto)
+
+    // --- DRAW HIGH ---
+    l_high_auto := line.new(x1_loc, final_h, bar_index + 10, final_h, color=white, style=line.style_solid, width=1)
+    lb_high_auto := label.new(bar_index + 10, final_h, text=final_lbl_txt + "H", style=label.style_none, textcolor=white, size=size.small)
+    
+    // --- DRAW LOW ---
+    l_low_auto := line.new(x1_loc, final_l, bar_index + 10, final_l, color=white, style=line.style_solid, width=1)
+    lb_low_auto := label.new(bar_index + 10, final_l, text=final_lbl_txt + "L", style=label.style_none, textcolor=white, size=size.small)
+
+//════════════════════════════════════════════════════════════════════════
+//════════════════════════════════════════════════════════════════════════
+// TRENDLINE LIQUIDITY LOGIC (EXECUTION)
+//════════════════════════════════════════════════════════════════════════
+float tliq_atr = ta.atr(14)
+float tliq_break_offset = tliq_atr * tliq_break_buffer
+if show_tliq
+    // --- 1. CREATION (Create New TL Liquidity Lines) ---
+    // Resistance TL (Highs)
+    if not na(ph_tl)
+        int ph_idx_now = bar_index - tliq_len
+        if not na(last_tl_ph)
+            float pivot_dist = math.abs(ph_tl - last_tl_ph)
+            bool valid_tl = pivot_dist >= (tliq_atr * tliq_min_move_atr)
+
+            if valid_tl
+                line l = line.new(last_tl_ph_idx, last_tl_ph, ph_idx_now, ph_tl, color=color.new(col_bear, 0), style=line.style_dashed, width=tliq_width)
+                label lb = show_tliq_tag ? label.new(ph_idx_now, ph_tl, text="T-LIQ", style=label.style_none, textcolor=color.new(col_bear, 15), size=size.tiny) : na
+
+                array.push(arr_tl_lines, l)
+                array.push(arr_tl_labels, lb)
+                array.push(arr_tl_is_res, true)
+                array.push(arr_tl_broken, false)
+                array.push(arr_tl_idx, ph_idx_now)
+
+        last_tl_ph := ph_tl
+        last_tl_ph_idx := ph_idx_now
+
+    // Support TL (Lows)
+    if not na(pl_tl)
+        int pl_idx_now = bar_index - tliq_len
+        if not na(last_tl_pl)
+            float pivot_dist = math.abs(pl_tl - last_tl_pl)
+            bool valid_tl = pivot_dist >= (tliq_atr * tliq_min_move_atr)
+
+            if valid_tl
+                line l = line.new(last_tl_pl_idx, last_tl_pl, pl_idx_now, pl_tl, color=color.new(col_bull, 0), style=line.style_dashed, width=tliq_width)
+                label lb = show_tliq_tag ? label.new(pl_idx_now, pl_tl, text="T-LIQ", style=label.style_none, textcolor=color.new(col_bull, 15), size=size.tiny) : na
+
+                array.push(arr_tl_lines, l)
+                array.push(arr_tl_labels, lb)
+                array.push(arr_tl_is_res, false)
+                array.push(arr_tl_broken, false)
+                array.push(arr_tl_idx, pl_idx_now)
+
+        last_tl_pl := pl_tl
+        last_tl_pl_idx := pl_idx_now
+
+    // --- 2. UPDATE & BREAK LOGIC ---
+    if array.size(arr_tl_lines) > 0
+        for i = 0 to array.size(arr_tl_lines) - 1
+            bool is_broken = array.get(arr_tl_broken, i)
+
+            if not is_broken
+                line  l = array.get(arr_tl_lines, i)
+                label lb = array.get(arr_tl_labels, i)
+                bool  is_res = array.get(arr_tl_is_res, i)
+                float line_price = line.get_price(l, bar_index)
+
+                // Break confirmation with selectable mode + ATR buffer
+                bool breakout = false
+                if is_res
+                    breakout := tliq_break_mode == 'Close' ? (close > line_price + tliq_break_offset) : (high > line_price + tliq_break_offset)
+                else
+                    breakout := tliq_break_mode == 'Close' ? (close < line_price - tliq_break_offset) : (low < line_price - tliq_break_offset)
+
+                if breakout
+                    array.set(arr_tl_broken, i, true)
+
+                    // Freeze line on sweep bar and de-emphasize visual noise
+                    line.set_x2(l, bar_index)
+                    line.set_color(l, color.new(mitigated_color, 10))
+                    line.set_style(l, line.style_solid)
+
+                    if show_tliq_swp and not na(lb)
+                        label.set_x(lb, bar_index)
+                        label.set_y(lb, line_price)
+                        label.set_text(lb, '✖')
+                        label.set_textcolor(lb, mitigated_color)
+                    else if not na(lb)
+                        label.delete(lb)
+                else
+                    // Extend running TL for cleaner right-side projection
+                    line.set_x2(l, bar_index + tliq_extend)
+                    if not na(lb)
+                        label.set_x(lb, bar_index + tliq_extend)
+                        label.set_y(lb, line.get_price(l, bar_index + tliq_extend))
+
+    // --- 3. GARBAGE COLLECTION (Limit with x_show) ---
+    if array.size(arr_tl_lines) > x_show
+        line.delete(array.shift(arr_tl_lines))
+        label lb_old = array.shift(arr_tl_labels)
+        if not na(lb_old)
+            label.delete(lb_old)
+        array.shift(arr_tl_is_res)
+        array.shift(arr_tl_broken)
+        array.shift(arr_tl_idx)
+//═══════════════════════════════════════════════════════════════════════════════
+// 1. HELPER FUNCTIONS (GLOBAL)
+//═══════════════════════════════════════════════════════════════════════════════
+// Helper: Get Last MSS Index untuk menentukan Trend
+get_last_valid_mss_idx(bool[] breakout_arr, label[] lbl_arr) =>
+    int idx = -1
+    int sz = array.size(breakout_arr)
+    if sz > 0
+        for i = sz - 1 to 0
+            if array.get(breakout_arr, i)
+                if i < array.size(lbl_arr)
+                    idx := label.get_x(array.get(lbl_arr, i))
+                break 
+    idx
+
+// Helper: Zone Status
+get_synchronized_zone_status(float[] arr_sup_h, float[] arr_sup_l, float[] arr_dem_h, float[] arr_dem_l, float[] arr_fvgb_h, float[] arr_fvgb_l, float[] arr_fvgm_h, float[] arr_fvgm_l) =>
+    int status = 0
+    bool in_supply = false
+    bool in_demand = false
+    
+    // Check Supply / Bear FVG
+    if array.size(arr_sup_h) > 0
+        for i = 0 to array.size(arr_sup_h) - 1
+            if high >= array.get(arr_sup_l, i) and low <= array.get(arr_sup_h, i)
+                in_supply := true
+                break
+    if not in_supply and array.size(arr_fvgb_h) > 0
+        for i = 0 to array.size(arr_fvgb_h) - 1
+            if high >= array.get(arr_fvgb_l, i) and low <= array.get(arr_fvgb_h, i)
+                in_supply := true
+                break
+    // Check Demand / Bull FVG
+    if array.size(arr_dem_h) > 0
+        for i = 0 to array.size(arr_dem_h) - 1
+            if high >= array.get(arr_dem_l, i) and low <= array.get(arr_dem_h, i)
+                in_demand := true
+                break
+    if not in_demand and array.size(arr_fvgm_h) > 0
+        for i = 0 to array.size(arr_fvgm_h) - 1
+            if high >= array.get(arr_fvgm_l, i) and low <= array.get(arr_fvgm_h, i)
+                in_demand := true
+                break
+    // Final Logic
+    if in_supply and in_demand
+        status := 999
+    else if in_supply
+        status := -1
+    else if in_demand
+        status := 1
+    status
+
+//═══════════════════════════════════════════════════════════════════════════════
+// 2. GLOBAL TREND CALCULATION
+//═══════════════════════════════════════════════════════════════════════════════
+// Kita hitung Trend HTF di sini agar bisa dipakai oleh Candle Color & Dashboard
+int htf_bull_idx_g = get_last_valid_mss_idx(htf_ms_bull_breakout, htf_ms_bull_label)
+int htf_bear_idx_g = get_last_valid_mss_idx(htf_ms_bear_breakout, htf_ms_bear_label)
+int ltf_bull_idx_g = get_last_valid_mss_idx(ltf_ms_bull_breakout, ltf_ms_bull_label)
+int ltf_bear_idx_g = get_last_valid_mss_idx(ltf_ms_bear_breakout, ltf_ms_bear_label)
+
+// 1 = Bull, -1 = Bear, 0 = Neutral
+int htf_trend_bias = htf_bull_idx_g > htf_bear_idx_g ? 1 : (htf_bear_idx_g > htf_bull_idx_g ? -1 : 0)
+int ltf_trend_bias = ltf_bull_idx_g > ltf_bear_idx_g ? 1 : (ltf_bear_idx_g > ltf_bull_idx_g ? -1 : 0)
+//═══════════════════════════════════════════════════════════════════════════════
+// 3. DISPLACEMENT CANDLE (REPLACED MOMENTUM)
+//═══════════════════════════════════════════════════════════════════════════════
+// Displacement = Big Range + Big Body (Small Wicks) + Breakout intention
+float dsp_range_size = high - low
+float dsp_body_size  = math.abs(close - open)
+float dsp_avg_range  = ta.atr(dsp_len) // Menggunakan ATR untuk volatilitas yang lebih akurat
+
+bool dsp_buy_signal  = false
+bool dsp_sell_signal = false
+
+if show_dsp_candle
+    // Syarat 1: Ukuran candle harus lebih besar dari rata-rata * multiplier
+    bool is_expanded_range = dsp_range_size > (dsp_avg_range * dsp_mult)
+    
+    // Syarat 2: Body candle harus dominan (memenuhi rasio input) untuk validasi 'Displacement'
+    bool is_full_body      = dsp_body_size > (dsp_range_size * dsp_body_min)
+    
+    // Sinyal
+    dsp_buy_signal  := close > open and is_expanded_range and is_full_body
+    dsp_sell_signal := close < open and is_expanded_range and is_full_body
+
+// Plotting Icon Displacement
+plotshape(dsp_buy_signal, title="Disp Buy", style=shape.triangleup, location=location.belowbar, color=col_dsp_buy, size=size.tiny, text="D",textcolor = col_bull)
+plotshape(dsp_sell_signal, title="Disp Sell", style=shape.triangledown, location=location.abovebar, color=col_dsp_sell, size=size.tiny, text="D",textcolor = col_bear)
+//═══════════════════════════════════════════════════════════════════════════════
+// 4. CENTRALIZED COLOR LOGIC (UPDATED WITH HTF TREND)
+//═══════════════════════════════════════════════════════════════════════════════
+float rsi_val = ta.rsi(close, 14)
+float k_val   = ta.sma(ta.stoch(rsi_val, rsi_val, rsi_val, 14), 3)
+
+get_candle_color(string _type) =>
+    color _c_main = na
+    color _c_trans = na
+    
+    // TYPE 1: STOCHASTIC RSI
+    if _type == 'Based Stochastic RSI'
+        float rsi_norm = math.max(math.min(k_val / 100, 1), 0)
+        _c_main  := color.from_gradient(rsi_norm, 0, 1, col_bull, col_bear)
+        _c_trans := color.from_gradient(rsi_norm, 0, 1, box_col_bull, box_col_bear)
+        
+    // TYPE 2: FOLLOW HTF TREND (NEW!)
+    // Pastikan di input.string Anda menambahkan opsi: "FOLLOW HTF TREND"
+    else if _type == 'Follow HTF Trend'
+        if htf_trend_bias == 1 // HTF BULLISH
+            // Naik = Bull Color, Turun = Abu-abu (Koreksi)
+            _c_main  := close >= open ? col_bull : mitigated_color
+            _c_trans := close >= open ? box_col_bull : mitigated_box_color
+        else if htf_trend_bias == -1 // HTF BEARISH
+            // Turun = Bear Color, Naik = Abu-abu (Koreksi)
+            _c_main  := close < open ? col_bear : mitigated_color
+            _c_trans := close < open ? box_col_bear : mitigated_box_color
+        else // NEUTRAL
+            _c_main  := close >= open ? col_bull : col_bear
+            _c_trans := close >= open ? box_col_bull : box_col_bear
+
+    // TYPE 3: FOLLOW LTF TREND
+    else if _type == 'Follow LTF Trend'
+        if ltf_trend_bias == 1
+            _c_main  := close >= open ? col_bull : mitigated_color
+            _c_trans := close >= open ? box_col_bull : mitigated_box_color
+        else if ltf_trend_bias == -1
+            _c_main  := close < open ? col_bear : mitigated_color
+            _c_trans := close < open ? box_col_bear : mitigated_box_color
+        else
+            _c_main  := close >= open ? col_bull : col_bear
+            _c_trans := close >= open ? box_col_bull : box_col_bear
+
+    // TYPE 4: REGULAR (DEFAULT)
+    else 
+        _c_main  := close >= open ? col_bull : col_bear
+        _c_trans := close >= open ? box_col_bull : box_col_bear
+    
+    [_c_main, _c_trans]
+
+// Get Current Colors
+[current_main_col, current_trans_col] = get_candle_color(type_ltf_color_candle)
+
+//═══════════════════════════════════════════════════════════════════════════════
+// 5. LTF CANDLE PLOTTING
+//═══════════════════════════════════════════════════════════════════════════════
+if show_ltf_plot_candle
+    if type_ltf_plot_candle == 'Custom Candles'
+        box.new(bar_index, high, bar_index + 1, low, border_color = dark, bgcolor = current_trans_col, border_width = 1)
+        box.new(bar_index, open, bar_index + 1, close, border_color = dark, bgcolor = current_trans_col, border_width = 1)
+    
+// Plot Regular Candle
+// Logic: Jika Custom Candle nyala, kita matikan plotcandle biasa (color=na)
+color plot_col = (show_ltf_plot_candle and type_ltf_plot_candle == 'Regular Candles') ? current_main_col : na
+color plot_border = (show_ltf_plot_candle and type_ltf_plot_candle == 'Regular Candles') ? dark : na
+plotcandle(open, high, low, close, color=color.new(plot_col,0), wickcolor=plot_col, bordercolor=plot_col, title='Main Candle')
+
+//═══════════════════════════════════════════════════════════════════════════════
+// 6. HTF CANDLE BOX (AGGREGATION)
+//═══════════════════════════════════════════════════════════════════════════════
+int htf_start_time = request.security(syminfo.tickerid, htf_str, time, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+
+var array<box> htf_bodyBoxes = array.new_box()
+var array<box> htf_wickBoxes = array.new_box()
+var int MAX_HTF_HISTORY = 280 
+var float my_htf_open = na
+var float my_htf_high = na
+var float my_htf_low  = na
+
+if show_htf_plot_candle
+    bool is_New_HTF = ta.change(htf_start_time) != 0
+    
+    if is_New_HTF
+        my_htf_open := open
+        my_htf_high := high
+        my_htf_low  := low
+        
+        // WARNA HTF BOX JUGA MENGIKUTI LOGIKA GLOBAL
+        // close > my_htf_open artinya Candle HTF-nya Bullish
+        bool is_htf_candle_bull = close >= my_htf_open
+        color c_htf = na
+        
+        if type_ltf_color_candle == 'Follow HTF Trend'
+            if htf_trend_bias == 1 // Trend Global Bull
+                c_htf := is_htf_candle_bull ? box_col_bull : mitigated_box_color
+            else if htf_trend_bias == -1 // Trend Global Bear
+                c_htf := not is_htf_candle_bull ? box_col_bear : mitigated_box_color
+            else
+                c_htf := is_htf_candle_bull ? box_col_bull : box_col_bear
+        else if type_ltf_color_candle == 'Follow LTF Trend'
+            if ltf_trend_bias == 1
+                c_htf := is_htf_candle_bull ? box_col_bull : mitigated_box_color
+            else if ltf_trend_bias == -1
+                c_htf := not is_htf_candle_bull ? box_col_bear : mitigated_box_color
+            else
+                c_htf := is_htf_candle_bull ? box_col_bull : box_col_bear
+        else
+            c_htf := is_htf_candle_bull ? box_col_bull : box_col_bear
+
+        array.push(htf_wickBoxes, box.new(htf_start_time, my_htf_high, time_close, my_htf_low, xloc=xloc.bar_time, bgcolor=c_htf, border_color=na))
+        array.push(htf_bodyBoxes, box.new(htf_start_time, my_htf_open, time_close, close, xloc=xloc.bar_time, bgcolor=c_htf, border_color=c_htf, border_width=1))
+        
+        if array.size(htf_bodyBoxes) > MAX_HTF_HISTORY
+            box.delete(array.shift(htf_bodyBoxes))
+            box.delete(array.shift(htf_wickBoxes))
+    else
+        // Update Existing
+        my_htf_high := math.max(my_htf_high, high)
+        my_htf_low  := math.min(my_htf_low, low)
+        
+        if array.size(htf_bodyBoxes) > 0
+            box cur_wick = array.get(htf_wickBoxes, array.size(htf_wickBoxes)-1)
+            box cur_body = array.get(htf_bodyBoxes, array.size(htf_bodyBoxes)-1)
+            
+            bool is_htf_candle_bull = close >= my_htf_open
+            color c_htf = na
+            
+            // Logic Warna Update Realtime
+            if type_ltf_color_candle == 'Follow HTF Trend'
+                if htf_trend_bias == 1 
+                    c_htf := is_htf_candle_bull ? box_col_bull : mitigated_box_color
+                else if htf_trend_bias == -1 
+                    c_htf := not is_htf_candle_bull ? box_col_bear : mitigated_box_color
+                else
+                    c_htf := is_htf_candle_bull ? box_col_bull : box_col_bear
+            else if type_ltf_color_candle == 'Follow LTF Trend'
+                if ltf_trend_bias == 1
+                    c_htf := is_htf_candle_bull ? box_col_bull : mitigated_box_color
+                else if ltf_trend_bias == -1
+                    c_htf := not is_htf_candle_bull ? box_col_bear : mitigated_box_color
+                else
+                    c_htf := is_htf_candle_bull ? box_col_bull : box_col_bear
+            else
+                c_htf := is_htf_candle_bull ? box_col_bull : box_col_bear
+
+            box.set_top(cur_wick, my_htf_high), box.set_bottom(cur_wick, my_htf_low), box.set_right(cur_wick, time_close), box.set_bgcolor(cur_wick, c_htf)
+            box.set_top(cur_body, math.max(my_htf_open, close)), box.set_bottom(cur_body, math.min(my_htf_open, close)), box.set_right(cur_body, time_close)
+            box.set_bgcolor(cur_body, c_htf), box.set_border_color(cur_body, c_htf)
+//═══════════════════════════════════════════════════════════════════════════════
+// KILL ZONE VERTICAL LINES LOGIC
+//═══════════════════════════════════════════════════════════════════════════════
+// Function to draw Vertical Lines & Background
+f_draw_kz(string _sess, color _col, string _txt) =>
+    // Cek apakah bar saat ini masuk dalam sesi sesuai Timezone yang dipilih
+    bool in_session = not na(time(timeframe.period, _sess, kz_timezone))
+    
+    // Detect Start Session (Vertical Line)
+    if in_session and not in_session[1]
+        line.new(bar_index, high, bar_index, low, extend=extend.both, color=_col, style=line.style_solid, width=1)
+        label.new(bar_index, high, text=_txt, yloc=yloc.abovebar, color=color.new(white, 100), style=label.style_none, textcolor=_col, size=size.normal)
+    
+    // Detect End Session (Vertical Line)
+    if not in_session and in_session[1]
+        line.new(bar_index, high, bar_index, low, extend=extend.both, color=_col, style=line.style_dashed, width=1)
+
+    // Background Highlight (Optional - agar area terlihat)
+    color bg_c = in_session ? color.new(_col, 92) : na
+
+// Execution
+if show_kz
+    f_draw_kz(sess_asia, col_kz_asia, "Asia")
+    f_draw_kz(sess_london, col_kz_lon, "London")
+    f_draw_kz(sess_ny, col_kz_ny, "New York")
+//═══════════════════════════════════════════════════════════════════════════════
+// HELPER: SESSION COUNTDOWN LOGIC
+//═══════════════════════════════════════════════════════════════════════════════
+f_get_session_countdown(string _sess_str, string _tz) =>
+    string _result = "Closed"
+    // Cek apakah sekarang sedang dalam sesi
+    bool _is_active = not na(time(timeframe.period, _sess_str, _tz))
+    
+    if _is_active
+        // 1. Ambil Waktu Sekarang di Timezone Target
+        int _now_h = hour(timenow, _tz)
+        int _now_m = minute(timenow, _tz)
+        int _now_total_min = (_now_h * 60) + _now_m
+
+        // 2. Parsing Waktu Selesai dari String Input (Format "0700-1400")
+        // Kita cari posisi tanda "-"
+        int _split_idx = str.pos(_sess_str, "-")
+        string _end_str = str.substring(_sess_str, _split_idx + 1) // Ambil bagian kanan (1400)
+        
+        // Konversi string "1400" jadi angka jam dan menit
+        // Menggunakan substring fixed position (asumsi format input 4 digit HHMM)
+        // Jika user input "14:00", logic ini perlu penyesuaian, tapi standar input session adalah "1400"
+        float _end_h_f = str.tonumber(str.substring(_end_str, 0, 2))
+        float _end_m_f = str.tonumber(str.substring(_end_str, 2, 4))
+        
+        // Safety check jika parsing gagal (misal user input aneh)
+        int _end_h = na(_end_h_f) ? 0 : int(_end_h_f)
+        int _end_m = na(_end_m_f) ? 0 : int(_end_m_f)
+        int _end_total_min = (_end_h * 60) + _end_m
+
+        // 3. Hitung Selisih (Handle Midnight Crossing 1900-0300)
+        int _diff_min = 0
+        
+        if _end_total_min < _now_total_min 
+            // Kasus Midnight Crossing (Contoh: Now 20:00, End 03:00)
+            // Tambahkan 24 jam (1440 menit) ke waktu end
+            _diff_min := (_end_total_min + 1440) - _now_total_min
+        else
+            // Kasus Normal (Contoh: Now 09:00, End 14:00)
+            _diff_min := _end_total_min - _now_total_min
+
+        // 4. Format ke Jam:Menit
+        int _left_h = math.floor(_diff_min / 60)
+        int _left_m = _diff_min % 60
+        
+        _result := str.tostring(_left_h, "00") + ":" + str.tostring(_left_m, "00")
+    
+    _result
+//═══════════════════════════════════════════════════════════════════════════════
+// 7. DASHBOARD (MULTI-SESSION TRACKING - V.8.2.3 PRO)
+//═══════════════════════════════════════════════════════════════════════════════
+
+// --- Helper Functions Global Scope (Wajib di luar IF) ---
+f_is_inside(float p, float _h, float _l) => 
+    p <= math.max(_h, _l) and p >= math.min(_h, _l)
+
+// Fungsi Deteksi Cepat
+f_get_fast_zone_status(float p, float[] _sup_h, float[] _sup_l, float[] _dem_h, float[] _dem_l, float[] _ifvg_h, float[] _ifvg_l, bool[] _is_ifvg) =>
+    string _s = "FREE SPACE"
+    color _c = color.new(mitigated_color, 50) 
+    
+    // 1. PRIORITY: INVERSION FVG (DITAMBAHKAN SAFETY CHECK)
+    int _ifvg_size = array.size(_ifvg_h)
+    int _stat_size = array.size(_is_ifvg)
+    
+    if _ifvg_size > 0 and _stat_size == _ifvg_size
+        for i = _ifvg_size - 1 to 0 
+            // Cek apakah indeks aman sebelum diambil
+            bool _stat = array.get(_is_ifvg, i)
+            if _stat and f_is_inside(p, array.get(_ifvg_h, i), array.get(_ifvg_l, i))
+                _s := "INVERSION FVG"
+                _c := yellow
+                break 
+
+    // 2. PRIORITY: SUPPLY
+    if _s == "FREE SPACE" and array.size(_sup_h) > 0
+        for i = array.size(_sup_h) - 1 to 0
+            if f_is_inside(p, array.get(_sup_h, i), array.get(_sup_l, i))
+                _s := "IN SUPPLY"
+                _c := col_bear
+                break
+
+    // 3. PRIORITY: DEMAND
+    if _s == "FREE SPACE" and array.size(_dem_h) > 0
+        for i = array.size(_dem_h) - 1 to 0
+            if f_is_inside(p, array.get(_dem_h, i), array.get(_dem_l, i))
+                _s := "IN DEMAND"
+                _c := col_bull
+                break
+    [_s, _c]
+
+if show_table and barstate.islast
+    // --- A. BIAS & TREND CALCULATION ---
+    // 1. HTF Bias
+    string htf_txt = htf_trend_bias == 1 ? "BULLISH" : (htf_trend_bias == -1 ? "BEARISH" : "NEUTRAL")
+    color htf_col = htf_trend_bias == 1 ? col_bull : (htf_trend_bias == -1 ? col_bear : mitigated_color)
+
+    // 2. LTF Trend
+    int ltf_bull_idx = get_last_valid_mss_idx(ltf_ms_bull_breakout, ltf_ms_bull_label)
+    int ltf_bear_idx = get_last_valid_mss_idx(ltf_ms_bear_breakout, ltf_ms_bear_label)
+    string ltf_txt = ltf_bull_idx > ltf_bear_idx ? "BULLISH" : (ltf_bear_idx > ltf_bull_idx ? "BEARISH" : "NEUTRAL")
+    color ltf_col = ltf_bull_idx > ltf_bear_idx ? col_bull : (ltf_bear_idx > ltf_bull_idx ? col_bear : mitigated_color)
+
+    // --- B. HYPER FAST CONTEXT ---
+    
+    // 1. Market Pressure
+    string pressure_txt = "NONE"
+    color pressure_col = mitigated_color
+    if close > open
+        if close > high[1] 
+            pressure_txt := "BREAKOUT UP"
+            pressure_col := col_bull
+        else
+            pressure_txt := "BUY POWER"
+            pressure_col := color.new(col_bull, 20)
+    else if close < open
+        if close < low[1]
+            pressure_txt := "BREAKDOWN"
+            pressure_col := col_bear
+        else
+            pressure_txt := "SELL POWER"
+            pressure_col := color.new(col_bear, 20)
+
+    // 2. Zone Scanning
+    [stat_txt_ltf, stat_col_ltf] = f_get_fast_zone_status(close, ltf_supply_high, ltf_supply_low, ltf_demand_high, ltf_demand_low, down_fvg_highsLtf, down_fvg_lowsLtf, down_fvg_is_ifvgLtf)
+    
+    string final_zone_txt = stat_txt_ltf
+    color final_zone_col = stat_col_ltf
+    
+    if stat_txt_ltf == "FREE SPACE"
+        [stat_txt_htf, stat_col_htf] = f_get_fast_zone_status(close, htf_supply_high, htf_supply_low, htf_demand_high, htf_demand_low, down_fvg_highsHtf, down_fvg_lowsHtf, down_fvg_is_ifvgHtf)
+        if stat_txt_htf != "FREE SPACE"
+            final_zone_txt := stat_txt_htf + " (HTF)"
+            final_zone_col := stat_col_htf
+
+    // 3. COMPLETE LIQUIDITY STATUS
+    int eq_cnt = array.size(eq_types)
+    int tl_pending_cnt = 0
+    bool is_tl_break_fresh = false 
+    
+    if array.size(arr_tl_lines) > 0
+        for i = 0 to array.size(arr_tl_lines) - 1
+            if not array.get(arr_tl_broken, i)
+                tl_pending_cnt += 1
+            else
+                line l = array.get(arr_tl_lines, i)
+                if line.get_x2(l) == bar_index
+                    is_tl_break_fresh := true
+
+    string liq_warn = "CLEAN TRAFFIC"
+    color liq_col = mitigated_color
+
+    if is_tl_break_fresh
+        liq_warn := " TL BREAKOUT"
+        liq_col := white
+    else if eq_cnt > 0 or tl_pending_cnt > 0
+        liq_warn := str.tostring(eq_cnt) + " EQ | " + str.tostring(tl_pending_cnt) + " TL"
+        liq_col := mitigated_color
+    else 
+        liq_warn := "CLEAN TRAFFIC"
+        liq_col := white
+
+    // 4. MULTI-SESSION STATUS LOGIC
+    // Ambil semua countdown
+    string cd_ny_str   = f_get_session_countdown(sess_ny, kz_timezone)
+    string cd_lon_str  = f_get_session_countdown(sess_london, kz_timezone)
+    string cd_asia_str = f_get_session_countdown(sess_asia, kz_timezone)
+
+    // Variable penampung
+    string sess_stat = ""
+    color sess_col = mitigated_color 
+
+    // Cek Asia
+    if cd_asia_str != "CLOSED"
+        sess_stat := "ASIA [" + cd_asia_str + "]" + "\n"
+        sess_col := col_kz_asia
+    
+    // Cek London (Accumulate)
+    if cd_lon_str != "CLOSED"
+        if sess_stat != ""
+            sess_stat := sess_stat + "\n" // Tambahkan baris baru jika Asia juga aktif
+        sess_stat := sess_stat + "LON [" + cd_lon_str + "]" + "\n"
+        sess_col := col_kz_lon // Update warna prioritas ke London
+        
+    // Cek NY (Accumulate)
+    if cd_ny_str != "CLOSED"
+        if sess_stat != ""
+            sess_stat := sess_stat + "\n" // Tambahkan baris baru jika London/Asia juga aktif
+        sess_stat := sess_stat + "NY [" + cd_ny_str + "]"
+        sess_col := col_kz_ny // Update warna prioritas ke NY (Tertinggi)
+
+    // Jika Kosong (Tidak ada sesi)
+    if sess_stat == ""
+        sess_stat := "QUIET HOURS"
+        sess_col := mitigated_color
+
+    string time_now_str = str.format_time(timenow, "HH:mm", kz_timezone)
+
+    // --- C. DRAW TABLE ---
+    var table hud = table.new(table_pos, 2, 12, bgcolor=mitigated_box_color, border_color=color.new(mitigated_color, 60), border_width=0, frame_color=mitigated_color, frame_width=1)
+    
+    // ROW 0: Ticker & Price
+    table.cell(hud, 0, 0, syminfo.ticker, text_color=white, text_halign=text.align_left, text_size=table_size, text_formatting=text.format_bold,bgcolor = mitigated_color)
+    table.cell(hud, 1, 0, str.tostring(close, format.mintick), text_color=close >= open ? white : white, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold,bgcolor = mitigated_color )
+    
+    // ROW 1: Separator
+    table.merge_cells(hud, 0, 1, 1, 1)
+    table.cell(hud, 0, 1, "════════════════════", text_color=color.new(mitigated_color, 50), text_size=table_size, height=0)
+
+
+    // ROW 2: HTF BIAS
+    table.cell(hud, 0, 2, "HTF Bias", text_color=mitigated_color, text_halign=text.align_left, text_size=table_size)
+    table.cell(hud, 1, 2, htf_txt, text_color=htf_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold)
+
+    // ROW 3: LTF TREND
+    table.cell(hud, 0, 3, "LTF Trend", text_color=mitigated_color, text_halign=text.align_left, text_size=table_size)
+    table.cell(hud, 1, 3, ltf_txt, text_color=ltf_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold)
+
+    // ROW 4: Separator
+    table.merge_cells(hud, 0, 4, 1, 4)
+    table.cell(hud, 0, 4, "════════════════════", text_color=color.new(mitigated_color, 50), text_size=table_size, height=0)
+
+    // ROW 5: ZONE STATUS
+    table.cell(hud, 0, 5, "Status", text_color=mitigated_color, text_halign=text.align_left, text_size=table_size)
+    table.cell(hud, 1, 5, final_zone_txt, text_color=final_zone_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold)
+
+    // ROW 6: PRESSURE
+    table.cell(hud, 0, 6, "Power", text_color=mitigated_color, text_halign=text.align_left, text_size=table_size)
+    table.cell(hud, 1, 6, pressure_txt, text_color=pressure_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold)
+
+    // ROW 7: LIQUIDITY
+    table.cell(hud, 0, 7, "Road", text_color=mitigated_color, text_halign=text.align_left, text_size=table_size)
+    table.cell(hud, 1, 7, liq_warn, text_color=liq_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold)
+
+    // ROW 8: Separator
+    table.merge_cells(hud, 0, 8, 1, 8)
+    table.cell(hud, 0, 8, "════════════════════", text_color=color.new(mitigated_color, 50), text_size=table_size, height=0)
+
+    // ROW 9: MULTI-SESSION & COUNTDOWN
+    table.cell(hud, 0, 9, "Session", text_color=mitigated_color, text_halign=text.align_left, text_size=table_size)
+    table.cell(hud, 1, 9, sess_stat, text_color=white, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold)
+
+    // ROW 10: CLOCK
+    table.cell(hud, 0, 10, "Local Time", text_color=mitigated_color, text_halign=text.align_left, text_size=table_size)
+    table.cell(hud, 1, 10, time_now_str, text_color=white, text_halign=text.align_right, text_size=table_size)
+
+    // ROW 11: FOOTER
+    table.merge_cells(hud, 0, 11, 1, 11)
+    table.cell(hud, 0, 11, "MS CLASIC V.9.4.5", text_color=mitigated_color, text_size=table_size, text_formatting=text.format_bold)
+//═══════════════════════════════════════════════════════════════════════════════
+// LOGO GRADIENT ENHANCED - TOTAL SYNC (LINES & FILL)
+//═══════════════════════════════════════════════════════════════════════════════
+
+bull_c1 =col_bull
+bull_c2 = col_bear
+bear_c1 = col_bull
+bear_c2 = col_bear
+
+// --- 2. LOGIKA ANIMASI & TREND ---
+trend_check = ta.ema(close, 2) > ta.ema(open, 2) 
+
+c_start = trend_check ? bull_c1 : bear_c1
+c_end   = trend_check ? bull_c2 : bear_c2
+
+// Animasi "Breathing"
+float time_cycle = timenow / 1000 
+float breathe    = (math.sin(time_cycle * 3) + 1) / 2 
+
+LG_Line_Widthb = 1
+periodb = 20
+
+// --- 3. PERHITUNGAN TITIK (PRESISI ORIGINAL 100%) ---
+lowest1b = ta.lowest(low, periodb)
+lowest2b = ta.lowest(low, periodb - 1)
+lowest3b = ta.lowest(low, periodb - 2)
+lowest4b = ta.lowest(low, periodb - 3)
+
+point1b = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.99
+point2b = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.994
+point3b = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.9915
+point4b = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.9955
+point5b = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.986
+point6b = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.99
+point7b = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.9975
+point8b = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.997
+point9b = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.99
+point1b0 = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.988
+
+// Variable Garis
+var line Line1b = na, var line Line2b = na
+var line Line3b = na, var line Line4b = na
+var line Line5b = na, var line Line6b = na
+var line Line7b = na, var line Line8b = na
+var line Line9b = na, var line Line1b0 = na
+var line Line1b1 = na, var line Line1b2 = na
+var line Line1b3 = na, var line Line1b4 = na
+var line Line1b5 = na, var line Line1b6 = na
+var line Line1b7 = na, var line Line1b8 = na
+var label brandlb = na
+
+// Hapus Garis Sebelumnya (Selalu dijalankan agar bersih saat dimatikan)
+if not na(Line1b)
+    line.delete(Line1b), line.delete(Line2b)
+    line.delete(Line3b), line.delete(Line4b)
+    line.delete(Line5b), line.delete(Line6b)
+    line.delete(Line7b), line.delete(Line8b)
+    line.delete(Line9b), line.delete(Line1b0)
+    line.delete(Line1b1), line.delete(Line1b2)
+    line.delete(Line1b3), line.delete(Line1b4)
+    line.delete(Line1b5), line.delete(Line1b6)
+    line.delete(Line1b7), line.delete(Line1b8)
+    label.delete(brandlb)
+
+// --- FUNGSI WARNA ---
+get_adv_color(step) => 
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15) 
+    if dynamic_ratio > 1
+        dynamic_ratio := 1
+    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+
+// Variable Transparansi Dinamis
+dynamic_alpha = 70 + (breathe * 20)
+
+// --- PEMBUATAN GARIS (HANYA JIKA SHOW_LOGO AKTIF) ---
+if show_logo
+    // Bagian Atas & Tengah (Head Structure) - REFERENCE COLOR (Step 1)
+    c_head_sync = get_adv_color(1) // Kita simpan warna referensi ini
+
+    Line1b := line.new(x1 = bar_index + 28, y1 = point7b, x2 = bar_index + 35, y2 = point1b, color = get_adv_color(1), width = LG_Line_Widthb)
+    Line2b := line.new(x1 = bar_index + 32, y1 = point7b, x2 = bar_index + 35, y2 = point2b, color = get_adv_color(2), width = LG_Line_Widthb)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, dynamic_alpha))
+
+    Line3b := line.new(x1 = bar_index + 35, y1 = point1b, x2 = bar_index + 37, y2 = point3b, color = get_adv_color(3), width = LG_Line_Widthb)
+    Line4b := line.new(x1 = bar_index + 35, y1 = point2b, x2 = bar_index + 37, y2 = point4b, color = get_adv_color(4), width = LG_Line_Widthb)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), dynamic_alpha))
+
+    Line5b := line.new(x1 = bar_index + 37, y1 = point3b, x2 = bar_index + 43, y2 = point5b, color = get_adv_color(5), width = LG_Line_Widthb)
+    Line6b := line.new(x1 = bar_index + 37, y1 = point4b, x2 = bar_index + 43, y2 = point6b, color = get_adv_color(6), width = LG_Line_Widthb)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), dynamic_alpha))
+
+    Line7b := line.new(x1 = bar_index + 43, y1 = point5b, x2 = bar_index + 48, y2 = point3b, color = get_adv_color(7), width = LG_Line_Widthb)
+    Line8b := line.new(x1 = bar_index + 43, y1 = point6b, x2 = bar_index + 48, y2 = point4b, color = get_adv_color(8), width = LG_Line_Widthb)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), dynamic_alpha))
+
+    Line9b := line.new(x1 = bar_index + 48, y1 = point3b, x2 = bar_index + 50, y2 = point1b, color = get_adv_color(9), width = LG_Line_Widthb)
+    Line1b0 := line.new(x1 = bar_index + 48, y1 = point4b, x2 = bar_index + 50, y2 = point2b, color = get_adv_color(10), width = LG_Line_Widthb)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), dynamic_alpha))
+
+    Line1b1 := line.new(x1 = bar_index + 50, y1 = point1b, x2 = bar_index + 60, y2 = lowest1b, color = get_adv_color(11), width = LG_Line_Widthb)
+    Line1b2 := line.new(x1 = bar_index + 50, y1 = point2b, x2 = bar_index + 56, y2 = lowest1b, color = get_adv_color(12), width = LG_Line_Widthb)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), dynamic_alpha))
+
+    // --- BAGIAN BASE HORIZONTAL (TOTAL SYNC) ---
+    Line1b3 := line.new(x1 = bar_index + 26, y1 = point7b, x2 = bar_index + 50, y2 = point7b, color = get_adv_color(1), width = LG_Line_Widthb)
+    Line1b4 := line.new(x1 = bar_index + 24, y1 = lowest1b, x2 = bar_index + 48, y2 = lowest1b, color = get_adv_color(1), width = LG_Line_Widthb)
+
+    // Warna Fill juga menggunakan 'c_head_sync'
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, dynamic_alpha)) 
+
+    // Tutup Depan & Belakang Base
+    Line1b5 := line.new(x1 = bar_index + 26, y1 = point7b, x2 = bar_index + 24, y2 = lowest1b, color = get_adv_color(1), width = LG_Line_Widthb)
+    Line1b6 := line.new(x1 = bar_index + 50, y1 = point7b, x2 = bar_index + 48, y2 = lowest1b, color = get_adv_color(1), width = LG_Line_Widthb)
+
+    // Ekor Tambahan & Label
+    Line1b7 := line.new(x1 = bar_index + 56, y1 = lowest1b, x2 = bar_index + 60, y2 = lowest1b, color = get_adv_color(17), width = LG_Line_Widthb)
+    brandlb := label.new(bar_index + 56,point2b,'𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤',style = label.style_none,textcolor = get_adv_color(18),size = size.huge)
+
+// --- PLOT GLOW ---
+// Warna di-set ke NA jika show_logo = false
+glow_c = get_adv_color(2)
+
+plot(point1b0, show_last = 1, offset = 37, color = show_logo ? color.new(c_start, 0) : na, linewidth = 4, style = plot.style_circles)
+plot(point1b0, show_last = 1, offset = 37, color = show_logo ? color.new(glow_c, 60 + (breathe * 20)) : na, linewidth = 15, style = plot.style_circles)
+plot(point1b0, show_last = 1, offset = 37, color = show_logo ? color.new(glow_c, 75 + (breathe * 15)) : na, linewidth = 30, style = plot.style_circles)
+plot(point1b0, show_last = 1, offset = 37, color = show_logo ? color.new(glow_c, 85 + (breathe * 10)) : na, linewidth = 50, style = plot.style_circles)
+plot(point1b0, show_last = 1, offset = 37, color = show_logo ? color.new(c_end, 95) : na, linewidth = 80, style = plot.style_circles)
