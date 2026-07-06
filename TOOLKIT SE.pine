@@ -1,229 +1,296 @@
 // _________________________________________
-//🅼🅻🆃🅵🆇
-//@version=5
+// MountAlgo
+//@version=6
+indicator(title="Toolkit Smoothed EMA V2 Pro MountAlgo", shorttitle="Toolkit SE Pro", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 // _________________________________________
-indicator(title            ='𝙏𝙊𝙊𝙇𝙆𝙄𝙏 𝙎𝙈𝙊𝙊𝙏𝙃𝙀𝘿 𝙀𝙈𝘼 𝙑.1 🅼🅻🆃🅵🆇', overlay=true)
+// 1. VISUAL THEMES & GLOBAL SETTINGS
+// _________________________________________
+string GlobalGroup = "Visual Themes & Global"
 
-///COLOR TYPE _________________________________________
-dark                       = #131722
-white                      = #c4d3ff
-green                      = #179c74
-purple                     = #7034ff
-gray                       = #394669
-red                        = #e91e63
-orange                     = #e65100
-blue                       = #2962ff
-Transparent_Color          = color.new(color.new(white,0), 100)
+// --- THEME SYSTEM ---
+string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup)
 
-//COLOR TYPE THEME _________________________________________
-color_theme                = input.string(defval="𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀", title=" 𝙎𝙀𝙇𝙀𝘾𝙏 𝘾𝙊𝙇𝙊𝙍 𝙏𝙃𝙀𝙈𝙀", options=["𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀", "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎","𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀", "𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" , "𝘿𝘼𝙍𝙆 𝙀𝙂𝙂 𝙔𝙊𝙇𝙆 𝙏𝙃𝙀𝙈𝙀","𝘽𝙇𝙐𝙀 𝙒𝙃𝙄𝙏𝙀"])
-show_plot_candle           = input.bool(defval = true , title   ="  𝙎𝙃𝙊𝙒 𝙋𝙇𝙊𝙏 𝘾𝘼𝙉𝘿𝙇𝙀")
+// Core Colors
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
 
-// COLOR BASED ON THEME
-white_col                  = color_theme == "𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? white : color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? white : color_theme =="𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? white : color_theme == "𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? white : color_theme == "𝘿𝘼𝙍𝙆 𝙀𝙂𝙂 𝙔𝙊𝙇𝙆 𝙏𝙃𝙀𝙈𝙀" ? white : white
-dark_col                   = color_theme == "𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? dark : color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? dark : color_theme =="𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? dark : color_theme == "𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? gray : color_theme == "𝘿𝘼𝙍𝙆 𝙀𝙂𝙂 𝙔𝙊𝙇𝙆 𝙏𝙃𝙀𝙈𝙀" ? gray : gray
-col_bull                   = color_theme == "𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? white: color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? purple : color_theme =="𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? green : color_theme == "𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? green : color_theme == "𝘿𝘼𝙍𝙆 𝙀𝙂𝙂 𝙔𝙊𝙇𝙆 𝙏𝙃𝙀𝙈𝙀" ? orange : blue
-col_bear                   = color_theme == "𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? white: color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? green : color_theme =="𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? red : color_theme == "𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? gray  : color_theme == "𝘿𝘼𝙍𝙆 𝙀𝙂𝙂 𝙔𝙊𝙇𝙆 𝙏𝙃𝙀𝙈𝙀" ? gray : white
-col_bear2                  = color_theme == "𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? gray: color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? green : color_theme =="𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? red : color_theme == "𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? gray : color_theme == "𝘿𝘼𝙍𝙆 𝙀𝙂𝙂 𝙔𝙊𝙇𝙆 𝙏𝙃𝙀𝙈𝙀" ? gray : white
-box_col_bull               = color_theme == "𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? color.new(white,70): color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? color.new(purple,70) : color_theme == "𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? color.new(green,70): color_theme =="𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? color.new(green,70) : color_theme =="𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? color.new(orange,70) :  color.new(blue,70)
-box_col_bear               = color_theme == "𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? color.new(gray,70): color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? color.new(green,70) : color_theme == "𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝘿𝘼𝙍𝙆 𝙏𝙃𝙀𝙈𝙀" ? color.new(red,70): color_theme =="𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? color.new(gray,70) : color_theme =="𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ?  color.new(gray,70) : color.new(white,70)
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    => blue
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    => white
+color col_poc = switch color_theme
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+
+color box_col_bull = color.new(col_bull, 80)
+color box_col_bear = color.new(col_bear, 80)
+color transparent_col = color.new(dark, 100)
+
+show_plot_candle = input.bool(defval = true , title ="Show Plot Candle", group=GlobalGroup)
+show_logo = input.bool(true, "Show Logo", group=GlobalGroup)
+show_table = input.bool(true, "Show Info Table", group=GlobalGroup)
 
 // _________________________________________
-//              𝙀𝙈𝘼 𝙍𝙄𝘽𝘽𝙊𝙉 V.1
+// 2. EMA RIBBON SYSTEM
 // _________________________________________
-// EMA RIBON SETTINGS ____________________________________________________________________
-ema1_s                     = 4
-ema2_s                     = 5
-trend                      = 200
-// SMOOTHING FUNCTION TO REDUCE PLOT ROUGHNESS FOR EMA RIBON ____________________________________________________________________
+string grp_ema = "EMA Ribbon Settings"
+ema1_s = input.int(4, "EMA 1 Length", minval=1, group=grp_ema)
+ema2_s = input.int(5, "EMA 2 Length", minval=1, group=grp_ema)
+trend_len = input.int(200, "Trend EMA Length", minval=1, group=grp_ema)
+
+// Smoothing function (Triple EMA Heuristic)
 smooth(src, length) =>
     ta.ema(ta.ema(ta.ema(src, length), length), length)
 
-// CALCULATING SMOOTHED EMA RIBON ____________________________________________________________________
-ema_s1                     = smooth(close, ema1_s)
-ema_s2                     = smooth(close, ema2_s)
-ema_close                 = ta.sma(close,1)
+ema_s1 = smooth(close, ema1_s)
+ema_s2 = smooth(close, ema2_s)
+ema_trend = ta.sma(close, trend_len)
 
-ema_trend                  = ta.sma(close,trend)
-emaup_trend                = ema_s1 >= ema_s2
-emadown_trend              = ema_s1 <= ema_s2
-color_trend                = ema_s2 >= ema_trend
-// PLOTTING EMA LINES WITH SMOOTHING AND COLOR TRANSITION ____________________________________________________________________
-plotema_close              = plot(ema_close, title="𝙎𝙈𝙊𝙊𝙏𝙃𝙀𝘿 𝙀𝙈𝘼 CLOSE", color= emaup_trend ? color.new(col_bull, 0) : emadown_trend ? color.new(col_bear2, 0) : na , linewidth=1)
-plotema1_s_                = plot(ema_s1, title="𝙎𝙈𝙊𝙊𝙏𝙃𝙀𝘿 𝙀𝙈𝘼 1", color= emaup_trend ? color.new(col_bull, 0) : emadown_trend ? color.new(col_bear2, 0) : na , linewidth=1)
-plotema2_s_                = plot(ema_s2, title="𝙎𝙈𝙊𝙊𝙏𝙃𝙀𝘿 𝙀𝙈𝘼 2", color= emaup_trend ? color.new(col_bull, 0) : emadown_trend ? color.new(col_bear2, 0) : na , linewidth=1)
-plotema_trend              = plot(ema_trend, title="𝙎𝙈𝙊𝙊𝙏𝙃𝙀𝘿 𝙀𝙈𝘼", color= color_trend ? color.new(col_bull, 0) : color.new(col_bear2, 0) , linewidth=3)
+emaup_trend = ema_s1 >= ema_s2
+emadown_trend = ema_s1 <= ema_s2
+color_trend = ema_s2 >= ema_trend
 
-// FILL BETWEEN EMAS FOR VISUAL CLARITY ____________________________________________________________________
-fill(plotema1_s_, plotema2_s_, color= emaup_trend ? color.new(col_bull, 70) : emadown_trend ? color.new(col_bear2, 70) : na)
-fill(plotema_close, plotema2_s_, color= emaup_trend ? color.new(col_bull, 70) : emadown_trend ? color.new(col_bear2, 70) : na)
+plotema1_s_ = plot(ema_s1, title="Smoothed EMA 1", color= emaup_trend ? color.new(col_bull, 0) : color.new(col_bear, 0), linewidth=1)
+plotema2_s_ = plot(ema_s2, title="Smoothed EMA 2", color= emaup_trend ? color.new(col_bull, 0) : color.new(col_bear, 0), linewidth=1)
+plotema_trend = plot(ema_trend, title="Trend EMA", color= color_trend ? color.new(col_bull, 0) : color.new(col_bear, 0), linewidth=3)
 
-// TREND CONDITIONS
-
-
-// SUPPLY AND DEMAND CONDITIONS ____________________________________________________________________
-demand                     = ta.crossover(close[1], high[2])
-supply                     = ta.crossunder(close[1], low[2])
-
-// LABELS SUPPLY AND DEMAND ____________________________________________________________________
-var label[] buy_label      = array.new_label()
-var label[] sell_label     = array.new_label()
-
-//BUY AND SELL CONDITIONS
-buy_conditions_1           = demand and  ema_s2 >= ema_trend and low[1] <= ema_trend
-buy_conditions_2           = demand and  ema_s2 >= ema_trend and low[2] <= ema_trend
-buy_conditions_3           = demand and  ema_s2 >= ema_trend and low[3] <= ema_trend
-
-sell_conditions_1          = supply and  ema_s2 <= ema_trend and high[1] >= ema_trend
-sell_conditions_2          = supply and  ema_s2 <= ema_trend and high[2] >= ema_trend
-sell_conditions_3          = supply and  ema_s2 <= ema_trend and high[3] >= ema_trend
-
-if buy_conditions_1 or buy_conditions_2  or buy_conditions_3
-    buy_l                  = label.new(bar_index[1],low[1],'𝘽𝙐𝙔',size = size.tiny,yloc = yloc.price,textcolor = #000000,color =white_col,style = label.style_label_up)
-    array.push(buy_label,buy_l)
-
-if sell_conditions_1 or sell_conditions_2  or sell_conditions_3 
-    sell_l                 = label.new(bar_index[1],high[1],'𝙎𝙀𝙇𝙇 ',size = size.tiny,yloc = yloc.price,textcolor = #000000,color =white_col,style = label.style_label_down )
-    array.push(sell_label,sell_l)
-
-// ALERT BUY AND SELL CONDITIONS ____________________________________________________________________
-alertcondition(buy_conditions_1 or buy_conditions_2  or buy_conditions_3, title="𝘽𝙐𝙔 𝘾𝙊𝙉𝘿𝙄𝙏𝙄𝙊𝙉 𝘾𝙍𝙀𝘼𝙏𝙀𝘿", message="𝘽𝙐𝙔 𝘾𝙊𝙉𝘿𝙄𝙏𝙄𝙊𝙉 𝘾𝙍𝙀𝘼𝙏𝙀𝘿")
-alertcondition(sell_conditions_1 or sell_conditions_2 or sell_conditions_3, title="𝙎𝙀𝙇𝙇 𝘾𝙊𝙉𝘿𝙄𝙏𝙄𝙊𝙉 𝘾𝙍𝙀𝘼𝙏𝙀𝘿", message="𝙎𝙀𝙇𝙇 𝘾𝙊𝙉𝘿𝙄𝙏𝙄𝙊𝙉 𝘾𝙍𝙀𝘼𝙏𝙀𝘿")
+fill(plotema1_s_, plotema2_s_, color= emaup_trend ? color.new(col_bull, 80) : color.new(col_bear, 80), title="EMA Ribbon Fill")
 
 // _________________________________________
-//       𝙎𝙉𝙍 𝙒𝙄𝙏𝙃 𝘽𝙍𝙀𝘼𝙆𝙀𝙍 𝙇𝙄𝙉𝙀𝙎 V.1
+// 3. ADVANCED VOLUME ENGINE
 // _________________________________________
-show_snr                  = input.bool(false,'𝙎𝙃𝙊𝙒 𝙎𝙉𝙍 ')
+// Heuristic Volume Partitioning
+calc_vol_partition(float _v, float _o, float _h, float _l, float _c) =>
+    float range_size = _h - _l
+    float b_vol = 0.0
+    float s_vol = 0.0
+    if range_size > 0
+        float body_high = math.max(_o, _c)
+        float body_low  = math.min(_o, _c)
+        float body_size = body_high - body_low
+        float upper_wick = _h - body_high
+        float lower_wick = body_low - _l
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+        float body_buy_ratio = _c > _o ? 0.8 : (_c < _o ? 0.2 : 0.5)
+        b_vol := _v * (w_body * body_buy_ratio + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := _v * (w_body * (1 - body_buy_ratio) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := _v * 0.5
+        s_vol := _v * 0.5
+    [b_vol, s_vol]
 
-// INPUTS PARAMETERS _________________________________________
-length                    = 40
-src                       = close
-
-// CALCULATE SNR LEVELS _________________________________________
-support                   = ta.lowest(low, length)
-resistance                = ta.highest(high, length)
-
-// CREATE SNR LINES  _________________________________________
-var line supportLine      = na
-var line resistanceLine   = na
-
-if show_snr and (ema_s1 >= ema_s2  and close[1] <= ema_s1)
-    resistanceLine       := line.new(bar_index - (length / 2) , resistance, bar_index + length, resistance, xloc=xloc.bar_index, color=col_bull, width=2)
-
-if  show_snr and ( ema_s1 <= ema_s2 and close[1] >= ema_s1)
-    supportLine          := line.new(bar_index - (length / 2) , support, bar_index + length, support, xloc=xloc.bar_index, color=col_bear2, width=2)
+[buy_vol, sell_vol] = calc_vol_partition(volume, open, high, low, close)
+delta = buy_vol - sell_vol
+total_vol = buy_vol + sell_vol
+delta_pct = total_vol > 0 ? (delta / total_vol) * 100 : 0
 
 // _________________________________________
-//             𝙈𝙏𝙁 𝙁𝙑𝙂 V.1
+// 4. SIGNALS & ALERTS
 // _________________________________________
-// GENERAL FVG SETTINGS _________________________________________
-changelvl                     = true
-changecolor                   = true
-extend_r                      = input.bool(false, "𝙀𝙓𝙏𝙀𝙉𝘿 𝘽𝙊𝙓𝙀𝙎 𝙁𝙑𝙂 𝙏𝙊 𝙏𝙃𝙀 𝙍𝙄𝙂𝙃𝙏", group='𝙂𝙀𝙉𝙀𝙍𝘼𝙇 𝙁𝙑𝙂')
-max_boxes                     = 4
+string grp_sig = "Signal Settings"
+vol_conf = input.bool(true, "Use Volume Delta Confirmation", group=grp_sig)
 
-// STYLE SETTINGS _________________________________________
-plotLabel                     = true
-LabelColor                    = white_col
-LabelSize                     = size.tiny
-BullColor                     = box_col_bull
-BearColor                     = box_col_bear
-BullColorTested               = input.color(color.new(color.blue,50),'𝙒𝙃𝙀𝙉 𝙁𝙑𝙂 𝙈𝙄𝙏𝙄𝙂𝘼𝙏𝙄𝙊𝙉',group = '𝙂𝙀𝙉𝙀𝙍𝘼𝙇 𝙁𝙑𝙂')
-BearColorTested               = BullColorTested
+demand = ta.crossover(close[1], high[2])
+supply = ta.crossunder(close[1], low[2])
 
-// FLEXIBLE TIMEFRAME INPUT _________________________________________
-tf1                           = input.timeframe("", "𝙏𝙄𝙈𝙀𝙁𝙍𝘼𝙈𝙀 𝙁𝙑𝙂", group='𝙂𝙀𝙉𝙀𝙍𝘼𝙇 𝙁𝙑𝙂')
-tf2                           = '15'
-tf3                           = '240'
-show_tf1                      = input.bool(defval = false , title   ="𝙎𝙃𝙊𝙒 𝙁𝙑𝙂 ",group = '𝙂𝙀𝙉𝙀𝙍𝘼𝙇 𝙁𝙑𝙂')
-show_tf2                      = false
-show_tf3                      = false
+buy_conditions = demand and ema_s2 >= ema_trend and (low[1] <= ema_trend or low[2] <= ema_trend or low[3] <= ema_trend) and (not vol_conf or delta > 0)
+sell_conditions = supply and ema_s2 <= ema_trend and (high[1] >= ema_trend or high[2] >= ema_trend or high[3] >= ema_trend) and (not vol_conf or delta < 0)
 
-// VARIABLES FOR STORING BOXES _________________________________________
-var box[] bull_box            = array.new_box()
-var box[] bear_box            = array.new_box()
+if buy_conditions
+    label.new(bar_index[1], low[1], 'BUY', size=size.tiny, yloc=yloc.price, textcolor=dark, color=col_bull, style=label.style_label_up)
 
-// FUNCTION TO FIND POTENTIAL FVG BOXES _________________________________________
-find_box(t) =>
-    var int x = na
-    var float _top = na
-    var float _bottom = na
-    var int _time = na
+if sell_conditions
+    label.new(bar_index[1], high[1], 'SELL', size=size.tiny, yloc=yloc.price, textcolor=dark, color=col_bear, style=label.style_label_down)
+
+alertcondition(buy_conditions, title="BUY Signal", message="BUY Condition Created")
+alertcondition(sell_conditions, title="SELL Signal", message="SELL Condition Created")
+
+// _________________________________________
+// 5. SNR WITH MITIGATION
+// _________________________________________
+string grp_snr = "SNR Settings"
+show_snr = input.bool(false, "Show SNR Zones", group=grp_snr)
+snr_len = input.int(40, "SNR Lookback", minval=10, group=grp_snr)
+
+support = ta.lowest(low, snr_len)
+resistance = ta.highest(high, snr_len)
+
+var line res_line = na
+var line sup_line = na
+
+if show_snr
+    if (ema_s1 >= ema_s2 and close[1] <= ema_s1)
+        line.delete(res_line)
+        res_line := line.new(bar_index - (snr_len / 2), resistance, bar_index + 10, resistance, color=col_bull, width=2)
+
+    if (ema_s1 <= ema_s2 and close[1] >= ema_s1)
+        line.delete(sup_line)
+        sup_line := line.new(bar_index - (snr_len / 2), support, bar_index + 10, support, color=col_bear, width=2)
+
+// _________________________________________
+// 6. MTF FVG SYSTEM
+// _________________________________________
+string grp_fvg = "FVG Settings"
+show_fvg = input.bool(false, "Show FVG Zones", group=grp_fvg)
+show_mit_fvg = input.bool(true, "Show Mitigated FVG", group=grp_fvg)
+fvg_tf = input.timeframe("", "FVG Timeframe", group=grp_fvg)
+extend_fvg = input.bool(false, "Extend FVG Boxes", group=grp_fvg)
+max_fvg = input.int(10, "Max FVG Boxes", minval=1, group=grp_fvg)
+
+type FVG
+    box main_box
+    float top
+    float bottom
+    bool is_bull
+    bool active
+
+var array<FVG> fvg_zones = array.new<FVG>()
+
+find_fvg() =>
     if barstate.isconfirmed
-        x := low[2] >= high ? -1 : low >= high[2] ? 1 : 0
-        _top := x > 0 ? low : x < 0 ? low[2] : 0
-        _bottom := x > 0 ? high[2] : x < 0 ? high : 0
-        _time := time - t * 60000 * 2
-    [_time, _top, _bottom, x]
+        is_bull = low > high[2]
+        is_bear = high < low[2]
+        if is_bull or is_bear
+            [time[2], is_bull ? low : low[2], is_bull ? high[2] : high, is_bull ? 1 : -1]
+        else
+            [na, na, na, 0]
+    else
+        [na, na, na, 0]
 
-// FUNCTION TO CREATE BOXES _________________________________________
-create_box(_time, _top, _bottom, x, TF) =>
-    _col = x > 0 ? BullColor : BearColor
-    _extend = extend_r ? extend.right : extend.none
-    _text = plotLabel ? (TF + " 𝙁𝙑𝙂") : na
-    box boxOB = na
-    if x != 0
-        boxOB := box.new(left=_time, top=_top, right=last_bar_time + 6, extend=_extend , bottom=_bottom, bgcolor=_col, border_color = na, text=_text, text_halign=text.align_right, text_size=LabelSize, text_color=LabelColor, xloc = xloc.bar_time)
-    if x > 0
-        array.push(bull_box, boxOB)
-    if x < 0
-        array.push(bear_box, boxOB)
+[_fvg_time, _fvg_top, _fvg_bot, _fvg_dir] = request.security(syminfo.tickerid, fvg_tf, find_fvg())
 
-// FUNCTION TO LIMIT THE NUMBER OF BOXES DISPLAYED _________________________________________
-limit_boxes(_boxes) =>
-    while array.size(_boxes) > max_boxes
-        box.delete(array.shift(_boxes))
+if ta.change(_fvg_time) != 0 and show_fvg and not na(_fvg_time)
+    _col = _fvg_dir > 0 ? color.new(col_bull, 85) : color.new(col_bear, 85)
+    _txt = fvg_tf + " FVG"
+    _box = box.new(_fvg_time, _fvg_top, time + (timenow - time), _fvg_bot, bgcolor=_col, border_color=na, text=_txt, text_size=size.tiny, text_color=color.new(white, 50), xloc=xloc.bar_time, extend=extend_fvg ? extend.right : extend.none)
+    array.push(fvg_zones, FVG.new(_box, _fvg_top, _fvg_bot, _fvg_dir > 0, true))
+    if array.size(fvg_zones) > max_fvg
+        FVG _old = array.shift(fvg_zones)
+        box.delete(_old.main_box)
 
-// FUNCTION TO CONTROL BOXES (UPDATE OR DELETE) _________________________________________
-control_box(_boxes, bearbull) => 
-    if array.size(_boxes) > 0
-        for i = array.size(_boxes) - 1 to 0 by 1
-            _box = array.get(_boxes, i)
-            if na(_box)
-                array.remove(_boxes, i)
-                continue
-            _boxLow = box.get_bottom(_box)
-            _boxHigh = box.get_top(_box)
-            if (bearbull > 0 and low < _boxLow) or (bearbull < 0 and high > _boxHigh)
-                box.delete(_box)
-                array.set(_boxes, i, na)
-            else 
-                if bearbull > 0 and low < _boxHigh
-                    if changelvl
-                        box.set_top(_box, low)
-                    if changecolor
-                        box.set_bgcolor(_box, BullColorTested)    
-                if bearbull < 0 and high > _boxLow
-                    if changelvl
-                        box.set_bottom(_box, high)
-                    if changecolor
-                        box.set_bgcolor(_box, BearColorTested)
-                box.set_right(_box, last_bar_time + 6)
+// Mitigation logic
+if show_fvg and array.size(fvg_zones) > 0
+    for i = 0 to array.size(fvg_zones) - 1
+        FVG _z = array.get(fvg_zones, i)
+        if _z.active
+            bool _mit = _z.is_bull ? low < _z.bottom : high > _z.top
+            if _mit
+                _z.active := false
+                if show_mit_fvg
+                    box.set_bgcolor(_z.main_box, color.new(gray, 90))
+                    box.set_text(_z.main_box, "MITIGATED FVG")
+                    box.set_right(_z.main_box, time)
+                    box.set_extend(_z.main_box, extend.none)
+                else
+                    box.delete(_z.main_box)
+            else
+                box.set_right(_z.main_box, time + (timenow - time))
 
-// FETCH FVG DATA FROM MULTIPLE TIMEFRAMES _________________________________________
-[_time1, _top1, _bottom1, xtf1]  = request.security(syminfo.tickerid, tf1, find_box(1))
-[_time2, _top2, _bottom2, xtf2]  = request.security(syminfo.tickerid, tf2, find_box(3))
-[_time3, _top3, _bottom3, xtf3]  = request.security(syminfo.tickerid, tf3, find_box(5))
+// _________________________________________
+// 7. PROFESSIONAL UI: TABLE & LOGO
+// _________________________________________
+get_table_bg(int c, int r, int total_c, int total_r) =>
+    float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
+    color base = color.from_gradient(ratio, 0, 1, col_bull, col_bear)
+    int t_alpha = math.round(50 + ratio * 40)
+    color.new(base, t_alpha)
 
-// CREATE FVG BOXES IF TIMEFRAME CONDITIONS CHANGE _________________________________________
-if timeframe.change(tf1) and show_tf1
-    create_box(_time1, _top1, _bottom1, xtf1, tf1)
-if timeframe.change(tf2) and show_tf2
-    create_box(_time2, _top2, _bottom2, xtf2, tf2)
-if timeframe.change(tf3) and show_tf3
-    create_box(_time3, _top3, _bottom3, xtf3, tf3)
+format_vol_str(float v) =>
+    float abs_v = math.abs(v)
+    if abs_v >= 1000000
+        str.tostring(v / 1000000, "#.##") + "M"
+    else if abs_v >= 1000
+        str.tostring(v / 1000, "#.#") + "K"
+    else
+        str.tostring(v, "0")
 
-// CONTROL AND LIMIT FVG BOXES FOR BOTH BULLISH AND BEARISH CONDITIONS _________________________________________
-control_box(bull_box, 1)
-control_box(bear_box, -1)
+var table info_table = na
+if show_table and barstate.islast
+    table.delete(info_table)
+    info_table := table.new(position.top_right, 2, 6, bgcolor=color.new(dark, 100), border_width=1, border_color=color.new(col_poc, 90), frame_color=color.new(col_poc, 60), frame_width=1)
 
-// LIMIT THE NUMBER OF DISPLAYED BOXES _________________________________________
-limit_boxes(bull_box)
-limit_boxes(bear_box)
+    table.merge_cells(info_table, 0, 0, 1, 0)
+    table.cell(info_table, 0, 0, "TOOLKIT PRO ANALYSIS", bgcolor=color.new(col_poc, 90), text_color=white, text_size=size.normal, text_formatting=text.format_bold)
 
-// PLOT CANDLE _________________________________________
-col_border_candle          = color_theme == "𝘿𝘼𝙍𝙆" ? #000000: color_theme == "𝙋𝙐𝙍𝙋𝙇𝙀 𝙂𝙍𝙀𝙀𝙉 𝘿𝘼𝙍𝙆" ? #000000 : #000000
-col_candle                 = emaup_trend ? col_bull:col_bear2
-col_candle2                = sell_conditions_1 or buy_conditions_1 ? white : white
-plotcandle(open,high,low,close,color = show_plot_candle == true ? col_candle : na,wickcolor = show_plot_candle == true ? col_candle : na,bordercolor = show_plot_candle == true ? col_border_candle : na,title = '𝙋𝙇𝙊𝙏 𝘾𝘼𝙉𝘿𝙇𝙀')
+    table.cell(info_table, 0, 1, "BUY VOLUME", text_color=white, text_size=size.small, text_halign=text.align_left, bgcolor=get_table_bg(0, 1, 2, 6))
+    table.cell(info_table, 1, 1, format_vol_str(buy_vol), text_color=white, text_size=size.small, text_halign=text.align_right, bgcolor=get_table_bg(1, 1, 2, 6))
+
+    table.cell(info_table, 0, 2, "SELL VOLUME", text_color=white, text_size=size.small, text_halign=text.align_left, bgcolor=get_table_bg(0, 2, 2, 6))
+    table.cell(info_table, 1, 2, format_vol_str(sell_vol), text_color=white, text_size=size.small, text_halign=text.align_right, bgcolor=get_table_bg(1, 2, 2, 6))
+
+    table.cell(info_table, 0, 3, "NET DELTA", text_color=white, text_size=size.small, text_halign=text.align_left, bgcolor=get_table_bg(0, 3, 2, 6))
+    table.cell(info_table, 1, 3, (delta >= 0 ? "+" : "") + format_vol_str(delta) + " (" + str.tostring(delta_pct, "#.##") + "%)", text_color=delta >= 0 ? col_bull : col_bear, text_size=size.small, text_halign=text.align_right, bgcolor=get_table_bg(1, 3, 2, 6))
+
+    table.cell(info_table, 0, 4, "TREND STATE", text_color=white, text_size=size.small, text_halign=text.align_left, bgcolor=get_table_bg(0, 4, 2, 6))
+    table.cell(info_table, 1, 4, color_trend ? "BULLISH" : "BEARISH", text_color=color_trend ? col_bull : col_bear, text_size=size.small, text_halign=text.align_right, bgcolor=get_table_bg(1, 4, 2, 6))
+
+    table.merge_cells(info_table, 0, 5, 1, 5)
+    table.cell(info_table, 0, 5, "MountAlgo Analysis Pro", text_color=white, text_size=size.tiny, bgcolor=color.new(col_poc, 90))
+
+// Logo animation logic
+float breathe = (math.sin(timenow / 1000 * 3) + 1) / 2
+var line logo_line = na
+var label logo_label = na
+
+if show_logo and barstate.islast
+    line.delete(logo_line)
+    label.delete(logo_label)
+    int l_off = 40
+    float logo_base = ta.lowest(low, 200) - ta.atr(200)
+    float h_unit = ta.atr(200) * 1.5
+
+    // Simplified Logo Geometry
+    logo_line := line.new(bar_index + l_off + 4, logo_base + h_unit * 0.2, bar_index + l_off + 11, logo_base + h_unit * 0.7, color=color.new(col_poc, math.round(breathe * 50)), width=1)
+    logo_label := label.new(bar_index + l_off + 25, logo_base + h_unit * 0.4, "MountAlgo", style=label.style_none, textcolor=col_poc, size=size.huge)
+
+// _________________________________________
+// 8. CANDLE PLOT
+// _________________________________________
+c_wick = emaup_trend ? col_bull : col_bear
+plotcandle(open, high, low, close, title="Toolkit Candles", color=show_plot_candle ? color.new(c_wick, 70) : na, wickcolor=show_plot_candle ? c_wick : na, bordercolor=show_plot_candle ? c_wick : na)
