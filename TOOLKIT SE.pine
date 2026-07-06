@@ -216,7 +216,7 @@ if ta.change(_fvg_time) != 0 and show_fvg and not na(_fvg_time)
 
 // Mitigation logic
 if show_fvg and array.size(fvg_zones) > 0
-    for i = array.size(fvg_zones) - 1 to 0
+    for i = array.size(fvg_zones) - 1 to 0 by -1
         FVG _z = array.get(fvg_zones, i)
         if _z.active
             bool _mit = _z.is_bull ? low < _z.bottom : high > _z.top
@@ -225,7 +225,8 @@ if show_fvg and array.size(fvg_zones) > 0
                 if show_mit_fvg
                     box.set_bgcolor(_z.main_box, color.new(gray, 90))
                     box.set_text(_z.main_box, "MITIGATED FVG")
-                    box.set_right(_z.main_box, last_bar_time)
+                    box.set_right(_z.main_box, time)
+                    box.set_extend(_z.main_box, extend.none)
                 else
                     box.delete(_z.main_box)
             else
