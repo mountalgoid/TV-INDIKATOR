@@ -1,0 +1,381 @@
+//© 🅼🅻🆃🅵🆇 
+//@version=6
+indicator(title = '𝙎𝙏𝙊𝘾𝙃𝘼𝙎𝙏𝙄𝘾 𝙍𝙎𝙄 V.1.37 🅼🅻🆃🅵🆇 [FINAL FIXED]', shorttitle = '𝙎𝙍𝙎𝙄 V.1.37 🅼🅻🆃🅵🆇', format = format.price, precision = 2, overlay = false)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 1. CONFIGURATION & THEMES
+// ════════════════════════════════════════════════════════════════════════════════
+grp_global  = '𝙂𝙇𝙊𝘽𝘼𝙇 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎'
+grp_stoch   = '𝙎𝙏𝙊𝘾𝙃𝘼𝙎𝙏𝙄𝘾 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎'
+grp_div     = '𝘿𝙄𝙑𝙀𝙍𝙂𝙀𝙉𝘾𝙀 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎'
+grp_book    = '𝘽𝙊𝙊𝙆𝙈𝘼𝙋 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎'
+
+// Theme Selection
+color_theme = input.string('𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎', '⬤ 𝘾𝙊𝙇𝙊𝙍 𝙏𝙃𝙀𝙈𝙀', ['𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀', '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎', '𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀', '𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀', '𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿', '𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀', '𝙃𝙊𝙇𝙔 𝙎𝙄𝙉𝘾𝙀𝙍𝙀'], group = grp_global)
+
+// Define Base Colors
+dark    = #141c16
+white   = #c4d3ff
+green   = #179c74
+purple  = #5134ff
+gray    = #3d4c74
+red     = #e91e63
+yellow  = #ffeb3b
+brown   = #574932
+blue    = #1848cc
+
+// Logic Color Mapping using Tuple Assignment
+[col_bull, col_bear, box_col_bull, box_col_bear] = switch color_theme
+    '𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀'          => [white, gray, color.new(white, 80), color.new(gray, 80)]
+    '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎'               => [purple, green, color.new(purple, 80), color.new(green, 80)]
+    '𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => [green, red, color.new(green, 80), color.new(red, 80)]
+    '𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀'              => [green, gray, color.new(green, 80), color.new(gray, 80)]
+    '𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿'                => [yellow, gray, color.new(yellow, 80), color.new(gray, 80)]
+    '𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀'    => [purple, yellow, color.new(purple, 80), color.new(yellow, 80)]
+    =>                             [blue, white, color.new(blue, 80), color.new(white, 80)]
+
+mitigated_color     = brown
+mitigated_box_color = color.new(brown, 80)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 2. STOCHASTIC RSI CALCULATIONS
+// ════════════════════════════════════════════════════════════════════════════════
+smoothK     = input.int(3, '   𝙆', minval=1, group=grp_stoch)
+smoothD     = input.int(3, '   𝘿', minval=1, group=grp_stoch)
+lengthRSI   = input.int(14, '   𝙍𝙎𝙄 𝙇𝙀𝙉𝙂𝙏𝙃', minval=1, group=grp_stoch)
+lengthStoch = input.int(14, '   𝙎𝙏𝙊𝘾𝙃 𝙇𝙀𝙉𝙂𝙏𝙃', minval=1, group=grp_stoch)
+src         = input(close, '   𝙎𝙊𝙐𝙍𝘾𝙀', group=grp_stoch)
+
+rsi1 = ta.rsi(src, lengthRSI)
+k    = ta.sma(ta.stoch(rsi1, rsi1, rsi1, lengthStoch), smoothK)
+d    = ta.sma(k, smoothD)
+
+// Crossover Signals
+cross_up = ta.crossover(k, d)
+cross_dn = ta.crossunder(k, d)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 3. DIVERGENCE LOGIC
+// ════════════════════════════════════════════════════════════════════════════════
+show_div    = input.bool(true, '   𝙎𝙃𝙊𝙒 𝘿𝙄𝙑𝙀𝙍𝙂𝙀𝙉𝘾𝙀', group=grp_div)
+div_look    = input.int(5, '   𝙇𝙊𝙊𝙆𝘽𝘼𝘾𝙆 (𝙋𝙄𝙑𝙊𝙏)', minval=1, group=grp_div)
+show_hidden = input.bool(false, '   𝙎𝙃𝙊𝙒 𝙃𝙄𝘿𝘿𝙀𝙉 𝘿𝙄𝙑', group=grp_div)
+
+// Pivot Calculations
+ph = ta.pivothigh(k, div_look, div_look)
+pl = ta.pivotlow(k, div_look, div_look)
+
+// Helper Variables
+var int last_pl_idx = na
+var int last_ph_idx = na
+
+if not na(pl)
+    last_pl_idx := bar_index - div_look
+if not na(ph)
+    last_ph_idx := bar_index - div_look
+
+// Divergence Conditions
+bull_reg = false
+bull_hid = false
+if not na(pl) and not na(last_pl_idx[1]) 
+    prev_idx = last_pl_idx[1]
+    dist = bar_index - div_look - prev_idx
+    if dist > 0
+        low_curr = low[div_look]
+        k_curr   = k[div_look]
+        low_prev = low[div_look + dist]
+        k_prev   = k[div_look + dist]
+        bull_reg := low_curr < low_prev and k_curr > k_prev
+        bull_hid := show_hidden and low_curr > low_prev and k_curr < k_prev
+
+bear_reg = false
+bear_hid = false
+if not na(ph) and not na(last_ph_idx[1])
+    prev_idx = last_ph_idx[1]
+    dist = bar_index - div_look - prev_idx
+    if dist > 0
+        high_curr = high[div_look]
+        k_curr    = k[div_look]
+        high_prev = high[div_look + dist]
+        k_prev    = k[div_look + dist]
+        bear_reg := high_curr > high_prev and k_curr < k_prev
+        bear_hid := show_hidden and high_curr < high_prev and k_curr > k_prev
+
+// Trigger drawing
+if bull_reg and show_div
+    line.new(last_pl_idx[1], k[bar_index - last_pl_idx[1]], bar_index - div_look, k[div_look], color=col_bull, width=1)
+    line.new(last_pl_idx[1], low[bar_index - last_pl_idx[1]], bar_index - div_look, low[div_look], color=col_bull, width=2, force_overlay=true)
+    label.new(bar_index - div_look, low[div_look], "R", color=color.new(col_bull,100), textcolor=col_bull, style=label.style_label_up, size=size.tiny, force_overlay=true)
+
+if bull_hid and show_div
+    line.new(last_pl_idx[1], k[bar_index - last_pl_idx[1]], bar_index - div_look, k[div_look], color=col_bull, width=1, style=line.style_dashed)
+    line.new(last_pl_idx[1], low[bar_index - last_pl_idx[1]], bar_index - div_look, low[div_look], color=col_bull, width=2, force_overlay=true, style=line.style_dashed)
+    label.new(bar_index - div_look, low[div_look], "H", color=color.new(col_bull,100), textcolor=col_bull, style=label.style_label_up, size=size.tiny, force_overlay=true)
+
+if bear_reg and show_div
+    line.new(last_ph_idx[1], k[bar_index - last_ph_idx[1]], bar_index - div_look, k[div_look], color=col_bear, width=1)
+    line.new(last_ph_idx[1], high[bar_index - last_ph_idx[1]], bar_index - div_look, high[div_look], color=col_bear, width=2, force_overlay=true)
+    label.new(bar_index - div_look, high[div_look], "R", color=color.new(col_bear,100), textcolor=col_bear, style=label.style_label_down, size=size.tiny, force_overlay=true)
+
+if bear_hid and show_div
+    line.new(last_ph_idx[1], k[bar_index - last_ph_idx[1]], bar_index - div_look, k[div_look], color=col_bear, width=1, style=line.style_dashed)
+    line.new(last_ph_idx[1], high[bar_index - last_ph_idx[1]], bar_index - div_look, high[div_look], color=col_bear, width=2, force_overlay=true, style=line.style_dashed)
+    label.new(bar_index - div_look, high[div_look], "H", color=color.new(col_bear,100), textcolor=col_bear, style=label.style_label_down, size=size.tiny, force_overlay=true)
+
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 4. HYPER SMOOTHED VISUALS
+// ════════════════════════════════════════════════════════════════════════════════
+float rsi_norm = math.max(math.min(k / 100, 1), 0)
+c_line_grad = color.from_gradient(rsi_norm, 0, 1, col_bull, col_bear)
+c_fill_bg   = color.from_gradient(rsi_norm, 0, 1, color.new(col_bull, 90), color.new(col_bear, 90))
+
+pK = plot(k, '𝙆', color=c_line_grad, linewidth=2)
+pD = plot(d, '𝘿', color=color.new(gray, 50), linewidth=1)
+fill(pK, pD, color = k > d ? color.new(col_bull, 70) : color.new(col_bear, 70))
+
+mid_line = plot(50, display=display.none)
+top_line = plot(100, color = col_bear)
+bot_line = plot(0, color = col_bull)
+fill(top_line, bot_line, color=c_fill_bg, title="𝙂𝙇𝘼𝙎𝙎𝙔 𝘽𝙂")
+
+// FIX: Mengganti hline menjadi plot agar bisa menerima warna dinamis dari theme
+obline = plot(80, "𝙊𝘽", color=color.new(col_bear, 100), style=plot.style_line)
+osline = plot(20, "𝙊𝙎", color=color.new(col_bull, 100), style=plot.style_line)
+midline = plot(50, "𝙈𝙄𝘿", color=mitigated_color, style=plot.style_line)
+fill(top_line, obline, color=box_col_bear, title="𝙂𝙇𝘼𝙎𝙎𝙔 𝘽𝙂")
+fill(bot_line, osline, color=box_col_bull, title="𝙂𝙇𝘼𝙎𝙎𝙔 𝘽𝙂")
+
+plotshape(cross_dn and k > 70, '𝙎𝙝𝙤𝙧𝙩', shape.circle, location.top, col_bear, size=size.tiny)
+plotshape(cross_up and k < 30, '𝙇𝙤𝙣𝙜', shape.circle, location.bottom, col_bull, size=size.tiny)
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 5. BOOKMAP & TABLE
+// ════════════════════════════════════════════════════════════════════════════════
+showTable       = input.bool(true, '𝙎𝙃𝙊𝙒 𝙏𝘼𝘽𝙇𝙀', group=grp_book)
+levels          = input.int(4, '𝙋𝙍𝙄𝘾𝙀 𝙇𝙀𝙑𝙀𝙇𝙎', minval=4, maxval=20, group=grp_book)
+sensitivity     = input.float(1.5, '𝙎𝙀𝙉𝙎𝙄𝙏𝙄𝙑𝙄𝙏𝙔', minval=0.1, maxval=5.0, group=grp_book)
+textSizeOption  = input.string('𝙎𝙈𝘼𝙇𝙇', '𝙏𝙀𝙓𝙏 𝙎𝙄𝙕𝙀', ['𝙏𝙄𝙉𝙔', '𝙎𝙈𝘼𝙇𝙇', '𝙉𝙊𝙍𝙈𝘼𝙇'], group=grp_book)
+table_pos       = input.string('𝙏𝙊𝙋 𝙍𝙄𝙂𝙃𝙏', '𝙋𝙊𝙎𝙄𝙏𝙄𝙊𝙉', ['𝙏𝙊𝙋 𝙍𝙄𝙂𝙃𝙏', '𝙏𝙊𝙋 𝙇𝙀𝙁𝙏', '𝘽𝙊𝙏𝙏𝙊𝙈 𝙍𝙄𝙂𝙃𝙏', '𝘽𝙊𝙏𝙏𝙊𝙈 𝙇𝙀𝙁𝙏'], group=grp_book)
+
+txt_size = switch textSizeOption
+    '𝙏𝙄𝙉𝙔' => size.tiny
+    '𝙎𝙈𝘼𝙇𝙇' => size.small
+    => size.normal
+
+pos_map = switch table_pos
+    '𝙏𝙊𝙋 𝙇𝙀𝙁𝙏' => position.top_left
+    '𝘽𝙊𝙏𝙏𝙊𝙈 𝙇𝙀𝙁𝙏' => position.bottom_left
+    '𝘽𝙊𝙏𝙏𝙊𝙈 𝙍𝙄𝙂𝙃𝙏' => position.bottom_right
+    => position.top_right
+
+var pricePoints     = array.new_float(0)
+var volumePoints    = array.new_float(0)
+var buyVolume       = array.new_float(0)
+var sellVolume      = array.new_float(0)
+
+if not barstate.isfirst
+    if array.size(pricePoints) > levels * 2
+        array.shift(pricePoints)
+        array.shift(volumePoints)
+        array.shift(buyVolume)
+        array.shift(sellVolume)
+    
+    array.push(pricePoints, close)
+    array.push(volumePoints, volume)
+    is_bull_bar = close > open
+    array.push(buyVolume, volume * (is_bull_bar ? 1.0 : 0.5))
+    array.push(sellVolume, volume * (is_bull_bar ? 0.5 : 1.0))
+
+var table vizTable = table.new(pos_map, 3, levels + 1, border_width=1, frame_color=mitigated_box_color, frame_width=1)
+
+if showTable and barstate.islast
+    // FIX: Menggunakan text.format_bold (bold_italic tidak tersedia di Pine Script)
+    table.cell(vizTable, 0, 0, '𝙋𝙍𝙄𝘾𝙀', bgcolor=dark, text_color=white, text_size=txt_size, text_formatting =text.format_bold)
+    table.cell(vizTable, 1, 0, '𝙑𝙊𝙇 (𝘽/𝙎)', bgcolor=dark, text_color=white, text_size=txt_size, text_formatting =text.format_bold)
+    table.cell(vizTable, 2, 0, '𝘿𝙀𝙇𝙏𝘼', bgcolor=dark, text_color=white, text_size=txt_size, text_formatting =text.format_bold)
+    
+    float priceStep = (high - low) / levels
+    float maxVolTable = array.max(volumePoints)
+    float minVolTable = array.min(volumePoints)
+    
+    for i = 1 to levels
+        float p_lvl = low + i * priceStep
+        float v_sum = 0.0
+        float b_sum = 0.0
+        float s_sum = 0.0
+        
+        int arr_size = array.size(pricePoints)
+        if arr_size > 0
+            for j = 0 to arr_size - 1
+                if math.abs(array.get(pricePoints, j) - p_lvl) <= sensitivity
+                    v_sum += array.get(volumePoints, j)
+                    b_sum += array.get(buyVolume, j)
+                    s_sum += array.get(sellVolume, j)
+        
+        float delta = b_sum - s_sum
+        color cell_delta_c = delta > 0 ? color.from_gradient(delta, 0, math.max(delta, 1), box_col_bull, col_bull) : color.from_gradient(math.abs(delta), 0, math.max(math.abs(delta), 1), box_col_bear, col_bear)
+        color cell_vol_c   = color.from_gradient(v_sum, minVolTable, maxVolTable, color.new(cell_delta_c, 90), cell_delta_c)
+
+        // FIX: Menggunakan text.format_italic
+        table.cell(vizTable, 0, i, str.tostring(p_lvl, format.mintick), bgcolor=dark, text_color=white, text_size=txt_size, text_formatting =text.format_italic)
+        table.cell(vizTable, 1, i, str.tostring(b_sum, '#') + ' / ' + str.tostring(s_sum, '#'), bgcolor=cell_vol_c, text_color=dark, text_size=txt_size, text_formatting =text.format_italic)
+        table.cell(vizTable, 2, i, str.tostring(delta, '#'), bgcolor=cell_delta_c, text_color=dark, text_size=txt_size, text_formatting =text.format_bold)
+
+//═══════════════════════════════════════════════════════════════════════════════
+// SETUP WARNA
+//═══════════════════════════════════════════════════════════════════════════════
+logo_bull_start = col_bull
+logo_bull_end   = #000000
+logo_bear_start = col_bear
+logo_bear_end   = #000000 
+
+c_start = close > open ? logo_bull_start : logo_bear_start
+c_end   = close > open ? logo_bull_end   : logo_bear_end
+
+LG_Line_Widthb = 2
+
+//═══════════════════════════════════════════════════════════════════════════════
+// KONFIGURASI VISUAL & POSISI
+//═══════════════════════════════════════════════════════════════════════════════
+
+// 1. INPUT POSISI HORIZONTAL (BARU)
+// Default -20 untuk menarik logo ke kiri
+logo_x_shift    = input.int(-220, "Geser Horizontal (X)", minval=-500, maxval=500, tooltip="Negatif = Geser Kiri, Positif = Geser Kanan")
+
+// 2. INPUT PROPORSI (Sesuai settingan Anda sebelumnya)
+logo_zoom       = 6
+logo_y_pos      = 50
+frame_gap       = -8.8
+
+//═══════════════════════════════════════════════════════════════════════════════
+// LOGIKA GEOMETRI
+//═══════════════════════════════════════════════════════════════════════════════
+
+v_base = 10000.0 
+
+// Hitung Poin Mentah
+raw_p1     = v_base / 3.99
+raw_p2     = v_base / 3.994
+raw_p3     = v_base / 3.9915
+raw_p4     = v_base / 3.9955
+raw_p5     = v_base / 3.986
+raw_p6     = v_base / 3.99
+raw_p7     = v_base / 3.9975
+raw_p8     = v_base / 3.997
+raw_p9     = v_base / 3.99
+raw_p10    = v_base / 3.988
+
+// Normalisasi Head
+center_raw = (raw_p5 + raw_p7) / 2 
+
+// Fungsi Transformasi Y (Vertikal)
+calc_pos(val) => 
+    diff = val - center_raw
+    (diff * logo_zoom) + logo_y_pos
+
+fp1  = calc_pos(raw_p1)
+fp2  = calc_pos(raw_p2)
+fp3  = calc_pos(raw_p3)
+fp4  = calc_pos(raw_p4)
+fp5  = calc_pos(raw_p5)
+fp6  = calc_pos(raw_p6)
+fp7  = calc_pos(raw_p7) 
+fp8  = calc_pos(raw_p8)
+fp9  = calc_pos(raw_p9)
+fp10 = calc_pos(raw_p10)
+
+// Posisi Atap
+f_anchor = fp7 + frame_gap 
+
+//═══════════════════════════════════════════════════════════════════════════════
+// RENDERING VISUAL
+//═══════════════════════════════════════════════════════════════════════════════
+
+// Variable Garis
+var line Line1b = na, var line Line2b = na
+var line Line3b = na, var line Line4b = na
+var line Line5b = na, var line Line6b = na
+var line Line7b = na, var line Line8b = na
+var line Line9b = na, var line Line1b0 = na
+var line Line1b1 = na, var line Line1b2 = na
+var line Line1b3 = na, var line Line1b4 = na
+var line Line1b5 = na, var line Line1b6 = na
+var line Line1b7 = na, var line Line1b8 = na
+
+// Cleanup
+if not na(Line1b)
+    line.delete(Line1b), line.delete(Line2b)
+    line.delete(Line3b), line.delete(Line4b)
+    line.delete(Line5b), line.delete(Line6b)
+    line.delete(Line7b), line.delete(Line8b)
+    line.delete(Line9b), line.delete(Line1b0)
+    line.delete(Line1b1), line.delete(Line1b2)
+    line.delete(Line1b3), line.delete(Line1b4)
+    line.delete(Line1b5), line.delete(Line1b6)
+    line.delete(Line1b7), line.delete(Line1b8)
+
+// Helpers Warna
+get_grad_col(step) => color.from_gradient(step, 1, 18, c_start, c_end)
+mix_color(c1, c2, ratio) => color.from_gradient(ratio, 0, 1, c1, c2)
+
+// --- MENGHITUNG OFFSET X ---
+// Kita menerapkan pergeseran (shift) ke setiap titik X
+// Contoh: Jika shift -20, maka "bar_index + 28" menjadi "bar_index + 8"
+
+bx(val) => bar_index + val + logo_x_shift
+
+// --- DRAWING LINES ---
+
+// 1. HEAD STRUCTURE
+Line1b := line.new(x1 = bx(28), y1 = fp7, x2 = bx(35), y2 = fp1, color = get_grad_col(1), width = LG_Line_Widthb)
+Line2b := line.new(x1 = bx(32), y1 = fp7, x2 = bx(35), y2 = fp2, color = get_grad_col(2), width = LG_Line_Widthb)
+linefill.new(Line1b, Line2b, color = color.new(get_grad_col(1), 80))
+
+Line3b := line.new(x1 = bx(35), y1 = fp1, x2 = bx(37), y2 = fp3, color = get_grad_col(3), width = LG_Line_Widthb)
+Line4b := line.new(x1 = bx(35), y1 = fp2, x2 = bx(37), y2 = fp4, color = get_grad_col(4), width = LG_Line_Widthb)
+linefill.new(Line3b, Line4b, color = color.new(get_grad_col(3), 80))
+
+Line5b := line.new(x1 = bx(37), y1 = fp3, x2 = bx(43), y2 = fp5, color = get_grad_col(5), width = LG_Line_Widthb)
+Line6b := line.new(x1 = bx(37), y1 = fp4, x2 = bx(43), y2 = fp6, color = get_grad_col(6), width = LG_Line_Widthb)
+linefill.new(Line5b, Line6b, color = color.new(get_grad_col(5), 80))
+
+Line7b := line.new(x1 = bx(43), y1 = fp5, x2 = bx(48), y2 = fp3, color = get_grad_col(7), width = LG_Line_Widthb)
+Line8b := line.new(x1 = bx(43), y1 = fp6, x2 = bx(48), y2 = fp4, color = get_grad_col(8), width = LG_Line_Widthb)
+linefill.new(Line7b, Line8b, color = color.new(get_grad_col(7), 80))
+
+Line9b := line.new(x1 = bx(48), y1 = fp3, x2 = bx(50), y2 = fp1, color = get_grad_col(9), width = LG_Line_Widthb)
+Line1b0 := line.new(x1 = bx(48), y1 = fp4, x2 = bx(50), y2 = fp2, color = get_grad_col(10), width = LG_Line_Widthb)
+linefill.new(Line9b, Line1b0, color = color.new(get_grad_col(9), 80))
+
+// 2. CONNECTORS (Legs)
+Line1b1 := line.new(x1 = bx(50), y1 = fp1, x2 = bx(60), y2 = f_anchor, color = get_grad_col(11), width = LG_Line_Widthb)
+Line1b2 := line.new(x1 = bx(50), y1 = fp2, x2 = bx(56), y2 = f_anchor, color = get_grad_col(12), width = LG_Line_Widthb)
+linefill.new(Line1b1, Line1b2, color = color.new(get_grad_col(11), 80))
+
+// 3. FRAME / ATAP (Solid Base)
+Line1b3 := line.new(x1 = bx(26), y1 = fp7, x2 = bx(50), y2 = fp7, color = get_grad_col(13), width = LG_Line_Widthb)
+Line1b4 := line.new(x1 = bx(24), y1 = f_anchor, x2 = bx(48), y2 = f_anchor, color = get_grad_col(14), width = LG_Line_Widthb)
+linefill.new(Line1b3, Line1b4, color = color.new(get_grad_col(13), 85))
+
+// Sisi Frame
+Line1b5 := line.new(x1 = bx(26), y1 = fp7, x2 = bx(24), y2 = f_anchor, color = get_grad_col(15), width = LG_Line_Widthb)
+Line1b6 := line.new(x1 = bx(50), y1 = fp7, x2 = bx(48), y2 = f_anchor, color = get_grad_col(16), width = LG_Line_Widthb)
+
+// Ekor Kanan Frame
+Line1b7 := line.new(x1 = bx(56), y1 = f_anchor, x2 = bx(60), y2 = f_anchor, color = get_grad_col(17), width = LG_Line_Widthb)
+Line1b8 := line.new(x1 = bx(37), y1 = fp10, x2 = bx(38), y2 = fp10, color = get_grad_col(18), width = 1)
+
+// --- GLOW EFFECT ---
+// Glow offset juga harus mengikuti shift
+glow_offset = 37 + logo_x_shift
+
+plot(fp10, show_last = 1, offset = glow_offset, color = color.new(c_start, 0), linewidth = 4, style = plot.style_circles)
+plot(fp10, show_last = 1, offset = glow_offset, color = color.new(mix_color(c_start, c_end, 0.3), 80), linewidth = 15, style = plot.style_circles)
+plot(fp10, show_last = 1, offset = glow_offset, color = color.new(mix_color(c_start, c_end, 0.5), 85), linewidth = 30, style = plot.style_circles)
+plot(fp10, show_last = 1, offset = glow_offset, color = color.new(mix_color(c_start, c_end, 0.7), 90), linewidth = 50, style = plot.style_circles)
+plot(fp10, show_last = 1, offset = glow_offset, color = color.new(c_end, 95), linewidth = 80, style = plot.style_circles)
+
+// Invisible limit
+plot(0, "Min", display=display.none)
+plot(100, "Max", display=display.none)
