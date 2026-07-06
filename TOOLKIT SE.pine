@@ -1,7 +1,7 @@
 // _________________________________________
 // MountAlgo
 //@version=6
-indicator(title="Toolkit Smoothed EMA V2 Pro MountAlgo", short_title="Toolkit SE Pro", overlay=true, max_boxes=500, max_lines=500, max_labels=500)
+indicator(title="Toolkit Smoothed EMA V2 Pro MountAlgo", shorttitle="Toolkit SE Pro", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 // _________________________________________
 // 1. VISUAL THEMES & GLOBAL SETTINGS
@@ -205,7 +205,7 @@ find_fvg() =>
 
 [_fvg_time, _fvg_top, _fvg_bot, _fvg_dir] = request.security(syminfo.tickerid, fvg_tf, find_fvg())
 
-if ta.change(_fvg_time) and show_fvg and not na(_fvg_time)
+if ta.change(_fvg_time) != 0 and show_fvg and not na(_fvg_time)
     _col = _fvg_dir > 0 ? color.new(col_bull, 85) : color.new(col_bear, 85)
     _txt = fvg_tf + " FVG"
     _box = box.new(_fvg_time, _fvg_top, last_bar_time + (timenow - time), _fvg_bot, bgcolor=_col, border_color=na, text=_txt, text_size=size.tiny, text_color=color.new(white, 50), xloc=xloc.bar_time, extend=extend_fvg ? extend.right : extend.none)
