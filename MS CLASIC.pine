@@ -582,7 +582,7 @@ f_draw_snd_block(bool _is_supply, bool _is_htf, bool _cond, float _top, float _b
         // 1. Box
         box _b = box.new(_x1, _top, target_right_bar, _btm, 
              text = _full_text, 
-             text_size = size.normal,
+             text_size = size.auto,
              text_valign = _valign, 
              text_halign = text.align_right, 
              bgcolor = _final_bg, 
@@ -603,7 +603,7 @@ f_draw_snd_block(bool _is_supply, bool _is_htf, bool _cond, float _top, float _b
         // 3. Label MSS
         label _lbl = label.new(_x1, _draw_y, 
              text = showms == 'Symbol' ? _mss_sym : ("◈ MSS NODE [" + _tf_txt + "] " + _mss_sym),
-             size = size.normal,
+             size = size.tiny,
              yloc = yloc.price, 
              textcolor = _is_selected ? _main_col : Transparent_Color,
              color = color.new(_main_col, 100),
@@ -647,7 +647,7 @@ f_draw_fvg_block(bool _is_up, bool _is_htf, bool _cond, float _p1, float _p2, fl
             // Draw Box dengan koordinat yang sudah diurutkan (_top, _btm)
             box _b = box.new(_x1, _top, target_right_bar, _btm, 
                  text = showms == 'Symbol' ? (_dir_sym + " " + _tf_txt + " FVG") : ("◈ FVG NODE [" + _tf_txt + "] " + _dir_sym + " [" + str.tostring(_gap_size, format.mintick) + "]"),
-                 text_size = size.normal,
+                 text_size = size.auto,
                  text_valign = text.align_center, 
                  text_halign = text.align_right, 
                  bgcolor = _is_selected ? _bg_col : Transparent_Color, 
@@ -806,7 +806,7 @@ f_mitigate_snd_universal(bool _is_supply, bool _is_htf, float[] _levels, bool[] 
                     
                     box _b = array.get(_boxes, i)
                     box.set_text(_b, showms == 'Symbol' ? (_dir_str + " " + _tf_str) : ("✖ " + _type_str + " NODE [" + _tf_str + "]"))
-                    box.set_text_size(_b, size.normal)
+                    box.set_text_size(_b, size.auto)
                     box.set_right(_b, bar_index)
                     box.set_bgcolor(_b, _c_bg)
                     box.set_text_color(_b, _c_txt)
@@ -835,7 +835,7 @@ f_mitigate_fvg_universal(bool _is_up, bool _is_htf, float[] _highs, float[] _low
                     
                     box _b = array.get(_boxes, i)
                     box.set_text(_b, showms == 'Symbol' ? (_sym + " " + _tf_str + " FVG") : ("✖ FVG NODE [" + _tf_str + "] " + _sym + " " + _size_txt))
-                    box.set_text_size(_b, size.normal)
+                    box.set_text_size(_b, size.auto)
                     box.set_right(_b, bar_index)
                     box.set_bgcolor(_b, _c_bg)
                     box.set_text_color(_b, _c_main)
@@ -922,7 +922,7 @@ detect_and_draw_ifvg(float[] _arr_highs, float[] _arr_lows, box[] _arr_boxes, li
                     box.set_bgcolor(b, color.new(_ifvg_col, 95))
                     box.set_border_color(b, color.new(_ifvg_col, 60))
                     box.set_border_width(b, 1)
-                    box.set_text(b, base_txt), box.set_text_size(b, size.normal)
+                    box.set_text(b, base_txt), box.set_text_size(b, size.auto)
                     box.set_right(b, bar_index + 5), line.set_x2(l, bar_index + 5)
 
             // B. Mitigation Logic (Retest ke zona IFVG)
@@ -958,17 +958,17 @@ if na(ltf_mid_line)
     ltf_mid_line := line.new(na, na, na, na, style=line.style_dotted, color=mitigated_color)
     ltf_premium_box := box.new(na, na, na, na, border_width=0)
     ltf_discount_box := box.new(na, na, na, na, border_width=0)
-    ltf_pd_label_top := label.new(na, na, style=label.style_none, textcolor=col_bear, size=size.normal)
-    ltf_pd_label_mid := label.new(na, na, style=label.style_none, textcolor=mitigated_color, size=size.normal)
-    ltf_pd_label_bot := label.new(na, na, style=label.style_none, textcolor=col_bull, size=size.normal)
+    ltf_pd_label_top := label.new(na, na, style=label.style_none, textcolor=col_bear, size=size.tiny)
+    ltf_pd_label_mid := label.new(na, na, style=label.style_none, textcolor=mitigated_color, size=size.tiny)
+    ltf_pd_label_bot := label.new(na, na, style=label.style_none, textcolor=col_bull, size=size.tiny)
 
 if na(htf_mid_line)
     htf_mid_line := line.new(na, na, na, na, style=line.style_dashed, width=2, color=mitigated_color)
     htf_premium_box := box.new(na, na, na, na, border_width=1, border_color=box_col_bear)
     htf_discount_box := box.new(na, na, na, na, border_width=1, border_color=box_col_bull)
-    htf_pd_label_top := label.new(na, na, style=label.style_none, textcolor=col_bear, size=size.normal)
-    htf_pd_label_mid := label.new(na, na, style=label.style_none, textcolor=mitigated_color, size=size.normal)
-    htf_pd_label_bot := label.new(na, na, style=label.style_none, textcolor=col_bull, size=size.normal)
+    htf_pd_label_top := label.new(na, na, style=label.style_none, textcolor=col_bear, size=size.tiny)
+    htf_pd_label_mid := label.new(na, na, style=label.style_none, textcolor=mitigated_color, size=size.tiny)
+    htf_pd_label_bot := label.new(na, na, style=label.style_none, textcolor=col_bull, size=size.tiny)
 
 // Update Zones (FIX: passing 'target_right_bar' instead of 'last_bar')
 f_update_pd_zones(show_pd_ltf, ltf_supply_high, ltf_demand_low, ltf_mid_line, ltf_premium_box, ltf_discount_box, ltf_pd_label_top, ltf_pd_label_mid, ltf_pd_label_bot, "AUTO", target_right_bar)
@@ -981,7 +981,7 @@ if show_eq
             if show_connector
                 line.new(last_pivot_h_idx, last_pivot_h, bar_index - eq_len, ph_eq, color=col_bear, style=line.style_dotted)
             array.push(eq_lines, line.new(last_pivot_h_idx, last_pivot_h, bar_index - eq_len + 10, last_pivot_h, color=col_bear, style=line.style_dotted))
-            array.push(eq_labels, label.new(bar_index - eq_len + 10, last_pivot_h, text="EQH", style=label.style_none, textcolor=col_bear, size=size.normal))
+            array.push(eq_labels, label.new(bar_index - eq_len + 10, last_pivot_h, text="EQH", style=label.style_none, textcolor=col_bear, size=size.tiny))
             array.push(eq_levels, last_pivot_h), array.push(eq_types, "EQH")
         last_pivot_h := ph_eq, last_pivot_h_idx := bar_index - eq_len
         
@@ -990,7 +990,7 @@ if show_eq
             if show_connector
                 line.new(last_pivot_l_idx, last_pivot_l, bar_index - eq_len, pl_eq, color=col_bull, style=line.style_dotted)
             array.push(eq_lines, line.new(last_pivot_l_idx, last_pivot_l, bar_index - eq_len + 10, last_pivot_l, color=col_bull, style=line.style_dotted))
-            array.push(eq_labels, label.new(bar_index - eq_len + 10, last_pivot_l, text="EQL", style=label.style_none, textcolor=col_bull, size=size.normal))
+            array.push(eq_labels, label.new(bar_index - eq_len + 10, last_pivot_l, text="EQL", style=label.style_none, textcolor=col_bull, size=size.tiny))
             array.push(eq_levels, last_pivot_l), array.push(eq_types, "EQL")
         last_pivot_l := pl_eq, last_pivot_l_idx := bar_index - eq_len
 
@@ -1053,7 +1053,7 @@ if array.size(htf_supply_high) > 0
         if breaker_htf_selected
             delete_opposite_breakers(true, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
             array.push(htf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bull)), array.push(htf_bk_levels, _lvl)
-            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [HTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.normal,color = box_col_bull))
+            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [HTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.tiny,color = box_col_bull))
             array.push(htf_bk_is_bull, true), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
     // LQS Logic
     else if not array.get(htf_ms_bull_breakout, i) and high >= _lvl
@@ -1073,7 +1073,7 @@ if array.size(htf_demand_low) > 0
         if breaker_htf_selected
             delete_opposite_breakers(false, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
             array.push(htf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bear)), array.push(htf_bk_levels, _lvl)
-            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [HTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.normal,color = box_col_bear ))
+            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [HTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.tiny,color = box_col_bear ))
             array.push(htf_bk_is_bull, false), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
     // LQS Logic
     else if not array.get(htf_ms_bear_breakout, i) and low <= _lvl
@@ -1092,7 +1092,7 @@ if array.size(ltf_supply_high) > 0
         if breaker_ltf_selected
             delete_opposite_breakers(true, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
             array.push(ltf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bull, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
-            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [AUTO] ▲", textcolor=col_bull, style=label.style_label_left, size=size.normal,color = box_col_bull))
+            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [AUTO] ▲", textcolor=col_bull, style=label.style_label_left, size=size.tiny,color = box_col_bull))
             array.push(ltf_bk_is_bull, true), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
     else if not array.get(ltf_ms_bull_breakout, i) and high >= _lvl
         line.set_x2(array.get(ltf_ms_bull_line, i), bar_index), line.set_color(array.get(ltf_ms_bull_line, i), ltf_lqs_selected ? col_bear : Transparent_Color)
@@ -1109,7 +1109,7 @@ if array.size(ltf_demand_low) > 0
         if breaker_ltf_selected
             delete_opposite_breakers(false, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
             array.push(ltf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bear, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
-            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [AUTO] ▼", textcolor=col_bear, style=label.style_label_left, size=size.normal,color = box_col_bear))
+            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [AUTO] ▼", textcolor=col_bear, style=label.style_label_left, size=size.tiny,color = box_col_bear))
             array.push(ltf_bk_is_bull, false), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
     else if not array.get(ltf_ms_bear_breakout, i) and low <= _lvl
         line.set_x2(array.get(ltf_ms_bear_line, i), bar_index), line.set_color(array.get(ltf_ms_bear_line, i), ltf_lqs_selected ? col_bull : Transparent_Color)
@@ -1240,11 +1240,11 @@ if show_hl_auto and barstate.islast
 
     // --- DRAW HIGH ---
     l_high_auto := line.new(x1_loc, final_h, bar_index + 10, final_h, color=white, style=line.style_solid, width=1)
-    lb_high_auto := label.new(bar_index + 10, final_h, text=final_lbl_txt + "H", style=label.style_none, textcolor=white, size=size.normal)
+    lb_high_auto := label.new(bar_index + 10, final_h, text=final_lbl_txt + "H", style=label.style_none, textcolor=white, size=size.tiny)
     
     // --- DRAW LOW ---
     l_low_auto := line.new(x1_loc, final_l, bar_index + 10, final_l, color=white, style=line.style_solid, width=1)
-    lb_low_auto := label.new(bar_index + 10, final_l, text=final_lbl_txt + "L", style=label.style_none, textcolor=white, size=size.normal)
+    lb_low_auto := label.new(bar_index + 10, final_l, text=final_lbl_txt + "L", style=label.style_none, textcolor=white, size=size.tiny)
 
 //════════════════════════════════════════════════════════════════════════
 //════════════════════════════════════════════════════════════════════════
@@ -1263,7 +1263,7 @@ if show_tliq
 
             if valid_tl
                 line l = line.new(last_tl_ph_idx, last_tl_ph, ph_idx_now, ph_tl, color=color.new(col_bear, 0), style=line.style_dashed, width=tliq_width)
-                label lb = show_tliq_tag ? label.new(ph_idx_now, ph_tl, text="T-LIQ", style=label.style_none, textcolor=color.new(col_bear, 15), size=size.normal) : na
+                label lb = show_tliq_tag ? label.new(ph_idx_now, ph_tl, text="T-LIQ", style=label.style_none, textcolor=color.new(col_bear, 15), size=size.tiny) : na
 
                 array.push(arr_tl_lines, l)
                 array.push(arr_tl_labels, lb)
@@ -1283,7 +1283,7 @@ if show_tliq
 
             if valid_tl
                 line l = line.new(last_tl_pl_idx, last_tl_pl, pl_idx_now, pl_tl, color=color.new(col_bull, 0), style=line.style_dashed, width=tliq_width)
-                label lb = show_tliq_tag ? label.new(pl_idx_now, pl_tl, text="T-LIQ", style=label.style_none, textcolor=color.new(col_bull, 15), size=size.normal) : na
+                label lb = show_tliq_tag ? label.new(pl_idx_now, pl_tl, text="T-LIQ", style=label.style_none, textcolor=color.new(col_bull, 15), size=size.tiny) : na
 
                 array.push(arr_tl_lines, l)
                 array.push(arr_tl_labels, lb)
@@ -1591,7 +1591,7 @@ f_draw_kz(string _sess, color _col, string _txt) =>
     // Detect Start Session (Vertical Line)
     if in_session and not in_session[1]
         line.new(bar_index, high, bar_index, low, extend=extend.both, color=_col, style=line.style_solid, width=1)
-        label.new(bar_index, high, text="◈ SESSION: " + _txt, yloc=yloc.abovebar, color=color.new(white, 100), style=label.style_none, textcolor=_col, size=size.normal)
+        label.new(bar_index, high, text="◈ SESSION: " + _txt, yloc=yloc.abovebar, color=color.new(white, 100), style=label.style_none, textcolor=_col, size=size.tiny)
     
     // Detect End Session (Vertical Line)
     if not in_session and in_session[1]
