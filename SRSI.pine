@@ -1,38 +1,62 @@
-//© 🅼🅻🆃🅵🆇 
+//© MLTFX
 //@version=6
-indicator(title = '𝙎𝙏𝙊𝘾𝙃𝘼𝙎𝙏𝙄𝘾 𝙍𝙎𝙄 V.1.37 🅼🅻🆃🅵🆇 [FINAL FIXED]', shorttitle = '𝙎𝙍𝙎𝙄 V.1.37 🅼🅻🆃🅵🆇', format = format.price, precision = 2, overlay = false)
+indicator(title = 'STOCHASTIC RSI V.1.37 MLTFX [FINAL FIXED]', shorttitle = 'SRSI V.1.37 MLTFX', format = format.price, precision = 2, overlay = false)
 
 // ════════════════════════════════════════════════════════════════════════════════
 // 1. CONFIGURATION & THEMES
 // ════════════════════════════════════════════════════════════════════════════════
-grp_global  = '𝙂𝙇𝙊𝘽𝘼𝙇 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎'
-grp_stoch   = '𝙎𝙏𝙊𝘾𝙃𝘼𝙎𝙏𝙄𝘾 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎'
-grp_div     = '𝘿𝙄𝙑𝙀𝙍𝙂𝙀𝙉𝘾𝙀 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎'
-grp_book    = '𝘽𝙊𝙊𝙆𝙈𝘼𝙋 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎'
+grp_global  = 'GLOBAL SETTINGS'
+grp_stoch   = 'STOCHASTIC SETTINGS'
+grp_div     = 'DIVERGENCE SETTINGS'
+grp_book    = 'BOOKMAP SETTINGS'
 
 // Theme Selection
-color_theme = input.string('𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎', '⬤ 𝘾𝙊𝙇𝙊𝙍 𝙏𝙃𝙀𝙈𝙀', ['𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀', '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎', '𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀', '𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀', '𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿', '𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀', '𝙃𝙊𝙇𝙔 𝙎𝙄𝙉𝘾𝙀𝙍𝙀'], group = grp_global)
+color_theme = input.string('DEX Deep', 'Select Color Theme', ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=grp_global)
 
-// Define Base Colors
-dark    = #141c16
-white   = #c4d3ff
-green   = #179c74
-purple  = #5134ff
-gray    = #3d4c74
-red     = #e91e63
-yellow  = #ffeb3b
-brown   = #574932
-blue    = #1848cc
+// Core Colors
+dark   = #000000
+white  = #c4d3ff
+green  = #179c74
+purple = #5134ff
+gray   = #62647a
+red    = #f23645
+yellow = #f3ba2f
+orange = #ff9800
+blue   = #1848cc
+brown  = #8b4513
 
-// Logic Color Mapping using Tuple Assignment
-[col_bull, col_bear, box_col_bull, box_col_bear] = switch color_theme
-    '𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀'          => [white, gray, color.new(white, 80), color.new(gray, 80)]
-    '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎'               => [purple, green, color.new(purple, 80), color.new(green, 80)]
-    '𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => [green, red, color.new(green, 80), color.new(red, 80)]
-    '𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀'              => [green, gray, color.new(green, 80), color.new(gray, 80)]
-    '𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿'                => [yellow, gray, color.new(yellow, 80), color.new(gray, 80)]
-    '𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀'    => [purple, yellow, color.new(purple, 80), color.new(yellow, 80)]
-    =>                             [blue, white, color.new(blue, 80), color.new(white, 80)]
+col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    => blue
+col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    => white
+col_poc = white
+
+box_col_bull = color.new(col_bull, 80)
+box_col_bear = color.new(col_bear, 80)
 
 mitigated_color     = brown
 mitigated_box_color = color.new(brown, 80)
@@ -40,11 +64,11 @@ mitigated_box_color = color.new(brown, 80)
 // ════════════════════════════════════════════════════════════════════════════════
 // 2. STOCHASTIC RSI CALCULATIONS
 // ════════════════════════════════════════════════════════════════════════════════
-smoothK     = input.int(3, '   𝙆', minval=1, group=grp_stoch)
-smoothD     = input.int(3, '   𝘿', minval=1, group=grp_stoch)
-lengthRSI   = input.int(14, '   𝙍𝙎𝙄 𝙇𝙀𝙉𝙂𝙏𝙃', minval=1, group=grp_stoch)
-lengthStoch = input.int(14, '   𝙎𝙏𝙊𝘾𝙃 𝙇𝙀𝙉𝙂𝙏𝙃', minval=1, group=grp_stoch)
-src         = input(close, '   𝙎𝙊𝙐𝙍𝘾𝙀', group=grp_stoch)
+smoothK     = input.int(3, '   K', minval=1, group=grp_stoch)
+smoothD     = input.int(3, '   D', minval=1, group=grp_stoch)
+lengthRSI   = input.int(14, '   RSI Length', minval=1, group=grp_stoch)
+lengthStoch = input.int(14, '   Stoch Length', minval=1, group=grp_stoch)
+src         = input(close, '   Source', group=grp_stoch)
 
 rsi1 = ta.rsi(src, lengthRSI)
 k    = ta.sma(ta.stoch(rsi1, rsi1, rsi1, lengthStoch), smoothK)
@@ -57,9 +81,9 @@ cross_dn = ta.crossunder(k, d)
 // ════════════════════════════════════════════════════════════════════════════════
 // 3. DIVERGENCE LOGIC
 // ════════════════════════════════════════════════════════════════════════════════
-show_div    = input.bool(true, '   𝙎𝙃𝙊𝙒 𝘿𝙄𝙑𝙀𝙍𝙂𝙀𝙉𝘾𝙀', group=grp_div)
-div_look    = input.int(5, '   𝙇𝙊𝙊𝙆𝘽𝘼𝘾𝙆 (𝙋𝙄𝙑𝙊𝙏)', minval=1, group=grp_div)
-show_hidden = input.bool(false, '   𝙎𝙃𝙊𝙒 𝙃𝙄𝘿𝘿𝙀𝙉 𝘿𝙄𝙑', group=grp_div)
+show_div    = input.bool(true, '   Show Divergence', group=grp_div)
+div_look    = input.int(5, '   Pivot Lookback', minval=1, group=grp_div)
+show_hidden = input.bool(false, '   Show Hidden Divergence', group=grp_div)
 
 // Pivot Calculations
 ph = ta.pivothigh(k, div_look, div_look)
@@ -130,97 +154,141 @@ float rsi_norm = math.max(math.min(k / 100, 1), 0)
 c_line_grad = color.from_gradient(rsi_norm, 0, 1, col_bull, col_bear)
 c_fill_bg   = color.from_gradient(rsi_norm, 0, 1, color.new(col_bull, 90), color.new(col_bear, 90))
 
-pK = plot(k, '𝙆', color=c_line_grad, linewidth=2)
-pD = plot(d, '𝘿', color=color.new(gray, 50), linewidth=1)
+pK = plot(k, 'K', color=c_line_grad, linewidth=2)
+pD = plot(d, 'D', color=color.new(gray, 50), linewidth=1)
 fill(pK, pD, color = k > d ? color.new(col_bull, 70) : color.new(col_bear, 70))
 
 mid_line = plot(50, display=display.none)
 top_line = plot(100, color = col_bear)
 bot_line = plot(0, color = col_bull)
-fill(top_line, bot_line, color=c_fill_bg, title="𝙂𝙇𝘼𝙎𝙎𝙔 𝘽𝙂")
+fill(top_line, bot_line, color=c_fill_bg, title="GLASSY BG")
 
 // FIX: Mengganti hline menjadi plot agar bisa menerima warna dinamis dari theme
-obline = plot(80, "𝙊𝘽", color=color.new(col_bear, 100), style=plot.style_line)
-osline = plot(20, "𝙊𝙎", color=color.new(col_bull, 100), style=plot.style_line)
-midline = plot(50, "𝙈𝙄𝘿", color=mitigated_color, style=plot.style_line)
-fill(top_line, obline, color=box_col_bear, title="𝙂𝙇𝘼𝙎𝙎𝙔 𝘽𝙂")
-fill(bot_line, osline, color=box_col_bull, title="𝙂𝙇𝘼𝙎𝙎𝙔 𝘽𝙂")
+obline = plot(80, "OB", color=color.new(col_bear, 100), style=plot.style_line)
+osline = plot(20, "OS", color=color.new(col_bull, 100), style=plot.style_line)
+midline = plot(50, "MID", color=mitigated_color, style=plot.style_line)
+fill(top_line, obline, color=box_col_bear, title="GLASSY BG")
+fill(bot_line, osline, color=box_col_bull, title="GLASSY BG")
 
-plotshape(cross_dn and k > 70, '𝙎𝙝𝙤𝙧𝙩', shape.circle, location.top, col_bear, size=size.tiny)
-plotshape(cross_up and k < 30, '𝙇𝙤𝙣𝙜', shape.circle, location.bottom, col_bull, size=size.tiny)
+plotshape(cross_dn and k > 70, 'Short', shape.circle, location.top, col_bear, size=size.tiny)
+plotshape(cross_up and k < 30, 'Long', shape.circle, location.bottom, col_bull, size=size.tiny)
 
 // ════════════════════════════════════════════════════════════════════════════════
 // 5. BOOKMAP & TABLE
 // ════════════════════════════════════════════════════════════════════════════════
-showTable       = input.bool(true, '𝙎𝙃𝙊𝙒 𝙏𝘼𝘽𝙇𝙀', group=grp_book)
-levels          = input.int(4, '𝙋𝙍𝙄𝘾𝙀 𝙇𝙀𝙑𝙀𝙇𝙎', minval=4, maxval=20, group=grp_book)
-sensitivity     = input.float(1.5, '𝙎𝙀𝙉𝙎𝙄𝙏𝙄𝙑𝙄𝙏𝙔', minval=0.1, maxval=5.0, group=grp_book)
-textSizeOption  = input.string('𝙎𝙈𝘼𝙇𝙇', '𝙏𝙀𝙓𝙏 𝙎𝙄𝙕𝙀', ['𝙏𝙄𝙉𝙔', '𝙎𝙈𝘼𝙇𝙇', '𝙉𝙊𝙍𝙈𝘼𝙇'], group=grp_book)
-table_pos       = input.string('𝙏𝙊𝙋 𝙍𝙄𝙂𝙃𝙏', '𝙋𝙊𝙎𝙄𝙏𝙄𝙊𝙉', ['𝙏𝙊𝙋 𝙍𝙄𝙂𝙃𝙏', '𝙏𝙊𝙋 𝙇𝙀𝙁𝙏', '𝘽𝙊𝙏𝙏𝙊𝙈 𝙍𝙄𝙂𝙃𝙏', '𝘽𝙊𝙏𝙏𝙊𝙈 𝙇𝙀𝙁𝙏'], group=grp_book)
+showTable       = input.bool(true, 'Show Volume Table', group=grp_book)
+levels          = input.int(10, 'Price Levels', minval=4, maxval=50, group=grp_book)
+sensitivity     = input.float(1.5, 'Volume Sensitivity', minval=0.1, maxval=10.0, group=grp_book)
+textSizeOption  = input.string('SMALL', 'Text Size', ['TINY', 'SMALL', 'NORMAL'], group=grp_book)
+table_pos       = input.string('TOP RIGHT', 'Position', ['TOP RIGHT', 'TOP LEFT', 'BOTTOM RIGHT', 'BOTTOM LEFT'], group=grp_book)
 
 txt_size = switch textSizeOption
-    '𝙏𝙄𝙉𝙔' => size.tiny
-    '𝙎𝙈𝘼𝙇𝙇' => size.small
+    'TINY' => size.tiny
+    'SMALL' => size.small
     => size.normal
 
 pos_map = switch table_pos
-    '𝙏𝙊𝙋 𝙇𝙀𝙁𝙏' => position.top_left
-    '𝘽𝙊𝙏𝙏𝙊𝙈 𝙇𝙀𝙁𝙏' => position.bottom_left
-    '𝘽𝙊𝙏𝙏𝙊𝙈 𝙍𝙄𝙂𝙃𝙏' => position.bottom_right
+    'TOP LEFT' => position.top_left
+    'BOTTOM LEFT' => position.bottom_left
+    'BOTTOM RIGHT' => position.bottom_right
     => position.top_right
 
-var pricePoints     = array.new_float(0)
-var volumePoints    = array.new_float(0)
-var buyVolume       = array.new_float(0)
-var sellVolume      = array.new_float(0)
+// Heuristic Volume Partitioning from Bookmap
+calc_vol_partition() =>
+    float vol = math.max(volume, 1)
+    float range_size = high - low
+    float b_vol = 0.0
+    float s_vol = 0.0
 
-if not barstate.isfirst
-    if array.size(pricePoints) > levels * 2
-        array.shift(pricePoints)
-        array.shift(volumePoints)
-        array.shift(buyVolume)
-        array.shift(sellVolume)
-    
-    array.push(pricePoints, close)
-    array.push(volumePoints, volume)
-    is_bull_bar = close > open
-    array.push(buyVolume, volume * (is_bull_bar ? 1.0 : 0.5))
-    array.push(sellVolume, volume * (is_bull_bar ? 0.5 : 1.0))
+    if range_size > 0
+        float body_high = math.max(open, close)
+        float body_low  = math.min(open, close)
+        float body_size = body_high - body_low
+        float upper_wick = high - body_high
+        float lower_wick = body_low - low
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (open + close) / 2
+        float body_pos = (b_center - low) / range_size
+        float br_b = close > open ? math.min(0.9, 0.6 + body_pos * 0.3) : (close < open ? math.max(0.1, 0.4 - (1-body_pos) * 0.3) : 0.5)
+
+        b_vol := vol * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := vol * (w_body * (1 - br_b) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := vol * 0.5
+        s_vol := vol * 0.5
+    [b_vol, s_vol]
+
+[b_vol_h, s_vol_h] = calc_vol_partition()
+
+var float[] hist_buy_vol  = array.new_float(0)
+var float[] hist_sell_vol = array.new_float(0)
+var float[] hist_price    = array.new_float(0)
+
+int max_hist = 500
+if barstate.isconfirmed
+    array.push(hist_buy_vol, b_vol_h)
+    array.push(hist_sell_vol, s_vol_h)
+    array.push(hist_price, close)
+    if array.size(hist_price) > max_hist
+        array.shift(hist_buy_vol)
+        array.shift(hist_sell_vol)
+        array.shift(hist_price)
 
 var table vizTable = table.new(pos_map, 3, levels + 1, border_width=1, frame_color=mitigated_box_color, frame_width=1)
 
-if showTable and barstate.islast
-    // FIX: Menggunakan text.format_bold (bold_italic tidak tersedia di Pine Script)
-    table.cell(vizTable, 0, 0, '𝙋𝙍𝙄𝘾𝙀', bgcolor=dark, text_color=white, text_size=txt_size, text_formatting =text.format_bold)
-    table.cell(vizTable, 1, 0, '𝙑𝙊𝙇 (𝘽/𝙎)', bgcolor=dark, text_color=white, text_size=txt_size, text_formatting =text.format_bold)
-    table.cell(vizTable, 2, 0, '𝘿𝙀𝙇𝙏𝘼', bgcolor=dark, text_color=white, text_size=txt_size, text_formatting =text.format_bold)
-    
-    float priceStep = (high - low) / levels
-    float maxVolTable = array.max(volumePoints)
-    float minVolTable = array.min(volumePoints)
-    
-    for i = 1 to levels
-        float p_lvl = low + i * priceStep
-        float v_sum = 0.0
-        float b_sum = 0.0
-        float s_sum = 0.0
-        
-        int arr_size = array.size(pricePoints)
-        if arr_size > 0
-            for j = 0 to arr_size - 1
-                if math.abs(array.get(pricePoints, j) - p_lvl) <= sensitivity
-                    v_sum += array.get(volumePoints, j)
-                    b_sum += array.get(buyVolume, j)
-                    s_sum += array.get(sellVolume, j)
-        
-        float delta = b_sum - s_sum
-        color cell_delta_c = delta > 0 ? color.from_gradient(delta, 0, math.max(delta, 1), box_col_bull, col_bull) : color.from_gradient(math.abs(delta), 0, math.max(math.abs(delta), 1), box_col_bear, col_bear)
-        color cell_vol_c   = color.from_gradient(v_sum, minVolTable, maxVolTable, color.new(cell_delta_c, 90), cell_delta_c)
+var box[] vol_boxes = array.new_box()
 
-        // FIX: Menggunakan text.format_italic
-        table.cell(vizTable, 0, i, str.tostring(p_lvl, format.mintick), bgcolor=dark, text_color=white, text_size=txt_size, text_formatting =text.format_italic)
-        table.cell(vizTable, 1, i, str.tostring(b_sum, '#') + ' / ' + str.tostring(s_sum, '#'), bgcolor=cell_vol_c, text_color=dark, text_size=txt_size, text_formatting =text.format_italic)
-        table.cell(vizTable, 2, i, str.tostring(delta, '#'), bgcolor=cell_delta_c, text_color=dark, text_size=txt_size, text_formatting =text.format_bold)
+if showTable and barstate.islast
+    for b in vol_boxes
+        box.delete(b)
+    array.clear(vol_boxes)
+
+    table.cell(vizTable, 0, 0, 'PRICE', bgcolor=dark, text_color=white, text_size=txt_size, text_formatting=text.format_bold)
+    table.cell(vizTable, 1, 0, 'VOL (B/S)', bgcolor=dark, text_color=white, text_size=txt_size, text_formatting=text.format_bold)
+    table.cell(vizTable, 2, 0, 'DELTA', bgcolor=dark, text_color=white, text_size=txt_size, text_formatting=text.format_bold)
+    
+    float hi = array.max(hist_price)
+    float lo = array.min(hist_price)
+    float priceStep = (hi - lo) / levels
+    
+    array<float> b_buckets = array.new_float(levels, 0.0)
+    array<float> s_buckets = array.new_float(levels, 0.0)
+
+    int sz = array.size(hist_price)
+    if sz > 0
+        for j = 0 to sz - 1
+            float p = array.get(hist_price, j)
+            int idx = math.min(levels - 1, math.max(0, math.floor((p - lo) / math.max(1e-9, priceStep))))
+            array.set(b_buckets, idx, array.get(b_buckets, idx) + array.get(hist_buy_vol, j))
+            array.set(s_buckets, idx, array.get(s_buckets, idx) + array.get(hist_sell_vol, j))
+
+    float max_total = 0.0
+    for i = 0 to levels - 1
+        max_total := math.max(max_total, array.get(b_buckets, i) + array.get(s_buckets, i))
+
+    for i = 0 to levels - 1
+        float b_sum = array.get(b_buckets, i)
+        float s_sum = array.get(s_buckets, i)
+        float v_sum = b_sum + s_sum
+        float delta = b_sum - s_sum
+        float p_mid = lo + (i * priceStep) + (priceStep / 2)
+
+        color cell_delta_c = delta > 0 ? color.from_gradient(delta, 0, math.max(delta, 1), box_col_bull, col_bull) : color.from_gradient(math.abs(delta), 0, math.max(math.abs(delta), 1), box_col_bear, col_bear)
+        color cell_vol_c   = color.from_gradient(v_sum, 0, max_total, color.new(cell_delta_c, 90), cell_delta_c)
+
+        table.cell(vizTable, 0, levels - i, str.tostring(p_mid, format.mintick), bgcolor=dark, text_color=white, text_size=txt_size, text_formatting=text.format_italic)
+        table.cell(vizTable, 1, levels - i, str.tostring(b_sum, '#') + ' / ' + str.tostring(s_sum, '#'), bgcolor=cell_vol_c, text_color=dark, text_size=txt_size, text_formatting=text.format_italic)
+        table.cell(vizTable, 2, levels - i, str.tostring(delta, '#'), bgcolor=cell_delta_c, text_color=dark, text_size=txt_size, text_formatting=text.format_bold)
+
+        // Volume Box on Main Chart (using force_overlay=true)
+        if v_sum > 0
+            int box_len = math.round(20 * v_sum / max_total)
+            array.push(vol_boxes, box.new(bar_index, p_mid + priceStep/2, bar_index + box_len, p_mid - priceStep/2,
+                 bgcolor=color.new(cell_delta_c, 70), border_color=color.new(cell_delta_c, 40), force_overlay=true))
 
 //═══════════════════════════════════════════════════════════════════════════════
 // SETUP WARNA
