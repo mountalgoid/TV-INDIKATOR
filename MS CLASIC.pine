@@ -1,8 +1,8 @@
 //𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤
 //@version=6
 //═══════════════════════════════════════════════════════════════════════════════
-indicator(title            = "Market Structure Clasic V.9.5.0 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤"
-, shorttitle             = "MS Clasic V.9.5.0 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤"
+indicator(title            = "Market Structure Clasic V.9.5.5 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤"
+, shorttitle             = "MS Clasic V.9.5.5 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤"
 , overlay                = true
 , max_bars_back          = 2000
 , max_lines_count        = 500
@@ -303,7 +303,7 @@ var array<float> htf_supply_low = array.new_float(0)
 var array<box> htf_supply_box = array.new_box(0)
 var array<bool> htf_supply_mitigated = array.new_bool(0)
 var array<line> htf_ms_bull_line = array.new_line(0)
-var array<label> htf_ms_bull_label = array.new_label(0)
+var array<label> htf_ms_bull_label = array.new<label>(0)
 var array<bool> htf_ms_bull_breakout = array.new_bool(0)
 //===> HTF Demand
 var array<float> htf_demand_high = array.new_float(0)
@@ -311,7 +311,7 @@ var array<float> htf_demand_low = array.new_float(0)
 var array<box> htf_demand_box = array.new_box(0)
 var array<bool> htf_demand_mitigated = array.new_bool(0)
 var array<line> htf_ms_bear_line = array.new_line(0)
-var array<label> htf_ms_bear_label = array.new_label(0)
+var array<label> htf_ms_bear_label = array.new<label>(0)
 var array<bool> htf_ms_bear_breakout = array.new_bool(0)
 //===> LTF Supply
 var array<float> ltf_supply_high = array.new_float(0)
@@ -319,7 +319,7 @@ var array<float> ltf_supply_low = array.new_float(0)
 var array<box> ltf_supply_box = array.new_box(0)
 var array<bool> ltf_supply_mitigated = array.new_bool(0)
 var array<line> ltf_ms_bull_line = array.new_line(0)
-var array<label> ltf_ms_bull_label = array.new_label(0)
+var array<label> ltf_ms_bull_label = array.new<label>(0)
 var array<bool> ltf_ms_bull_breakout = array.new_bool(0)
 //===> LTF Supply
 var array<float> ltf_demand_high = array.new_float(0)
@@ -327,7 +327,7 @@ var array<float> ltf_demand_low = array.new_float(0)
 var array<box> ltf_demand_box = array.new_box(0)
 var array<bool> ltf_demand_mitigated = array.new_bool(0)
 var array<line> ltf_ms_bear_line = array.new_line(0)
-var array<label> ltf_ms_bear_label = array.new_label(0)
+var array<label> ltf_ms_bear_label = array.new<label>(0)
 var array<bool> ltf_ms_bear_breakout = array.new_bool(0)
 // Advanced Arrays for FVG Tracking
 //===> LTF FVG Down
@@ -573,7 +573,7 @@ f_draw_snd_block(bool _is_supply, bool _is_htf, bool _cond, float _top, float _b
         
         // Info Text
         string _info = get_info_text(_vol, _trigger_high, _trigger_low, not _is_supply)
-        string _full_text = (showms == 'Symbol' ? (_symbol + " " + _tf_txt) : (_type_txt + " NODE [" + _tf_txt + "]" + _info ))
+        string _full_text = (showms == 'Symbol' ? (_symbol + " " + _tf_txt) : ("◈ " + _type_txt + " NODE [" + _tf_txt + "]" + _info ))
         
         // Posisi Teks
         string _valign = _is_supply ? text.align_top : text.align_bottom
@@ -583,13 +583,13 @@ f_draw_snd_block(bool _is_supply, bool _is_htf, bool _cond, float _top, float _b
         box _b = box.new(_x1, _top, target_right_bar, _btm, 
              text = _full_text, 
              text_size = size.auto,
-             text_formatting = text.format_bold,
              text_valign = _valign, 
              text_halign = text.align_right, 
              bgcolor = _final_bg, 
              text_color = _final_txt, 
-             border_color = _final_border, 
-             border_width = 0)
+             border_color = color.new(_main_col, 40),
+             border_width = 1)
+        box.set_text_formatting(_b, text.format_bold)
         
         // 2. MSS Line
         float _line_y = _is_supply ? _top : _btm // Supply line di High, Demand di Low (biasanya untuk break)
@@ -598,16 +598,16 @@ f_draw_snd_block(bool _is_supply, bool _is_htf, bool _cond, float _top, float _b
         
         line _l = line.new(_x1, _draw_y, target_right_bar, _draw_y, 
              color = _is_selected ? _main_col : Transparent_Color, 
-             style = _is_htf ? line.style_solid : line.style_dotted, 
+             style = _is_htf ? line.style_solid : line.style_dashed,
              width = 1)
              
         // 3. Label MSS
         label _lbl = label.new(_x1, _draw_y, 
-             text = showms == 'Symbol' ? _mss_sym : ("MSS [" + _tf_txt + "] " + _mss_sym),
+             text = showms == 'Symbol' ? _mss_sym : ("◈ MSS NODE [" + _tf_txt + "] " + _mss_sym),
              size = size.auto,
              yloc = yloc.price, 
-             textcolor = Transparent_Color, 
-             color = _is_selected ? _main_col : Transparent_Color, 
+             textcolor = _is_selected ? _main_col : Transparent_Color,
+             color = color.new(_main_col, 100),
              style = label.style_none)
 
         // --- ARRAY MANAGEMENT ---
@@ -647,18 +647,18 @@ f_draw_fvg_block(bool _is_up, bool _is_htf, bool _cond, float _p1, float _p2, fl
             
             // Draw Box dengan koordinat yang sudah diurutkan (_top, _btm)
             box _b = box.new(_x1, _top, target_right_bar, _btm, 
-                 text = showms == 'Symbol' ? (_dir_sym + " " + _tf_txt + " FVG") : ("FVG NODE [" + _tf_txt + "] " + _dir_sym + " [" + str.tostring(_gap_size, format.mintick) + "]"),
+                 text = showms == 'Symbol' ? (_dir_sym + " " + _tf_txt + " FVG") : ("◈ FVG NODE [" + _tf_txt + "] " + _dir_sym + " [" + str.tostring(_gap_size, format.mintick) + "]"),
                  text_size = size.auto, 
-                 text_formatting = text.format_bold,
                  text_valign = text.align_center, 
                  text_halign = text.align_right, 
                  bgcolor = _is_selected ? _bg_col : Transparent_Color, 
                  text_color = _txt_col, 
-                 border_color = Transparent_Color, 
+                 border_color = color.new(_col, 40),
                  border_width = 1)
+            box.set_text_formatting(_b, text.format_bold)
                  
             line _l = line.new(_is_htf ? _x1 : bar_index[1], _mid, target_right_bar, _mid, 
-                 color = _col, width = 1, style = _is_htf ? line.style_dashed : line.style_dotted)
+                 color = _col, width = 1, style = _is_htf ? line.style_solid : line.style_dashed)
                  
             [_b, _l]
         else
@@ -783,11 +783,11 @@ f_update_pd_zones(bool _show, float[] _arr_high, float[] _arr_low, line _mid_lin
             box.set_lefttop(_disc_box, _start, _eq), box.set_rightbottom(_disc_box, _end, _l)
             box.set_bgcolor(_disc_box, color.new(col_bull, 92))
         if not na(_l_top)
-            label.set_xy(_l_top, _end + 2, _h), label.set_text(_l_top, _tf_txt + " PREMIUM (1)")
+            label.set_xy(_l_top, _end + 2, _h), label.set_text(_l_top, "◈ " + _tf_txt + " PREMIUM")
         if not na(_l_mid)
-            label.set_xy(_l_mid, _end + 2, _eq), label.set_text(_l_mid, _tf_txt + " EQ (0.5)")
+            label.set_xy(_l_mid, _end + 2, _eq), label.set_text(_l_mid, "◈ " + _tf_txt + " EQ 0.5")
         if not na(_l_bot)
-            label.set_xy(_l_bot, _end + 2, _l), label.set_text(_l_bot, _tf_txt + " DISCOUNT (0)")
+            label.set_xy(_l_bot, _end + 2, _l), label.set_text(_l_bot, "◈ " + _tf_txt + " DISCOUNT")
 
 // B. Universal SND Mitigation
 f_mitigate_snd_universal(bool _is_supply, bool _is_htf, float[] _levels, bool[] _mit_status, box[] _boxes, line[] _lines, float _price_trigger) =>
@@ -807,7 +807,7 @@ f_mitigate_snd_universal(bool _is_supply, bool _is_htf, float[] _levels, bool[] 
                     color _c_line = _is_sel_mit ? (_is_supply ? col_bear : col_bull) : Transparent_Color 
                     
                     box _b = array.get(_boxes, i)
-                    box.set_text(_b, showms == 'Symbol' ? (_dir_str + " " + _tf_str) : (_type_str + " NODE [" + _tf_str + "]"))
+                    box.set_text(_b, showms == 'Symbol' ? (_dir_str + " " + _tf_str) : ("✖ " + _type_str + " NODE [" + _tf_str + "]"))
                     box.set_text_size(_b, size.auto)
                     box.set_text_formatting(_b, text.format_bold)
                     box.set_right(_b, bar_index)
@@ -837,7 +837,7 @@ f_mitigate_fvg_universal(bool _is_up, bool _is_htf, float[] _highs, float[] _low
                     color _c_main = _is_sel ? mitigated_color : Transparent_Color
                     
                     box _b = array.get(_boxes, i)
-                    box.set_text(_b, showms == 'Symbol' ? (_sym + " " + _tf_str + " FVG") : ("FVG NODE [" + _tf_str + "] " + _sym + " " + _size_txt))
+                    box.set_text(_b, showms == 'Symbol' ? (_sym + " " + _tf_str + " FVG") : ("✖ FVG NODE [" + _tf_str + "] " + _sym + " " + _size_txt))
                     box.set_text_size(_b, size.auto)
                     box.set_text_formatting(_b, text.format_bold)
                     box.set_right(_b, bar_index)
@@ -870,7 +870,7 @@ manage_breakers(line[] _lns, label[] _lbls, float[] _lvls, bool[] _is_bulls, boo
                     if mitigated
                         array.set(_mits, i, true)             
                         string type_txt = is_bull ? "▲" : "▼"             
-                        label.set_text(lb, _tf_txt + " " + type_txt + "\n❒ " + "")            
+                        label.set_text(lb, "✖ " + _tf_txt + " BREAKER NODE " + type_txt)
                         label.set_textcolor(lb, mitigated_color)           
                         line.set_x2(l, bar_index)
                         line.set_color(l, mitigated_color) 
@@ -903,7 +903,7 @@ detect_and_draw_ifvg(float[] _arr_highs, float[] _arr_lows, box[] _arr_boxes, li
             bool is_valid_prob = ifvg_selected_high_prob ? (gap >= _threshold * 2) : true
             // Label Logic: Bull Origin (Demand) -> Break Bawah -> Jadi Bearish IFVG (Resistance)
             string _dir_ifvg = _is_bull_origin ? "▼" : "▲"
-            string base_txt = "INVERSION FVG [" + _tf_label + "] " + _dir_ifvg
+            string base_txt = "◈ INVERSION NODE [" + _tf_label + "] " + _dir_ifvg
 
             // A. Creation Logic (Terjadi Breakout)
             if not is_ifvg and is_valid_prob
@@ -921,8 +921,11 @@ detect_and_draw_ifvg(float[] _arr_highs, float[] _arr_lows, box[] _arr_boxes, li
                     array.set(_arr_is_ifvg, i, true)
                     array.set(_arr_mits, i, true) // Tandai FVG asli sebagai 'invalid/mitigated' agar logika FVG biasa berhenti
                     
+                    color _ifvg_col = not _is_bull_origin ? col_bull : col_bear
                     // Visual Change untuk Inversion
-                    box.set_bgcolor(b, Transparent_Color), box.set_border_color(b, Transparent_Color)
+                    box.set_bgcolor(b, color.new(_ifvg_col, 95))
+                    box.set_border_color(b, color.new(_ifvg_col, 60))
+                    box.set_border_width(b, 1)
                     box.set_text(b, base_txt), box.set_text_size(b, size.auto)
                     box.set_text_formatting(b, text.format_bold)
                     box.set_right(b, bar_index + 5), line.set_x2(l, bar_index + 5)
@@ -940,7 +943,9 @@ detect_and_draw_ifvg(float[] _arr_highs, float[] _arr_lows, box[] _arr_boxes, li
                 if mitigated
                     array.set(_arr_mit_ifvg, i, true)
                     // Visual Mitigated (Pudar)
-                    box.set_text(b, base_txt + " "), box.set_text_color(b, mitigated_color)
+                    box.set_bgcolor(b, mitigated_box_color)
+                    box.set_border_color(b, color.new(mitigated_color, 60))
+                    box.set_text(b, "✖ " + base_txt), box.set_text_color(b, mitigated_color)
                     line.set_color(l, mitigated_color)
                     box.set_right(b, bar_index), line.set_x2(l, bar_index)
                 else
@@ -1048,12 +1053,12 @@ if array.size(htf_supply_high) > 0
         array.set(htf_ms_bull_breakout, i, true)
         // Visual
         line.set_x2(array.get(htf_ms_bull_line, i), bar_index), line.set_color(array.get(htf_ms_bull_line, i), htf_MSS_selected ? col_bull : Transparent_Color)
-        label.set_text(array.get(htf_ms_bull_label, i), showms == 'Symbol' ? '●' : 'MSS [HTF] ▲'), label.set_textcolor(array.get(htf_ms_bull_label, i), htf_MSS_selected ? col_bull : Transparent_Color)
+        label.set_text(array.get(htf_ms_bull_label, i), showms == 'Symbol' ? '●' : 'MSS NODE [HTF] ▲'), label.set_textcolor(array.get(htf_ms_bull_label, i), htf_MSS_selected ? col_bull : Transparent_Color)
         // Breaker
         if breaker_htf_selected
             delete_opposite_breakers(true, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
             array.push(htf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bull)), array.push(htf_bk_levels, _lvl)
-            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="BREAKER [HTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.auto,color = box_col_bull))
+            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [HTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.auto,color = box_col_bull))
             array.push(htf_bk_is_bull, true), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
     // LQS Logic
     else if not array.get(htf_ms_bull_breakout, i) and high >= _lvl
@@ -1068,12 +1073,12 @@ if array.size(htf_demand_low) > 0
         array.set(htf_ms_bear_breakout, i, true)
         // Visual
         line.set_x2(array.get(htf_ms_bear_line, i), bar_index), line.set_color(array.get(htf_ms_bear_line, i), htf_MSS_selected ? col_bear : Transparent_Color)
-        label.set_text(array.get(htf_ms_bear_label, i), showms == 'Symbol' ? '●' : 'MSS [HTF] ▼'), label.set_textcolor(array.get(htf_ms_bear_label, i), htf_MSS_selected ? col_bear : Transparent_Color)
+        label.set_text(array.get(htf_ms_bear_label, i), showms == 'Symbol' ? '●' : 'MSS NODE [HTF] ▼'), label.set_textcolor(array.get(htf_ms_bear_label, i), htf_MSS_selected ? col_bear : Transparent_Color)
         // Breaker
         if breaker_htf_selected
             delete_opposite_breakers(false, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
             array.push(htf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bear)), array.push(htf_bk_levels, _lvl)
-            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="BREAKER [HTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.auto,color = box_col_bear ))
+            array.push(htf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [HTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.auto,color = box_col_bear ))
             array.push(htf_bk_is_bull, false), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
     // LQS Logic
     else if not array.get(htf_ms_bear_breakout, i) and low <= _lvl
@@ -1088,11 +1093,11 @@ if array.size(ltf_supply_high) > 0
     if not array.get(ltf_ms_bull_breakout, i) and ta.crossover(close, _lvl) and ltf_bull_filter_ok
         array.set(ltf_ms_bull_breakout, i, true)
         line.set_x2(array.get(ltf_ms_bull_line, i), bar_index), line.set_color(array.get(ltf_ms_bull_line, i), ltf_MSS_selected ? col_bull : Transparent_Color)
-        label.set_text(array.get(ltf_ms_bull_label, i), showms == 'Symbol' ? '〇' : 'MSS [LTF] ▲'), label.set_textcolor(array.get(ltf_ms_bull_label, i), ltf_MSS_selected ? col_bull : Transparent_Color)
+        label.set_text(array.get(ltf_ms_bull_label, i), showms == 'Symbol' ? '〇' : 'MSS NODE [LTF] ▲'), label.set_textcolor(array.get(ltf_ms_bull_label, i), ltf_MSS_selected ? col_bull : Transparent_Color)
         if breaker_ltf_selected
             delete_opposite_breakers(true, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
             array.push(ltf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bull, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
-            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="BREAKER [LTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.auto,color = box_col_bull))
+            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [LTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.auto,color = box_col_bull))
             array.push(ltf_bk_is_bull, true), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
     else if not array.get(ltf_ms_bull_breakout, i) and high >= _lvl
         line.set_x2(array.get(ltf_ms_bull_line, i), bar_index), line.set_color(array.get(ltf_ms_bull_line, i), ltf_lqs_selected ? col_bear : Transparent_Color)
@@ -1105,11 +1110,11 @@ if array.size(ltf_demand_low) > 0
     if not array.get(ltf_ms_bear_breakout, i) and ta.crossunder(close, _lvl) and ltf_bear_filter_ok
         array.set(ltf_ms_bear_breakout, i, true)
         line.set_x2(array.get(ltf_ms_bear_line, i), bar_index), line.set_color(array.get(ltf_ms_bear_line, i), ltf_MSS_selected ? col_bear : Transparent_Color)
-        label.set_text(array.get(ltf_ms_bear_label, i), showms == 'Symbol' ? '〇' : 'MSS [LTF] ▼'), label.set_textcolor(array.get(ltf_ms_bear_label, i), ltf_MSS_selected ? col_bear : Transparent_Color)
+        label.set_text(array.get(ltf_ms_bear_label, i), showms == 'Symbol' ? '〇' : 'MSS NODE [LTF] ▼'), label.set_textcolor(array.get(ltf_ms_bear_label, i), ltf_MSS_selected ? col_bear : Transparent_Color)
         if breaker_ltf_selected
             delete_opposite_breakers(false, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
             array.push(ltf_bk_lines, line.new(bar_index, _lvl, bar_index + 5, _lvl, color=col_bear, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
-            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="BREAKER [LTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.auto,color = box_col_bear))
+            array.push(ltf_bk_labels, label.new(bar_index + 5, _lvl, text="◈ BREAKER NODE [LTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.auto,color = box_col_bear))
             array.push(ltf_bk_is_bull, false), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
     else if not array.get(ltf_ms_bear_breakout, i) and low <= _lvl
         line.set_x2(array.get(ltf_ms_bear_line, i), bar_index), line.set_color(array.get(ltf_ms_bear_line, i), ltf_lqs_selected ? col_bull : Transparent_Color)
@@ -1591,7 +1596,7 @@ f_draw_kz(string _sess, color _col, string _txt) =>
     // Detect Start Session (Vertical Line)
     if in_session and not in_session[1]
         line.new(bar_index, high, bar_index, low, extend=extend.both, color=_col, style=line.style_solid, width=1)
-        label.new(bar_index, high, text=_txt, yloc=yloc.abovebar, color=color.new(white, 100), style=label.style_none, textcolor=_col, size=size.auto)
+        label.new(bar_index, high, text="◈ SESSION: " + _txt, yloc=yloc.abovebar, color=color.new(white, 100), style=label.style_none, textcolor=_col, size=size.auto, text_formatting=text.format_bold)
     
     // Detect End Session (Vertical Line)
     if not in_session and in_session[1]
@@ -1682,7 +1687,7 @@ f_get_fast_zone_status(float p, float[] _sup_h, float[] _sup_l, float[] _dem_h, 
             // Cek apakah indeks aman sebelum diambil
             bool _stat = array.get(_is_ifvg, i)
             if _stat and f_is_inside(p, array.get(_ifvg_h, i), array.get(_ifvg_l, i))
-                _s := "INVERSION FVG"
+                _s := "INVERSION NODE"
                 _c := yellow
                 break 
 
@@ -1815,53 +1820,53 @@ if show_table and barstate.islast
     var table hud = table.new(table_pos, 2, max_rows, bgcolor=color.new(dark, 100), border_color=color.new(col_poc, 90), border_width=1, frame_color=color.new(col_poc, 60), frame_width=1)
     
     // ROW 0: Ticker & Price
-    table.cell(hud, 0, 0, syminfo.ticker, text_color=white, text_halign=text.align_left, text_size=table_size, text_formatting=text.format_bold, bgcolor=color.new(col_poc, 90))
+    table.cell(hud, 0, 0, "◈ " + syminfo.ticker, text_color=white, text_halign=text.align_left, text_size=table_size, text_formatting=text.format_bold, bgcolor=color.new(col_poc, 90))
     table.cell(hud, 1, 0, str.tostring(close, format.mintick), text_color=white, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold, bgcolor=color.new(col_poc, 90))
     
     // ROW 1: Separator
     table.merge_cells(hud, 0, 1, 1, 1)
-    table.cell(hud, 0, 1, "════════════════════", text_color=color.new(col_poc, 50), text_size=table_size, height=0, bgcolor=get_table_bg(0, 1, 2, max_rows))
+    table.cell(hud, 0, 1, "━━━━━━━━━━━━━━━", text_color=color.new(col_poc, 50), text_size=table_size, height=0, bgcolor=get_table_bg(0, 1, 2, max_rows))
 
 
     // ROW 2: HTF BIAS
-    table.cell(hud, 0, 2, "HTF Bias", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 2, 2, max_rows))
+    table.cell(hud, 0, 2, "◈ HTF Bias", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 2, 2, max_rows))
     table.cell(hud, 1, 2, htf_txt, text_color=htf_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold, bgcolor=get_table_bg(1, 2, 2, max_rows))
 
     // ROW 3: LTF TREND
-    table.cell(hud, 0, 3, "LTF Trend", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 3, 2, max_rows))
+    table.cell(hud, 0, 3, "◈ LTF Trend", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 3, 2, max_rows))
     table.cell(hud, 1, 3, ltf_txt, text_color=ltf_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold, bgcolor=get_table_bg(1, 3, 2, max_rows))
 
     // ROW 4: Separator
     table.merge_cells(hud, 0, 4, 1, 4)
-    table.cell(hud, 0, 4, "════════════════════", text_color=color.new(col_poc, 50), text_size=table_size, height=0, bgcolor=get_table_bg(0, 4, 2, max_rows))
+    table.cell(hud, 0, 4, "━━━━━━━━━━━━━━━", text_color=color.new(col_poc, 50), text_size=table_size, height=0, bgcolor=get_table_bg(0, 4, 2, max_rows))
 
     // ROW 5: ZONE STATUS
-    table.cell(hud, 0, 5, "Status", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 5, 2, max_rows))
+    table.cell(hud, 0, 5, "◈ Node State", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 5, 2, max_rows))
     table.cell(hud, 1, 5, final_zone_txt, text_color=final_zone_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold, bgcolor=get_table_bg(1, 5, 2, max_rows))
 
     // ROW 6: PRESSURE
-    table.cell(hud, 0, 6, "Power", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 6, 2, max_rows))
+    table.cell(hud, 0, 6, "◈ Core Power", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 6, 2, max_rows))
     table.cell(hud, 1, 6, pressure_txt, text_color=pressure_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold, bgcolor=get_table_bg(1, 6, 2, max_rows))
 
     // ROW 7: LIQUIDITY
-    table.cell(hud, 0, 7, "Road", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 7, 2, max_rows))
+    table.cell(hud, 0, 7, "◈ Liquidity", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 7, 2, max_rows))
     table.cell(hud, 1, 7, liq_warn, text_color=liq_col, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold, bgcolor=get_table_bg(1, 7, 2, max_rows))
 
     // ROW 8: Separator
     table.merge_cells(hud, 0, 8, 1, 8)
-    table.cell(hud, 0, 8, "════════════════════", text_color=color.new(col_poc, 50), text_size=table_size, height=0, bgcolor=get_table_bg(0, 8, 2, max_rows))
+    table.cell(hud, 0, 8, "━━━━━━━━━━━━━━━", text_color=color.new(col_poc, 50), text_size=table_size, height=0, bgcolor=get_table_bg(0, 8, 2, max_rows))
 
     // ROW 9: MULTI-SESSION & COUNTDOWN
-    table.cell(hud, 0, 9, "Session", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 9, 2, max_rows))
+    table.cell(hud, 0, 9, "◈ Sessions", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 9, 2, max_rows))
     table.cell(hud, 1, 9, sess_stat, text_color=white, text_halign=text.align_right, text_size=table_size, text_formatting=text.format_bold, bgcolor=get_table_bg(1, 9, 2, max_rows))
 
     // ROW 10: CLOCK
-    table.cell(hud, 0, 10, "Local Time", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 10, 2, max_rows))
+    table.cell(hud, 0, 10, "◈ Technical Time", text_color=white, text_halign=text.align_left, text_size=table_size, bgcolor=get_table_bg(0, 10, 2, max_rows))
     table.cell(hud, 1, 10, time_now_str, text_color=white, text_halign=text.align_right, text_size=table_size, bgcolor=get_table_bg(1, 10, 2, max_rows))
 
     // ROW 11: FOOTER
     table.merge_cells(hud, 0, 11, 1, 11)
-    table.cell(hud, 0, 11, "MS CLASIC V.9.5.0", text_color=white, text_size=table_size, text_formatting=text.format_bold, bgcolor=color.new(col_poc, 90))
+    table.cell(hud, 0, 11, "MS CLASIC V.9.5.5 PRO", text_color=white, text_size=table_size, text_formatting=text.format_bold, bgcolor=color.new(col_poc, 90))
 //═══════════════════════════════════════════════════════════════════════════════
 // LOGO GRADIENT ENHANCED - TOTAL SYNC (LINES & FILL)
 //═══════════════════════════════════════════════════════════════════════════════
@@ -1926,7 +1931,7 @@ var line Line1b5 = na
 var line Line1b6 = na
 var line Line1b7 = na
 var line Line1b8 = na
-var label[] brand_labels = array.new_label(0)
+var brand_labels = array.new<label>(0)
 
 // Hapus Garis Sebelumnya (Selalu dijalankan agar bersih saat dimatikan)
 if not na(Line1b)
