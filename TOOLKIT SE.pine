@@ -1,7 +1,7 @@
 // _________________________________________
 // MountAlgo
 //@version=6
-indicator(title="Toolkit Smoothed EMA V2 Pro MountAlgo", shorttitle="Toolkit SE Pro", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+indicator(title="Toolkit Smoothed EMA V2 Pro MountAlgo", short_title="Toolkit SE Pro", overlay=true, max_boxes=500, max_lines=500, max_labels=500)
 
 // _________________________________________
 // 1. VISUAL THEMES & GLOBAL SETTINGS
@@ -178,58 +178,58 @@ if show_snr
 // _________________________________________
 string grp_fvg = "FVG Settings"
 show_fvg = input.bool(false, "Show FVG Zones", group=grp_fvg)
+show_mit_fvg = input.bool(true, "Show Mitigated FVG", group=grp_fvg)
 fvg_tf = input.timeframe("", "FVG Timeframe", group=grp_fvg)
 extend_fvg = input.bool(false, "Extend FVG Boxes", group=grp_fvg)
-max_fvg = input.int(4, "Max FVG Boxes", minval=1, group=grp_fvg)
+max_fvg = input.int(10, "Max FVG Boxes", minval=1, group=grp_fvg)
 
-var box[] bull_fvgs = array.new_box()
-var box[] bear_fvgs = array.new_box()
+type FVG
+    box main_box
+    float top
+    float bottom
+    bool is_bull
+    bool active
 
-find_fvg(t) =>
+var array<FVG> fvg_zones = array.new<FVG>()
+
+find_fvg() =>
     if barstate.isconfirmed
         is_bull = low > high[2]
         is_bear = high < low[2]
         if is_bull or is_bear
-            [time - t * 60000 * 2, is_bull ? low : low[2], is_bull ? high[2] : high, is_bull ? 1 : -1]
+            [time[2], is_bull ? low : low[2], is_bull ? high[2] : high, is_bull ? 1 : -1]
         else
             [na, na, na, 0]
     else
         [na, na, na, 0]
 
-[_fvg_time, _fvg_top, _fvg_bot, _fvg_dir] = request.security(syminfo.tickerid, fvg_tf, find_fvg(1))
+[_fvg_time, _fvg_top, _fvg_bot, _fvg_dir] = request.security(syminfo.tickerid, fvg_tf, find_fvg())
 
-if timeframe.change(fvg_tf) and show_fvg and not na(_fvg_time)
-    _col = _fvg_dir > 0 ? color.new(col_bull, 80) : color.new(col_bear, 80)
+if ta.change(_fvg_time) and show_fvg and not na(_fvg_time)
+    _col = _fvg_dir > 0 ? color.new(col_bull, 85) : color.new(col_bear, 85)
     _txt = fvg_tf + " FVG"
-    _box = box.new(_fvg_time, _fvg_top, last_bar_time + 60000, _fvg_bot, bgcolor=_col, border_color=na, text=_txt, text_size=size.tiny, text_color=white, xloc=xloc.bar_time, extend=extend_fvg ? extend.right : extend.none)
-    if _fvg_dir > 0
-        array.push(bull_fvgs, _box)
-        if array.size(bull_fvgs) > max_fvg
-            box.delete(array.shift(bull_fvgs))
-    else if _fvg_dir < 0
-        array.push(bear_fvgs, _box)
-        if array.size(bear_fvgs) > max_fvg
-            box.delete(array.shift(bear_fvgs))
+    _box = box.new(_fvg_time, _fvg_top, last_bar_time + (timenow - time), _fvg_bot, bgcolor=_col, border_color=na, text=_txt, text_size=size.tiny, text_color=color.new(white, 50), xloc=xloc.bar_time, extend=extend_fvg ? extend.right : extend.none)
+    array.push(fvg_zones, FVG.new(_box, _fvg_top, _fvg_bot, _fvg_dir > 0, true))
+    if array.size(fvg_zones) > max_fvg
+        FVG _old = array.shift(fvg_zones)
+        box.delete(_old.main_box)
 
 // Mitigation logic
-if show_fvg
-    if array.size(bull_fvgs) > 0
-        for i = array.size(bull_fvgs) - 1 to 0
-            _b = array.get(bull_fvgs, i)
-            if low < box.get_bottom(_b)
-                box.delete(_b)
-                array.remove(bull_fvgs, i)
+if show_fvg and array.size(fvg_zones) > 0
+    for i = array.size(fvg_zones) - 1 to 0
+        FVG _z = array.get(fvg_zones, i)
+        if _z.active
+            bool _mit = _z.is_bull ? low < _z.bottom : high > _z.top
+            if _mit
+                _z.active := false
+                if show_mit_fvg
+                    box.set_bgcolor(_z.main_box, color.new(gray, 90))
+                    box.set_text(_z.main_box, "MITIGATED FVG")
+                    box.set_right(_z.main_box, last_bar_time)
+                else
+                    box.delete(_z.main_box)
             else
-                box.set_right(_b, last_bar_time + 60000)
-
-    if array.size(bear_fvgs) > 0
-        for i = array.size(bear_fvgs) - 1 to 0
-            _b = array.get(bear_fvgs, i)
-            if high > box.get_top(_b)
-                box.delete(_b)
-                array.remove(bear_fvgs, i)
-            else
-                box.set_right(_b, last_bar_time + 60000)
+                box.set_right(_z.main_box, last_bar_time + (timenow - time))
 
 // _________________________________________
 // 7. PROFESSIONAL UI: TABLE & LOGO
@@ -274,17 +274,22 @@ if show_table and barstate.islast
 
 // Logo animation logic
 float breathe = (math.sin(timenow / 1000 * 3) + 1) / 2
+var line logo_line = na
+var label logo_label = na
 
 if show_logo and barstate.islast
+    line.delete(logo_line)
+    label.delete(logo_label)
     int l_off = 40
     float logo_base = ta.lowest(low, 200) - ta.atr(200)
     float h_unit = ta.atr(200) * 1.5
 
     // Simplified Logo Geometry
-    line.new(bar_index + l_off + 4, logo_base + h_unit * 0.2, bar_index + l_off + 11, logo_base + h_unit * 0.7, color=col_poc, width=1)
-    label.new(bar_index + l_off + 25, logo_base + h_unit * 0.4, "MountAlgo", style=label.style_none, textcolor=col_poc, size=size.huge)
+    logo_line := line.new(bar_index + l_off + 4, logo_base + h_unit * 0.2, bar_index + l_off + 11, logo_base + h_unit * 0.7, color=color.new(col_poc, math.round(breathe * 50)), width=1)
+    logo_label := label.new(bar_index + l_off + 25, logo_base + h_unit * 0.4, "MountAlgo", style=label.style_none, textcolor=col_poc, size=size.huge)
 
 // _________________________________________
 // 8. CANDLE PLOT
 // _________________________________________
-plotcandle(open, high, low, close, title="Toolkit Candles", color=show_plot_candle ? (emaup_trend ? color.new(col_bull, 70) : color.new(col_bear, 70)) : na, wickcolor=show_plot_candle ? (emaup_trend ? col_bull : col_bear) : na, bordercolor=show_plot_candle ? dark : na)
+c_wick = emaup_trend ? col_bull : col_bear
+plotcandle(open, high, low, close, title="Toolkit Candles", color=show_plot_candle ? color.new(c_wick, 70) : na, wickcolor=show_plot_candle ? c_wick : na, bordercolor=show_plot_candle ? c_wick : na)
