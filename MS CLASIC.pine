@@ -1080,9 +1080,13 @@ if na(htf_poc_line)
 ltf_calc_start = math.min(nz(ltf_last_sh_idx, bar_index), nz(ltf_last_sl_idx, bar_index))
 f_update_pd_zones(show_pd_ltf, ltf_last_sh, ltf_last_sl, ltf_calc_start, last_bar_index + OFF_LTF_PD_S, last_bar_index + OFF_LTF_PD_E, ltf_mid_line, ltf_premium_box, ltf_discount_box, ltf_vp_boxes, ltf_poc_line, ltf_vah_line, ltf_val_line, ltf_lvn_boxes, "LTF")
 
-htf_sh_idx = ta.barssince(time <= htf_sh_time)
-htf_sl_idx = ta.barssince(time <= htf_sl_time)
-htf_calc_start = bar_index - math.max(nz(htf_sh_idx, 0), nz(htf_sl_idx, 0))
+htf_calc_start = bar_index
+if barstate.islast
+    long_ago = math.min(htf_sh_time, htf_sl_time)
+    for i = 0 to math.min(bar_index, 4999)
+        if time[i] <= long_ago
+            htf_calc_start := bar_index - i
+            break
 f_update_pd_zones(show_pd_htf, htf_sh, htf_sl, htf_calc_start, last_bar_index + OFF_HTF_PD_S, last_bar_index + OFF_HTF_PD_E, htf_mid_line, htf_premium_box, htf_discount_box, htf_vp_boxes, htf_poc_line, htf_vah_line, htf_val_line, htf_lvn_boxes, "HTF")
 
 // ==========================================
