@@ -180,6 +180,11 @@ pd_group = 'Premium & Discount'
 show_pd_ltf = input.bool(false, 'Show LTF P/D Zones', group = pd_group)
 // UPDATED: Default set to FALSE
 show_pd_htf = input.bool(true, 'Show HTF P/D Zones', group = pd_group)
+pd_swing_len = input.int(10, '● Swing Pivot Length', minval = 2, group = pd_group)
+vp_bins_in   = input.int(24, '● Volume Profile Bins', minval = 5, maxval = 100, group = pd_group)
+vp_type      = input.string('Normal Buy Sell Volume Profil', '● VP Type', options = ['Delta Profil', 'Normal Buy Sell Volume Profil'], group = pd_group)
+vp_va_perc   = input.float(70.0, '● Value Area (%)', minval = 0.0, maxval = 100.0, step = 5.0, group = pd_group)
+show_vp_lvn  = input.bool(true, '● Show LVN (Low Volume Nodes)', group = pd_group)
 eq_group = 'EQH / EQL Settings'
 // UPDATED: Default set to FALSE
 show_eq = input.bool(true, 'Show EQH/EQL', group = eq_group)
@@ -359,16 +364,22 @@ var array<int> ltf_bk_created_at = array.new_int(0)
 var line ltf_mid_line = na
 var box ltf_premium_box = na
 var box ltf_discount_box = na
-var label ltf_pd_label_top = na
-var label ltf_pd_label_mid = na
-var label ltf_pd_label_bot = na
+var box[] ltf_vp_boxes = array.new_box()
+var line ltf_poc_line = na
+var line ltf_vah_line = na
+var line ltf_val_line = na
+var box[] ltf_lvn_boxes = array.new_box()
+
 // --- VARIABLES FOR HTF ---
 var line htf_mid_line = na
 var box htf_premium_box = na
 var box htf_discount_box = na
-var label htf_pd_label_top = na
-var label htf_pd_label_mid = na
-var label htf_pd_label_bot = na
+var box[] htf_vp_boxes = array.new_box()
+var line htf_poc_line = na
+var line htf_vah_line = na
+var line htf_val_line = na
+var box[] htf_lvn_boxes = array.new_box()
+
 // Arrays to store active EQ lines
 var array<line> eq_lines = array.new_line()
 var array<label> eq_labels = array.new_label()
@@ -506,11 +517,14 @@ int ltf_first_bar       = math.max(0, bar_index >= 2 ? bar_index[2] : bar_index)
 
 // Right Margin Offset Constants
 OFF_ZONES    = 10
-OFF_BREAKERS = 25
-OFF_EQ       = 40
-OFF_HL_AUTO  = 55
-OFF_PD       = 80
-OFF_LOGO     = 130
+OFF_LTF_PD_S = 15
+OFF_LTF_PD_E = 45
+OFF_HTF_PD_S = 50
+OFF_HTF_PD_E = 80
+OFF_BREAKERS = 95
+OFF_EQ       = 110
+OFF_HL_AUTO  = 125
+OFF_LOGO     = 180
 
 int target_right_bar    = last_bar_index + OFF_ZONES // Extend ke masa depan
 
@@ -726,38 +740,140 @@ if isNewHtfBar
 //═══════════════════════════════════════════════════════════════════════════════
 
 // A. Universal PD Array (Premium/Discount) Updater
-// FIX: Menambahkan argumen '_target_idx' untuk menggantikan 'last_bar'
-f_update_pd_zones(bool _show, float[] _arr_high, float[] _arr_low, line _mid_line, box _prem_box, box _disc_box, label _l_top, label _l_mid, label _l_bot, string _tf_txt, int _target_idx) =>
-    if _show and array.size(_arr_high) > 0 and array.size(_arr_low) > 0
-        float _h = array.get(_arr_high, array.size(_arr_high) - 1)
-        float _l = array.get(_arr_low, array.size(_arr_low) - 1)
+f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_start, int _draw_end, line _mid_line, box _prem_box, box _disc_box, box[] _vp_boxes, line _poc_l, line _vah_l, line _val_l, box[] _lvn_boxes, string _tf_txt) =>
+    if _show and not na(_h) and not na(_l)
         float _eq = (_h + _l) / 2
-        
-        int _start = _target_idx - 15 // Mundur sedikit dari target kanan
-        int _end   = _target_idx
+        int _end = _draw_end
+        int _start = _draw_start
 
-        // Update Visuals
-        // Pastikan objek tidak NA sebelum di-set
+        // Visual Updates
         if not na(_mid_line)
             line.set_xy1(_mid_line, _start, _eq), line.set_xy2(_mid_line, _end, _eq)
+
         if not na(_prem_box)
             box.set_lefttop(_prem_box, _start, _h), box.set_rightbottom(_prem_box, _end, _eq)
             box.set_bgcolor(_prem_box, color.new(col_bear, 80))
+            box.set_text(_prem_box, "◈ PREMIUM NODE [" + _tf_txt + "]")
+            box.set_text_size(_prem_box, size.auto)
+            box.set_text_valign(_prem_box, text.align_top)
+            box.set_text_halign(_prem_box, text.align_center)
+            box.set_text_color(_prem_box, col_bear)
+            box.set_text_formatting(_prem_box, text.format_bold)
+
         if not na(_disc_box)
             box.set_lefttop(_disc_box, _start, _eq), box.set_rightbottom(_disc_box, _end, _l)
             box.set_bgcolor(_disc_box, color.new(col_bull, 80))
-        if not na(_l_top)
-            label.set_xy(_l_top, _end , _h), label.set_text(_l_top, "◈ PREMIUM NODE [" + _tf_txt + "]")
-            label.set_text_formatting(_l_top, text.format_bold)
-            label.set_size(_l_top, size.auto)
-        if not na(_l_mid)
-            label.set_xy(_l_mid, _end , _eq), label.set_text(_l_mid, "◈ EQUILIBRIUM NODE [" + _tf_txt + "]")
-            label.set_text_formatting(_l_mid, text.format_bold)
-            label.set_size(_l_mid, size.auto)
-        if not na(_l_bot)
-            label.set_xy(_l_bot, _end , _l), label.set_text(_l_bot, "◈ DISCOUNT NODE [" + _tf_txt + "]")
-            label.set_text_formatting(_l_bot, text.format_bold)
-            label.set_size(_l_bot, size.auto)
+            box.set_text(_disc_box, "◈ DISCOUNT NODE [" + _tf_txt + "]")
+            box.set_text_size(_disc_box, size.auto)
+            box.set_text_valign(_disc_box, text.align_bottom)
+            box.set_text_halign(_disc_box, text.align_center)
+            box.set_text_color(_disc_box, col_bull)
+            box.set_text_formatting(_disc_box, text.format_bold)
+
+        // Volume Profile Logic (Only on last bar for performance)
+        if barstate.islast
+            while array.size(_vp_boxes) > 0
+                box.delete(array.pop(_vp_boxes))
+            while array.size(_lvn_boxes) > 0
+                box.delete(array.pop(_lvn_boxes))
+
+            int _bars_back = bar_index - _calc_start
+            if _bars_back > 0
+                float _range = _h - _l
+                float _bin_size = _range / vp_bins_in
+
+                array<float> _bin_vol_buy = array.new_float(vp_bins_in, 0.0)
+                array<float> _bin_vol_sell = array.new_float(vp_bins_in, 0.0)
+
+                for i = 0 to math.min(_bars_back, 4999)
+                    float _bar_h = high[i]
+                    float _bar_l = low[i]
+                    float _bar_v = volume[i]
+                    bool _is_up = close[i] >= open[i]
+
+                    for j = 0 to vp_bins_in - 1
+                        float _bin_bot = _l + j * _bin_size
+                        float _bin_top = _bin_bot + _bin_size
+                        float _overlap_h = math.min(_bar_h, _bin_top)
+                        float _overlap_l = math.max(_bar_l, _bin_bot)
+
+                        if _overlap_h > _overlap_l
+                            float _weight = (_overlap_h - _overlap_l) / math.max(1e-9, _bar_h - _bar_l)
+                            if _is_up
+                                array.set(_bin_vol_buy, j, array.get(_bin_vol_buy, j) + _bar_v * _weight)
+                            else
+                                array.set(_bin_vol_sell, j, array.get(_bin_vol_sell, j) + _bar_v * _weight)
+
+                float _total_vol = 0.0
+                float _max_bin_vol = 0.0
+                int _poc_idx = 0
+
+                array<float> _total_bin_vols = array.new_float(vp_bins_in, 0.0)
+                for j = 0 to vp_bins_in - 1
+                    float _v_buy = array.get(_bin_vol_buy, j)
+                    float _v_sell = array.get(_bin_vol_sell, j)
+                    float _v_total = _v_buy + _v_sell
+                    array.set(_total_bin_vols, j, _v_total)
+                    _total_vol += _v_total
+                    if _v_total > _max_bin_vol
+                        _max_bin_vol := _v_total
+                        _poc_idx := j
+
+                float _poc_price = _l + (_poc_idx + 0.5) * _bin_size
+                if not na(_poc_l)
+                    line.set_xy1(_poc_l, _start, _poc_price), line.set_xy2(_poc_l, _end, _poc_price)
+                    line.set_color(_poc_l, col_poc)
+
+                float _va_target = _total_vol * (vp_va_perc / 100.0)
+                float _va_vol = array.get(_total_bin_vols, _poc_idx)
+                int _up_ptr = _poc_idx
+                int _dn_ptr = _poc_idx
+
+                while _va_vol < _va_target and (_up_ptr < vp_bins_in - 1 or _dn_ptr > 0)
+                    float _up_v = _up_ptr < vp_bins_in - 1 ? array.get(_total_bin_vols, _up_ptr + 1) : 0.0
+                    float _dn_v = _dn_ptr > 0 ? array.get(_total_bin_vols, _dn_ptr - 1) : 0.0
+                    if _up_v >= _dn_v and _up_ptr < vp_bins_in - 1
+                        _up_ptr += 1
+                        _va_vol += _up_v
+                    else if _dn_ptr > 0
+                        _dn_ptr -= 1
+                        _va_vol += _dn_v
+                    else
+                        break
+
+                float _vah = _l + (_up_ptr + 1) * _bin_size
+                float _val = _l + _dn_ptr * _bin_size
+
+                if not na(_vah_l)
+                    line.set_xy1(_vah_l, _start, _vah), line.set_xy2(_vah_l, _end, _vah)
+                    line.set_color(_vah_l, color.new(col_poc, 50))
+                if not na(_val_l)
+                    line.set_xy1(_val_l, _start, _val), line.set_xy2(_val_l, _end, _val)
+                    line.set_color(_val_l, color.new(col_poc, 50))
+
+                float _lvn_threshold = _max_bin_vol * 0.2
+                for j = 0 to vp_bins_in - 1
+                    float _v_buy = array.get(_bin_vol_buy, j)
+                    float _v_sell = array.get(_bin_vol_sell, j)
+                    float _v_total = _v_buy + _v_sell
+                    float _y_bot = _l + j * _bin_size
+                    float _y_top = _y_bot + _bin_size
+                    int _max_width = _end - _start
+                    int _vp_end_total = _start + int(_max_width * (_v_total / _max_bin_vol))
+
+                    if vp_type == "Delta Profil"
+                        color _c = (_v_buy - _v_sell) >= 0 ? color.new(col_bull, 60) : color.new(col_bear, 60)
+                        array.push(_vp_boxes, box.new(_start, _y_top, _vp_end_total, _y_bot, bgcolor=_c, border_color=na))
+                    else
+                        int _vp_end_buy = _start + int(_max_width * (_v_buy / _max_bin_vol))
+                        int _vp_end_sell = _vp_end_buy + int(_max_width * (_v_sell / _max_bin_vol))
+                        _vp_end_sell := math.min(_vp_end_sell, _start + _max_width)
+                        array.push(_vp_boxes, box.new(_start, _y_top, _vp_end_buy, _y_bot, bgcolor=color.new(col_bull, 70), border_color=na))
+                        array.push(_vp_boxes, box.new(_vp_end_buy, _y_top, _vp_end_sell, _y_bot, bgcolor=color.new(col_bear, 70), border_color=na))
+
+                    if show_vp_lvn and _v_total < _lvn_threshold and j > 0 and j < vp_bins_in - 1
+                        if _v_total < array.get(_total_bin_vols, j-1) and _v_total < array.get(_total_bin_vols, j+1)
+                            array.push(_lvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(white, 95), border_color=color.new(white, 70), border_width=1))
 
 // B. Universal SND Mitigation
 f_mitigate_snd_universal(bool _is_supply, bool _is_htf, float[] _levels, bool[] _mit_status, box[] _boxes, line[] _lines, float _price_trigger) =>
@@ -920,27 +1036,58 @@ detect_and_draw_ifvg(float[] _arr_highs, float[] _arr_lows, box[] _arr_boxes, li
 //═══════════════════════════════════════════════════════════════════════════════
 
 // --- A. PREMIUM / DISCOUNT ZONES ---
+// Swing Detection for P/D Zones
+ltf_ph = ta.pivothigh(high, pd_swing_len, pd_swing_len)
+ltf_pl = ta.pivotlow(low, pd_swing_len, pd_swing_len)
+
+var float ltf_last_sh = na
+var float ltf_last_sl = na
+var int ltf_last_sh_idx = na
+var int ltf_last_sl_idx = na
+
+if not na(ltf_ph)
+    ltf_last_sh := ltf_ph
+    ltf_last_sh_idx := bar_index - pd_swing_len
+if not na(ltf_pl)
+    ltf_last_sl := ltf_pl
+    ltf_last_sl_idx := bar_index - pd_swing_len
+
+// HTF Swings (Confirmed pivots)
+[htf_sh, htf_sl, htf_sh_time, htf_sl_time] = request.security(syminfo.tickerid, htf_str, [ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), high[pd_swing_len], 0), ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), low[pd_swing_len], 0), ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0), ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0)])
+
 // FIX: Variabel ini sudah dideklarasikan di Global Assets (biasanya). 
 // Kita inisialisasi hanya jika belum ada (NA), agar tidak error "Already Defined".
 if na(ltf_mid_line)
     ltf_mid_line := line.new(na, na, na, na, style=line.style_dashed, color=mitigated_color)
     ltf_premium_box := box.new(na, na, na, na, border_width=0)
     ltf_discount_box := box.new(na, na, na, na, border_width=0)
-    ltf_pd_label_top := label.new(na, na, style=label.style_none, textcolor=mitigated_color, size=size.tiny)
-    ltf_pd_label_mid := label.new(na, na, style=label.style_none, textcolor=mitigated_color, size=size.tiny)
-    ltf_pd_label_bot := label.new(na, na, style=label.style_none, textcolor=mitigated_color, size=size.tiny)
 
 if na(htf_mid_line)
     htf_mid_line := line.new(na, na, na, na, style=line.style_dashed, width=2, color=mitigated_color)
     htf_premium_box := box.new(na, na, na, na, border_width=1, border_color=box_col_bear)
     htf_discount_box := box.new(na, na, na, na, border_width=1, border_color=box_col_bull)
-    htf_pd_label_top := label.new(na, na, style=label.style_label_center, textcolor=dark, size=size.tiny,color = col_bear,text_formatting = text.format_bold)
-    htf_pd_label_mid := label.new(na, na, style=label.style_label_center, textcolor=dark, size=size.tiny,color = mitigated_color,text_formatting = text.format_bold)
-    htf_pd_label_bot := label.new(na, na, style=label.style_label_center, textcolor=dark, size=size.tiny,color = col_bull,text_formatting = text.format_bold)
 
 // Update Zones (Standardized OFF_PD)
-f_update_pd_zones(show_pd_ltf, ltf_supply_high, ltf_demand_low, ltf_mid_line, ltf_premium_box, ltf_discount_box, ltf_pd_label_top, ltf_pd_label_mid, ltf_pd_label_bot, "LTF", last_bar_index + OFF_PD)
-f_update_pd_zones(show_pd_htf, htf_supply_high, htf_demand_low, htf_mid_line, htf_premium_box, htf_discount_box, htf_pd_label_top, htf_pd_label_mid, htf_pd_label_bot, "HTF", last_bar_index + OFF_PD)
+if na(ltf_poc_line)
+    ltf_poc_line := line.new(na, na, na, na, color=col_poc, style=line.style_solid, width=1)
+    ltf_vah_line := line.new(na, na, na, na, color=color.new(col_poc, 50), style=line.style_dashed, width=1)
+    ltf_val_line := line.new(na, na, na, na, color=color.new(col_poc, 50), style=line.style_dashed, width=1)
+if na(htf_poc_line)
+    htf_poc_line := line.new(na, na, na, na, color=col_poc, style=line.style_solid, width=1)
+    htf_vah_line := line.new(na, na, na, na, color=color.new(col_poc, 50), style=line.style_dashed, width=1)
+    htf_val_line := line.new(na, na, na, na, color=color.new(col_poc, 50), style=line.style_dashed, width=1)
+
+ltf_calc_start = math.min(nz(ltf_last_sh_idx, bar_index), nz(ltf_last_sl_idx, bar_index))
+f_update_pd_zones(show_pd_ltf, ltf_last_sh, ltf_last_sl, ltf_calc_start, last_bar_index + OFF_LTF_PD_S, last_bar_index + OFF_LTF_PD_E, ltf_mid_line, ltf_premium_box, ltf_discount_box, ltf_vp_boxes, ltf_poc_line, ltf_vah_line, ltf_val_line, ltf_lvn_boxes, "LTF")
+
+htf_calc_start = bar_index
+if barstate.islast
+    long_ago = math.min(htf_sh_time, htf_sl_time)
+    for i = 0 to math.min(bar_index, 4999)
+        if time[i] <= long_ago
+            htf_calc_start := bar_index - i
+            break
+f_update_pd_zones(show_pd_htf, htf_sh, htf_sl, htf_calc_start, last_bar_index + OFF_HTF_PD_S, last_bar_index + OFF_HTF_PD_E, htf_mid_line, htf_premium_box, htf_discount_box, htf_vp_boxes, htf_poc_line, htf_vah_line, htf_val_line, htf_lvn_boxes, "HTF")
 
 // ==========================================
 // 1. DETECT LOGIC (GLOBAL SCOPE)
