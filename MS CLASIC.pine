@@ -1068,13 +1068,23 @@ if not na(ltf_last_sl) and low < ltf_last_sl
     ltf_last_sl_idx := bar_index
 
 // HTF Swings (Confirmed pivots + Dynamic Extreme)
-[htf_sh_pivot, htf_sl_pivot, htf_sh_p_time, htf_sl_p_time, htf_curr_h, htf_curr_l] = request.security(syminfo.tickerid, htf_str, [ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), high[pd_swing_len], 0), ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), low[pd_swing_len], 0), ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0), ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0), ta.highest(high, 500), ta.lowest(low, 500)])
+// REDUCED LOOKBACK to 150 for "shorter" swing distance and better VP performance
+[htf_sh_pivot, htf_sl_pivot, htf_sh_p_time, htf_sl_p_time, htf_curr_h, htf_curr_l, htf_curr_h_time, htf_curr_l_time] = request.security(syminfo.tickerid, htf_str, [
+     ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), high[pd_swing_len], 0),
+     ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), low[pd_swing_len], 0),
+     ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0),
+     ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0),
+     ta.highest(high, 150),
+     ta.lowest(low, 150),
+     ta.valuewhen(high == ta.highest(high, 150), time, 0),
+     ta.valuewhen(low == ta.lowest(low, 150), time, 0)
+     ])
 
 // Resolve HTF Dynamic Values
-htf_sh = math.max(htf_sh_pivot, htf_curr_h)
-htf_sl = math.min(htf_sl_pivot, htf_curr_l)
-htf_sh_time = htf_sh > htf_sh_pivot ? time : htf_sh_p_time
-htf_sl_time = htf_sl < htf_sl_pivot ? time : htf_sl_p_time
+htf_sh = nz(math.max(nz(htf_sh_pivot), nz(htf_curr_h)), high)
+htf_sl = nz(math.min(nz(htf_sl_pivot, 1e10), nz(htf_curr_l, 1e10)), low)
+htf_sh_time = htf_sh > nz(htf_sh_pivot) ? htf_curr_h_time : htf_sh_p_time
+htf_sl_time = htf_sl < nz(htf_sl_pivot, 1e10) ? htf_curr_l_time : htf_sl_p_time
 
 // FIX: Variabel ini sudah dideklarasikan di Global Assets (biasanya). 
 // Kita inisialisasi hanya jika belum ada (NA), agar tidak error "Already Defined".
@@ -1103,11 +1113,15 @@ f_update_pd_zones(show_pd_ltf, ltf_last_sh, ltf_last_sl, ltf_calc_start, last_ba
 
 htf_calc_start = bar_index
 if barstate.islast
-    long_ago = math.min(htf_sh_time, htf_sl_time)
-    for i = 0 to math.min(bar_index, 4999)
-        if time[i] <= long_ago
-            htf_calc_start := bar_index - i
-            break
+    long_ago = math.min(nz(htf_sh_time, time[math.min(bar_index, 4999)]), nz(htf_sl_time, time[math.min(bar_index, 4999)]))
+    // Safety cap: if time is too old, use oldest available bar
+    if long_ago < time[math.min(bar_index, 4999)]
+        htf_calc_start := bar_index - math.min(bar_index, 4999)
+    else
+        for i = 0 to math.min(bar_index, 4999)
+            if time[i] <= long_ago
+                htf_calc_start := bar_index - i
+                break
 f_update_pd_zones(show_pd_htf, htf_sh, htf_sl, htf_calc_start, last_bar_index + OFF_HTF_PD_S, last_bar_index + OFF_HTF_PD_E, htf_mid_line, htf_premium_box, htf_discount_box, htf_vp_boxes, htf_poc_line, htf_vah_line, htf_val_line, htf_lvn_boxes, "HTF")
 
 // ==========================================
