@@ -128,6 +128,7 @@ bool   show_imb_boxes   = input.bool(true, "Show Imbalance Boxes", group=grp_vis
 
 // Volume Profile Settings
 bool show_vp        = input.bool(true, "Show Volume Profile", group=grp_vp)
+string vp_type      = input.string("Delta", "Profile View Type", options=["Normal", "Delta"], group=grp_vp)
 bool show_vp_labels = input.bool(true, "Show Text Labels", group=grp_vp)
 int  vp_lookback    = input.int(1000, "VP Lookback Length", minval=2, maxval=2000, group=grp_vp) 
 int  vp_rows        = input.int(50, "Profile Row Count", minval=10, maxval=100, group=grp_vp)
@@ -136,7 +137,6 @@ float vp_grain      = input.float(1.0, "Price Grain (Ticks)", minval=0.1, step=0
 
 // Layout Settings
 int vp_width       = input.int(10, "Main VP Width (%)", minval=1, maxval=50, group=grp_vp)
-int vp_split_width = vp_width // input.int(10, "Buy/Sell Bar Width (%)", minval=2, maxval=30, group=grp_vp)
 int vp_h_offset    = input.int(24, "Horizontal Offset (Bars)", minval=0, group=grp_vp)
 int vp_gap         = input.int(2, "Gap between Bars", minval=0, group=grp_vp)
 
@@ -209,7 +209,7 @@ float ema_slope    = (ema_long_val - ema_long_val[10]) / 10
 // -----------------------------------------------------------------------------
 // 2. VOLUME CALCULATION ENGINE
 // -----------------------------------------------------------------------------
-get_tick_volume() => math.max(volume, 1)
+get_tick_volume() => math.max(volume, 0)
 
 get_table_bg(int c, int r, int total_c, int total_r) =>
     float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
@@ -239,8 +239,7 @@ format_vol(float v) =>
     res
 
 // Heuristic Volume Partitioning
-calc_vol_partition() =>
-    float vol = get_tick_volume()
+calc_vol_partition(float vol) =>
     float range_size = high - low
     float b_vol = 0.0
     float s_vol = 0.0
@@ -267,14 +266,14 @@ calc_vol_partition() =>
         s_vol := vol * 0.5
     [b_vol, s_vol]
 
-[buy_vol_heuristic, sell_vol_heuristic] = calc_vol_partition()
+[buy_vol_heuristic, sell_vol_heuristic] = calc_vol_partition(get_tick_volume())
 
 // -----------------------------------------------------------------------------
 // 2. LTF PRECISION ENGINE (HEDGE FUND LEVEL)
 // -----------------------------------------------------------------------------
 // We fetch 1-minute data for the current bar to achieve 100% distribution precision
 get_ltf_v() =>
-    [b, s] = calc_vol_partition()
+    [b, s] = calc_vol_partition(volume)
     [open, high, low, close, volume, b, s]
 
 [ltf_o, ltf_h, ltf_l, ltf_c, ltf_v, ltf_b, ltf_s] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_v())
@@ -289,14 +288,17 @@ float ltf_b_poc    = na
 float ltf_s_poc    = na
 
 int ltf_count = array.size(ltf_v)
+float ltf_v_total = 0.0
 if ltf_count > 0
     float max_b = -1.0
     float max_s = -1.0
     for i = 0 to ltf_count - 1
         float _b = array.get(ltf_b, i)
         float _s = array.get(ltf_s, i)
+        float _v = array.get(ltf_v, i)
         ltf_buy_sum  += _b
         ltf_sell_sum += _s
+        ltf_v_total  += _v
         if _b > max_b
             max_b := _b
             ltf_b_poc := (array.get(ltf_o, i) + array.get(ltf_h, i) + array.get(ltf_l, i) + array.get(ltf_c, i)) / 4
@@ -304,8 +306,12 @@ if ltf_count > 0
             max_s := _s
             ltf_s_poc := (array.get(ltf_o, i) + array.get(ltf_h, i) + array.get(ltf_l, i) + array.get(ltf_c, i)) / 4
 
-float buy_volume  = ltf_count > 0 ? ltf_buy_sum : buy_vol_heuristic
-float sell_volume = ltf_count > 0 ? ltf_sell_sum : sell_vol_heuristic
+// Responsive Volume Engine: Sync LTF with actual HTF volume
+float missing_v = math.max(0, get_tick_volume() - ltf_v_total)
+[miss_b, miss_s] = calc_vol_partition(missing_v)
+
+float buy_volume  = ltf_buy_sum + miss_b
+float sell_volume = ltf_sell_sum + miss_s
 rt_buy_poc  := ltf_b_poc
 rt_sell_poc := ltf_s_poc
 float delta        = buy_volume - sell_volume
@@ -403,6 +409,7 @@ add_ltf_vol(int _rows, float _lowest_p, float _inv_row_h, array<float> _bucket_t
     int ltf_size = array.size(ltf_v)
     float ltf_b_sum = 0.0
     float ltf_s_sum = 0.0
+    float ltf_v_sum = 0.0
     if ltf_size > 0
         for i = 0 to ltf_size - 1
             float _o = array.get(ltf_o, i)
@@ -415,11 +422,16 @@ add_ltf_vol(int _rows, float _lowest_p, float _inv_row_h, array<float> _bucket_t
             distribute_vol(_rows, _lowest_p, _inv_row_h, _o, _h, _l, _c, _v, _bucket_total, _bucket_buy, _bucket_sell)
             ltf_b_sum += _b
             ltf_s_sum += _s
-    else
-        // Fallback to heuristic for current bar if LTF is missing
-        distribute_vol(_rows, _lowest_p, _inv_row_h, open, high, low, close, buy_volume + sell_volume, _bucket_total, _bucket_buy, _bucket_sell)
-        ltf_b_sum := buy_volume
-        ltf_s_sum := sell_volume
+            ltf_v_sum += _v
+
+    // Distribute remaining volume (Responsive/Real-time sync)
+    float remain_v = math.max(0, get_tick_volume() - ltf_v_sum)
+    if remain_v > 0
+        [rb, rs] = calc_vol_partition(remain_v)
+        distribute_vol(_rows, _lowest_p, _inv_row_h, open, high, low, close, remain_v, _bucket_total, _bucket_buy, _bucket_sell)
+        ltf_b_sum += rb
+        ltf_s_sum += rs
+
     [ltf_b_sum, ltf_s_sum]
 
 // -----------------------------------------------------------------------------
@@ -491,7 +503,7 @@ if show_hpoc and (barstate.isconfirmed or barstate.islast)
 // -----------------------------------------------------------------------------
 // 3.5 GLOBAL MARKET METRICS
 // -----------------------------------------------------------------------------
-float daily_open = request.security(syminfo.tickerid, "D", open, lookahead=barmerge.lookahead_on)
+float daily_open = request.security(syminfo.tickerid, "D", open)
 float daily_change_pct = ((close - daily_open) / daily_open) * 100
 
 float mkt_atr_cur = ta.atr(14)
@@ -845,11 +857,9 @@ plotchar(show_s and vol_intensity_sell > 0.5 ? sell_loc : na, "S1H", char="●",
 plotchar(show_s and vol_intensity_sell <= 0.5 ? sell_loc : na, "S2L", char="●", location=location.absolute, color=color.new(c_sell_bubble, 70), size=size.small)
 
 // -----------------------------------------------------------------------------
-// 6. SUPER GRADIENT VP + SPLIT DELTA
+// 6. SUPER GRADIENT VP + DELTA
 // -----------------------------------------------------------------------------
 var box[] vp_boxes = array.new_box()
-var box[] sell_boxes = array.new_box()
-var box[] buy_boxes = array.new_box()
 var box[] total_boxes = array.new_box()
 var line[] total_grad_lines = array.new_line()
 var linefill[] total_fills = array.new<linefill>()
@@ -869,22 +879,13 @@ if vp_hl_expanded
     vp_live_h := high
     vp_live_l := low
 
-var int vp_throttle_ticks = 10
-bool trigger_vp = barstate.isconfirmed or (barstate.isrealtime and vp_tick_count % vp_throttle_ticks == 0)
+bool trigger_vp = barstate.isconfirmed or barstate.isrealtime
 
 if barstate.islast and (trigger_vp or not show_vp or not show_predict)
     if array.size(vp_boxes) > 0
         for i = 0 to array.size(vp_boxes) - 1
             box.delete(array.get(vp_boxes, i))
         array.clear(vp_boxes)
-    if array.size(sell_boxes) > 0
-        for i = 0 to array.size(sell_boxes) - 1
-            box.delete(array.get(sell_boxes, i))
-        array.clear(sell_boxes)
-    if array.size(buy_boxes) > 0
-        for i = 0 to array.size(buy_boxes) - 1
-            box.delete(array.get(buy_boxes, i))
-        array.clear(buy_boxes)
     if array.size(total_boxes) > 0
         for i = 0 to array.size(total_boxes) - 1
             box.delete(array.get(total_boxes, i))
@@ -1105,7 +1106,6 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             predict_reach := predict_count * predict_bars
             int x_vp_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
             int width_scaler_vp = math.round(30 * (vp_width / 10.0))
-            int width_scaler_split = math.round(20 * (vp_split_width / 10.0))
             float inv_fade_range = 1.0 / (40 * row_height)
 
             for i = 0 to n_rows - 1
@@ -1119,8 +1119,8 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     float level_top = level_bottom + row_height
                     
                     // --- DELTA-BASED COLORING ---
-                    // 1. Total VP (Buy Color -> Sell Color based on Delta)
-                    color base_c = b_delta > 0 ? c_buy : (b_delta < 0 ? c_sell : col_poc)
+                    // 1. Total VP (Buy Color -> Sell Color based on Delta or Normal)
+                    color base_c = vp_type == "Normal" ? col_poc : (b_delta > 0 ? c_buy : (b_delta < 0 ? c_sell : col_poc))
                     float pct_total = b_vol * inv_max_total_vol
                     int t_vp = get_profile_alpha(pct_total, level_bottom, close, inv_fade_range)
                     color c_bar_vp = color.new(base_c, t_vp)
@@ -1129,34 +1129,12 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     string txt_delta = show_vp_labels ? ((b_delta > 0 ? "+" : "") + format_vol(b_delta)) : ""
                     
                     if show_vp
-                        string vp_txt = show_vp_labels ? (format_vol(b_vol) + " | " + txt_delta) : ""
+                        string vp_txt = show_vp_labels ? (format_vol(b_vol) + (vp_type == "Delta" ? " | " + txt_delta : "")) : ""
                         box b = box.new(x_vp_start, level_top, x_vp_start + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt, text_formatting = text.format_bold,text_size=size.auto, text_color=dark)
                         array.push(vp_boxes, b)
-                    
-                    // 2. Sell Gradient (Muted -> Theme Peak)
-                    float pct_sell = b_sell * inv_max_split_vol
-                    int t_sell_p = get_profile_alpha(pct_sell, level_bottom, close, inv_fade_range)
-                    color grad_sell = color.new(color.from_gradient(b_sell, 0, max_split_vol, c_sell, col_poc), t_sell_p)
-                    int x_sell_start = x_vp_start + width_scaler_vp + vp_gap
-                    int len_sell = math.round(width_scaler_split * pct_sell)
-                    if len_sell > 0 and show_vp
-                        string txt_sell = show_vp_labels ? format_vol(b_sell) : ""
-                        box bs = box.new(x_sell_start, level_top, x_sell_start + len_sell, level_bottom, border_width=1, border_color=transparent_col, bgcolor=grad_sell, text=txt_sell, text_size=size.auto, text_color=dark,text_formatting = text.format_bold )
-                        array.push(sell_boxes, bs)
-
-                    // 3. Buy Gradient (Muted -> Theme Peak)
-                    float pct_buy = b_buy * inv_max_split_vol
-                    int t_buy_p = get_profile_alpha(pct_buy, level_bottom, close, inv_fade_range)
-                    color grad_buy = color.new(color.from_gradient(b_buy, 0, max_split_vol, c_buy, col_poc), t_buy_p)
-                    int x_buy_start = x_sell_start + width_scaler_split + vp_gap
-                    int len_buy = math.round(width_scaler_split * pct_buy)
-                    if len_buy > 0 and show_vp
-                        string txt_buy = show_vp_labels ? format_vol(b_buy) : ""
-                        box bb = box.new(x_buy_start, level_top, x_buy_start + len_buy, level_bottom, border_width=1, border_color=transparent_col, bgcolor=grad_buy, text=txt_buy, text_size=size.auto, text_color=dark,text_formatting = text.format_bold)
-                        array.push(buy_boxes, bb)
 
             float poc_price = lowest_p + (poc_idx * row_height) + (row_height/2)
-            int end_line = x_vp_start + width_scaler_vp + width_scaler_split*2 + vp_gap*2
+            int end_line = x_vp_start + width_scaler_vp + vp_gap
             int width_scaler_dom_calc = math.round(30 * (vp_width / 10.0))
             int final_end_line = end_line + (show_dom ? vp_gap * 5 + width_scaler_dom_calc : 0)
 
