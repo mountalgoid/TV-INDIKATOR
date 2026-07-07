@@ -15,12 +15,13 @@ color red    = #f23645
 color yellow = #f3ba2f
 color orange = #ff9800
 color blue   = #1848cc
+color brown  = #8b4513
 
 //════════════════════════════════════════════════════════════════════════
 // GROUP & INPUTS
 //════════════════════════════════════════════════════════════════════════
-GlobalGroup = 'Global Settings'
-color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group = GlobalGroup)
+GlobalGroup = 'Visual Themes & Global'
+color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group = GlobalGroup)
 type_ltf_plot_candle = input.string(defval = 'Regular Candles', title = 'Type LTF Plot Candle', options = ['Regular Candles', 'Custom Candles'], group = GlobalGroup)
 type_ltf_color_candle = input.string(defval = 'Based Stochastic RSI', title = 'Type LTF Color Candle', options = ['Regular Color Candles', 'Based Stochastic RSI', 'Based Delta', 'Based EMA'], group = GlobalGroup)
 show_ltf_plot_candle = input.bool(defval = true, title = 'Show LTF Plot Candle', group = GlobalGroup)
@@ -33,15 +34,20 @@ show_volume_profile = input.bool(true, title="Show Volume Profile")
 show_poc = input.bool(true, title="Show POC")
 show_delta = input.bool(true, title="Show Delta")
 show_buy_sell_volume = input.bool(true, title="Show Buy/Sell Volume Labels")
-box_width = 0.4 //input.float(1.0, title="Profile Width Ratio", minval=0.1, maxval=5.0, step = 0.1)
+box_width = input.float(1.5, title="Profile Width Ratio", minval=0.1, maxval=10.0, step = 0.1, group=GlobalGroup)
 rt_offset = 2 // input.int(2, title="Realtime Profile Offset (Bars)", minval=1, maxval=20)
 levels_count = input.int(20, title="Volume Profile Levels", minval=5, maxval=100)
 value_area_pct = 70 // input.int(70, title="Value Area %", minval=10, maxval=100)
+show_lvn = input.bool(true, title="Show LVN (Low Volume Nodes)", group=GlobalGroup)
+lvn_threshold = input.int(15, title="LVN Threshold (%)", minval=1, maxval=50, group=GlobalGroup)
 
 // Colors Assignment
 col_bull = switch color_theme
     'Spartan Edge Theme' => red
     'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
     'Standard Spartan Edge Theme' => green
     'Dark ICT Theme' => green
     'Garuda Gold' => yellow
@@ -53,6 +59,9 @@ col_bull = switch color_theme
 col_bear = switch color_theme
     'Spartan Edge Theme' => gray
     'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
     'Standard Spartan Edge Theme' => red
     'Dark ICT Theme' => gray
     'Garuda Gold' => gray
@@ -64,6 +73,9 @@ col_bear = switch color_theme
 col_poc = switch color_theme
     'Spartan Edge Theme' => white
     'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
     'Standard Spartan Edge Theme' => white
     'Dark ICT Theme' => white
     'Garuda Gold' => white
@@ -112,7 +124,8 @@ get_buy_sell_vol(v, o, h, l, c) =>
 get_table_bg(int c, int r, int total_c, int total_r) =>
     float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
     color base = color.from_gradient(ratio, 0, 1, col_bull, col_bear)
-    int t_alpha = math.round(80 + ratio * 15)
+    // Transparency gradient from 50 (at ratio=0) to 90 (at ratio=1)
+    int t_alpha = math.round(50 + ratio * 40)
     color.new(base, t_alpha)
 
 //════════════════════════════════════════════════════════════════════════
@@ -156,12 +169,24 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         s_buy_vol += b_buy
         s_sell_vol += b_sell
 
-        b_mid = (b_high + b_low) / 2
-        bin_idx = math.min(math.floor((b_mid - s_low) / step), levels_count - 1)
+        int bin_low = math.max(0, math.floor((b_low - s_low) / step))
+        int bin_high = math.min(levels_count - 1, math.floor((b_high - s_low) / step))
         
-        if bin_idx >= 0
-            array.set(vol_dist, int(bin_idx), array.get(vol_dist, int(bin_idx)) + b_vol)
-            array.set(buy_dist, int(bin_idx), array.get(buy_dist, int(bin_idx)) + b_buy)
+        int bins_covered = math.max(1, bin_high - bin_low + 1)
+        float vol_per_bin = b_vol / bins_covered
+        float buy_per_bin = b_buy / bins_covered
+
+        for b_idx = bin_low to bin_high
+            array.set(vol_dist, b_idx, array.get(vol_dist, b_idx) + vol_per_bin)
+            array.set(buy_dist, b_idx, array.get(buy_dist, b_idx) + buy_per_bin)
+
+    // Ensure no empty volume levels to maintain density
+    for i = 0 to levels_count - 1
+        if array.get(vol_dist, i) <= 0
+            // Assign a tiny fraction to ensure a baseline width of 1 is always drawn
+            array.set(vol_dist, i, 1e-7)
+            if array.get(buy_dist, i) <= 0
+                array.set(buy_dist, i, 5e-8)
 
     // POC & VA
     float max_vol = 0.0
@@ -233,6 +258,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
     if show_volume_profile
         int axis_x = is_future ? bar_index + rt_offset : start_idx
         int total_width = is_future ? 15 : (end_idx - start_idx) 
+        int profile_max_width = math.round(total_width * box_width)
         
         color axis_col = color.new(gray, 70)
         if is_future
@@ -257,18 +283,40 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 
                 bool in_va = i >= va_down and i <= va_up
                 float buy_r = buy_val / vol_val
-                color base_col = buy_r > 0.55 ? col_bull : buy_r < 0.45 ? col_bear : mitigated_color
-                if i == poc_idx and show_poc
-                    base_col := color_poc
                 
-                color final_col = color.new(base_col, 0)
+                // 1. Delta-based base color (Organic transition between buy/sell dominance)
+                color delta_col = color.from_gradient(buy_r, 0, 1, col_bear, col_bull)
+
+                // 2. High-Quality Volume Heatmap (Priority for Bull/Bear clarity)
+                // We reserve the POC color for the actual POC to ensure Bull/Bear dominance
+                color heat_col = i == poc_idx and show_poc ? color_poc : delta_col
+
+                // 3. Super Smoothed Glass-Effect Transparency (Ensures low volumes fade seamlessly into the background)
+                // We use a multi-stage alpha calculation for a professional "Heatmap" look
+                float alpha_ratio = math.pow(width_ratio, 0.5)
+                int t_alpha = math.round(96 - (alpha_ratio * 86)) // Transitions from 96 (ultra-transparent) to 10 (high-quality focus)
+                color final_col = color.new(heat_col, t_alpha)
                 
                 float bin_delta = buy_val - (vol_val - buy_val)
                 string txt_vol = (show_buy_sell_volume and width_ratio > 0.15) ? (bin_delta >= 0 ? "+" : "") + str.tostring(math.round(bin_delta)) : ""
+
+                // LVN Identification (Local minima & below threshold)
+                bool is_lvn = false
+                if show_lvn and i > 0 and i < levels_count - 1
+                    v_prev = array.get(vol_dist, i - 1)
+                    v_next = array.get(vol_dist, i + 1)
+                    if vol_val < v_prev and vol_val < v_next and vol_val < max_vol * (lvn_threshold / 100.0)
+                        is_lvn := true
+
                 if is_future
+                    if is_lvn
+                        bx_lvn = box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, bgcolor=color.new(col_poc, 95))
+                        array.push(future_boxes, bx_lvn)
                     bx_vol = box.new(x1, level_high, x2, level_low, border_color=na, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                     array.push(future_boxes, bx_vol)
                 else
+                    if is_lvn
+                        box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, bgcolor=color.new(col_poc, 95))
                     box.new(x1, level_high, x2, level_low, border_color=na, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
 
         // 3. Draw Extended POC & VAH/VAL Boxes
@@ -279,9 +327,9 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         if is_future
             int end_x = axis_x + 35
             // Zoned Background Boxes
-            bx_va_up = box.new(axis_x, s_high, end_x, vah_price, bgcolor=color.new(color_vah, 98), border_color=na)
-            bx_va_mid = box.new(axis_x, vah_price, end_x, val_price, bgcolor=color.new(color_poc, 98), border_color=na)
-            bx_va_dn = box.new(axis_x, val_price, end_x, s_low, bgcolor=color.new(color_val, 98), border_color=na)
+            bx_va_up = box.new(axis_x, s_high, end_x, vah_price, bgcolor=color.new(color_vah, 80), border_color=na)
+            bx_va_mid = box.new(axis_x, vah_price, end_x, val_price, bgcolor=color.new(color_poc, 96), border_color=na)
+            bx_va_dn = box.new(axis_x, val_price, end_x, s_low, bgcolor=color.new(color_val, 80), border_color=na)
             array.push(future_boxes, bx_va_up)
             array.push(future_boxes, bx_va_mid)
             array.push(future_boxes, bx_va_dn)
@@ -320,8 +368,8 @@ if barstate.islast
     if show_buy_sell_volume
         var table info_table = table.new(position.top_right, 2, 5, bgcolor=color.new(dark, 100), border_width=1)
         c_delta = c_bv - c_sv
-        table.cell(info_table, 0, 0, "HTF Flow (Realtime)", text_color=dark, bgcolor=color.new(col_poc, 60))
-        table.cell(info_table, 1, 0, htf_timeframe, text_color=dark, bgcolor=color.new(col_poc, 60))
+        table.cell(info_table, 0, 0, "HTF Flow (Realtime)", text_color=white, bgcolor=color.new(col_poc, 90))
+        table.cell(info_table, 1, 0, htf_timeframe, text_color=white, bgcolor=color.new(col_poc, 90))
         table.cell(info_table, 0, 1, "Buy Vol", text_color=color_text, bgcolor=get_table_bg(0, 1, 2, 5))
         table.cell(info_table, 1, 1, str.tostring(math.round(c_bv)), text_color=col_bull, bgcolor=get_table_bg(1, 1, 2, 5))
         table.cell(info_table, 0, 2, "Sell Vol", text_color=color_text, bgcolor=get_table_bg(0, 2, 2, 5))
