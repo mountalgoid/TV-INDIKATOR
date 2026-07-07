@@ -521,10 +521,10 @@ OFF_LTF_PD_S = 15
 OFF_LTF_PD_E = 45
 OFF_HTF_PD_S = 50
 OFF_HTF_PD_E = 80
-OFF_BREAKERS = 95
-OFF_EQ       = 110
-OFF_HL_AUTO  = 125
-OFF_LOGO     = 180
+OFF_BREAKERS = 10
+OFF_EQ       = 10
+OFF_HL_AUTO  = 10
+OFF_LOGO     = 85
 
 int target_right_bar    = last_bar_index + OFF_ZONES // Extend ke masa depan
 
@@ -860,16 +860,17 @@ f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_sta
                     float _y_top = _y_bot + _bin_size
                     int _max_width = _end - _start
                     int _vp_end_total = _start + int(_max_width * (_v_total / _max_bin_vol))
+                    string _v_txt = str.tostring(_v_total, format.volume)
 
                     if vp_type == "Delta Profil"
                         color _c = (_v_buy - _v_sell) >= 0 ? color.new(col_bull, 60) : color.new(col_bear, 60)
-                        array.push(_vp_boxes, box.new(_start, _y_top, _vp_end_total, _y_bot, bgcolor=_c, border_color=na))
+                        array.push(_vp_boxes, box.new(_start, _y_top, _vp_end_total, _y_bot, bgcolor=_c, border_color=na, text=_v_txt, text_size=size.tiny, text_color=white, text_valign=text.align_center, text_halign=text.align_center))
                     else
                         int _vp_end_buy = _start + int(_max_width * (_v_buy / _max_bin_vol))
                         int _vp_end_sell = _vp_end_buy + int(_max_width * (_v_sell / _max_bin_vol))
                         _vp_end_sell := math.min(_vp_end_sell, _start + _max_width)
-                        array.push(_vp_boxes, box.new(_start, _y_top, _vp_end_buy, _y_bot, bgcolor=color.new(col_bull, 70), border_color=na))
-                        array.push(_vp_boxes, box.new(_vp_end_buy, _y_top, _vp_end_sell, _y_bot, bgcolor=color.new(col_bear, 70), border_color=na))
+                        array.push(_vp_boxes, box.new(_start, _y_top, _vp_end_buy, _y_bot, bgcolor=color.new(col_bull, 70), border_color=na, text=str.tostring(_v_buy, format.volume), text_size=size.tiny, text_color=white, text_valign=text.align_center, text_halign=text.align_center))
+                        array.push(_vp_boxes, box.new(_vp_end_buy, _y_top, _vp_end_sell, _y_bot, bgcolor=color.new(col_bear, 70), border_color=na, text=str.tostring(_v_sell, format.volume), text_size=size.tiny, text_color=white, text_valign=text.align_center, text_halign=text.align_center))
 
                     if show_vp_lvn and _v_total < _lvn_threshold and j > 0 and j < vp_bins_in - 1
                         if _v_total < array.get(_total_bin_vols, j-1) and _v_total < array.get(_total_bin_vols, j+1)
