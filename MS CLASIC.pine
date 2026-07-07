@@ -1059,8 +1059,22 @@ if not na(ltf_pl)
     ltf_last_sl := ltf_pl
     ltf_last_sl_idx := bar_index - pd_swing_len
 
-// HTF Swings (Confirmed pivots)
-[htf_sh, htf_sl, htf_sh_time, htf_sl_time] = request.security(syminfo.tickerid, htf_str, [ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), high[pd_swing_len], 0), ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), low[pd_swing_len], 0), ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0), ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0)])
+// Dynamic update: if price exceeds confirmed swing, update to current extreme
+if not na(ltf_last_sh) and high > ltf_last_sh
+    ltf_last_sh := high
+    ltf_last_sh_idx := bar_index
+if not na(ltf_last_sl) and low < ltf_last_sl
+    ltf_last_sl := low
+    ltf_last_sl_idx := bar_index
+
+// HTF Swings (Confirmed pivots + Dynamic Extreme)
+[htf_sh_pivot, htf_sl_pivot, htf_sh_p_time, htf_sl_p_time, htf_curr_h, htf_curr_l] = request.security(syminfo.tickerid, htf_str, [ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), high[pd_swing_len], 0), ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), low[pd_swing_len], 0), ta.valuewhen(not na(ta.pivothigh(high, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0), ta.valuewhen(not na(ta.pivotlow(low, pd_swing_len, pd_swing_len)), time[pd_swing_len], 0), ta.highest(high, 500), ta.lowest(low, 500)])
+
+// Resolve HTF Dynamic Values
+htf_sh = math.max(htf_sh_pivot, htf_curr_h)
+htf_sl = math.min(htf_sl_pivot, htf_curr_l)
+htf_sh_time = htf_sh > htf_sh_pivot ? time : htf_sh_p_time
+htf_sl_time = htf_sl < htf_sl_pivot ? time : htf_sl_p_time
 
 // FIX: Variabel ini sudah dideklarasikan di Global Assets (biasanya). 
 // Kita inisialisasi hanya jika belum ada (NA), agar tidak error "Already Defined".
