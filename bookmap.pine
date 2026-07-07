@@ -138,6 +138,8 @@ int  vp_lookback_s  = input.int(200, "Short VP Lookback Length", minval=2, maxva
 int  vp_rows        = input.int(50, "Profile Row Count", minval=10, maxval=100, group=grp_vp)
 bool vp_use_grain   = input.bool(false, "Use Price Grain (Tick-based)", group=grp_vp)
 float vp_grain      = input.float(1.0, "Price Grain (Ticks)", minval=0.1, step=0.1, group=grp_vp)
+bool show_lvn       = input.bool(true, "Show LVN (Low Volume Nodes)", group=grp_vp)
+float lvn_threshold = input.float(0.1, "LVN Threshold (%)", minval=0.01, maxval=0.5, step=0.01, group=grp_vp)
 
 // Layout Settings
 int vp_width       = input.int(10, "Main VP Width (%)", minval=1, maxval=50, group=grp_vp)
@@ -872,6 +874,8 @@ var line[] total_grad_lines = array.new_line()
 var linefill[] total_fills = array.new<linefill>()
 var line[] vp_lines = array.new_line()
 var label[] vp_labels = array.new_label()
+var line[] lvn_lines = array.new_line()
+var label[] lvn_labels = array.new_label()
 
 var int vp_tick_count = 0
 var float vp_live_h = 0.0
@@ -921,6 +925,14 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         for i = 0 to array.size(vp_labels) - 1
             label.delete(array.get(vp_labels, i))
         array.clear(vp_labels)
+    if array.size(lvn_lines) > 0
+        for i = 0 to array.size(lvn_lines) - 1
+            line.delete(array.get(lvn_lines, i))
+        array.clear(lvn_lines)
+    if array.size(lvn_labels) > 0
+        for i = 0 to array.size(lvn_labels) - 1
+            label.delete(array.get(lvn_labels, i))
+        array.clear(lvn_labels)
     if array.size(predict_lines) > 0
         for i = 0 to array.size(predict_lines) - 1
             line.delete(array.get(predict_lines, i))
@@ -1003,6 +1015,17 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             float vah_price = lowest_p + (va_top * row_height) + row_height
             float val_price = lowest_p + (va_bot * row_height)
+
+            // --- LVN IDENTIFICATION ---
+            array<int> lvn_indices = array.new_int(0)
+            if show_lvn
+                float threshold_vol = max_total_vol * lvn_threshold
+                for i = 1 to n_rows - 2
+                    float v_prev = array.get(bucket_vol_total, i - 1)
+                    float v_curr = array.get(bucket_vol_total, i)
+                    float v_next = array.get(bucket_vol_total, i + 1)
+                    if v_curr < v_prev and v_curr < v_next and v_curr < threshold_vol
+                        array.push(lvn_indices, i)
 
             // --- HVTs IDENTIFICATION FOR PREDICTION ---
             array.clear(targets_all)
@@ -1188,16 +1211,30 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
                 line l_poc = line.new(x_vp_start, poc_price, final_end_line, poc_price, color=color_vp_poc, width=1)
                 array.push(vp_lines, l_poc)
-                lbl_poc = label.new(final_end_line, poc_price, "POC: " + format_vol(max_total_vol), color=color.new(color_vp_poc, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
+                lbl_poc = label.new(final_end_line, poc_price, "POC: " + str.tostring(poc_price, format.mintick) + " (" + format_vol(max_total_vol) + ")", color=color.new(color_vp_poc, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
                 array.push(vp_labels, lbl_poc)
+
                 line l_vah = line.new(x_vp_start, vah_price, final_end_line, vah_price, color=color.new(white, 0), width=2, style=line.style_dotted)
                 array.push(vp_lines, l_vah)
-                lbl_vah = label.new(final_end_line, vah_price, "VAH", color=color.new(white, 0), textcolor=dark, size=size.small, style=label.style_label_left)
+                float vah_vol = va_top < n_rows ? array.get(bucket_vol_total, va_top) : 0
+                lbl_vah = label.new(final_end_line, vah_price, "VAH: " + str.tostring(vah_price, format.mintick) + " (" + format_vol(vah_vol) + ")", color=color.new(white, 0), textcolor=dark, size=size.small, style=label.style_label_left)
                 array.push(vp_labels, lbl_vah)
+
                 line l_val = line.new(x_vp_start, val_price, final_end_line, val_price, color=color.new(white, 0), width=2, style=line.style_dotted)
                 array.push(vp_lines, l_val)
-                lbl_val = label.new(final_end_line, val_price, "VAL", color=color.new(white, 0), textcolor=dark, size=size.small, style=label.style_label_left)
+                float val_vol = va_bot >= 0 ? array.get(bucket_vol_total, va_bot) : 0
+                lbl_val = label.new(final_end_line, val_price, "VAL: " + str.tostring(val_price, format.mintick) + " (" + format_vol(val_vol) + ")", color=color.new(white, 0), textcolor=dark, size=size.small, style=label.style_label_left)
                 array.push(vp_labels, lbl_val)
+
+                // --- RENDER LVNs ---
+                if show_lvn and array.size(lvn_indices) > 0
+                    for lvn_idx in lvn_indices
+                        float lvn_p = lowest_p + (lvn_idx * row_height) + (row_height/2)
+                        float lvn_v = array.get(bucket_vol_total, lvn_idx)
+                        line ll = line.new(x_vp_start, lvn_p, final_end_line, lvn_p, color=color.new(gray, 50), width=1, style=line.style_dashed)
+                        array.push(lvn_lines, ll)
+                        lbl_l = label.new(final_end_line, lvn_p, "LVN: " + str.tostring(lvn_p, format.mintick) + " (" + format_vol(lvn_v) + ")", color=color.new(gray, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
+                        array.push(lvn_labels, lbl_l)
 
                 line l_vlh = line.new(x_vp_start - 1, val_price, x_vp_start - 1, vah_price, color=color.new(white, 0), width=6, style=line.style_solid)
                 array.push(vp_lines, l_vlh)
