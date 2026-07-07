@@ -1221,7 +1221,9 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     float pct_s = b_s_vol * inv_max_s_vol
                     int t_s = get_profile_alpha(pct_s, level_bottom, close, inv_fade_range)
                     int len_s = math.round(width_scaler_s * pct_s)
-                    box bs = box.new(x_s_start, level_top, x_s_start + len_s, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s))
+                    string txt_s_delta = show_vp_labels ? ((s_delta > 0 ? "+" : "") + format_vol(s_delta)) : ""
+                    string vp_s_txt = show_vp_labels ? (format_vol(b_s_vol) + (vp_type == "Delta" ? " | " + txt_s_delta : "")) : ""
+                    box bs = box.new(x_s_start, level_top, x_s_start + len_s, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
                     array.push(vp_s_boxes, bs)
 
                     if i == poc_s_idx
