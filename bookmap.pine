@@ -59,7 +59,7 @@ string grp_avg    = "Historical Average Plots"
 string grp_predict = "Price Prediction Analysis"
 
 // --- THEME SYSTEM (Ported from EMA BASED SNR) ---
-string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup)
+string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Ghost Protocol'], group=GlobalGroup)
 
 // Core Colors
 color dark   = #000000
@@ -86,6 +86,7 @@ color col_bull = switch color_theme
     'MountAlgo Orange White Theme' => orange
     'DEX Deep' => #a1ff3b
     'Deep Sea' => blue
+    'Ghost Protocol' => white
     => blue
 color col_bear = switch color_theme
     'Spartan Edge Theme' => gray
@@ -100,6 +101,7 @@ color col_bear = switch color_theme
     'MountAlgo Orange White Theme' => gray
     'DEX Deep' => #ff009a
     'Deep Sea' => gray
+    'Ghost Protocol' => gray
     => white
 color col_poc = switch color_theme
     'Spartan Edge Theme' => white
@@ -130,7 +132,9 @@ bool   show_imb_boxes   = input.bool(true, "Show Imbalance Boxes", group=grp_vis
 bool show_vp        = input.bool(true, "Show Volume Profile", group=grp_vp)
 string vp_type      = input.string("Delta", "Profile View Type", options=["Normal", "Delta"], group=grp_vp)
 bool show_vp_labels = input.bool(true, "Show Text Labels", group=grp_vp)
-int  vp_lookback    = input.int(1000, "VP Lookback Length", minval=2, maxval=2000, group=grp_vp) 
+int  vp_lookback    = input.int(1000, "Main VP Lookback Length", minval=2, maxval=2000, group=grp_vp)
+bool show_vp_short  = input.bool(true, "Show Short-Term VP", group=grp_vp)
+int  vp_lookback_s  = input.int(200, "Short VP Lookback Length", minval=2, maxval=1000, group=grp_vp)
 int  vp_rows        = input.int(50, "Profile Row Count", minval=10, maxval=100, group=grp_vp)
 bool vp_use_grain   = input.bool(false, "Use Price Grain (Tick-based)", group=grp_vp)
 float vp_grain      = input.float(1.0, "Price Grain (Ticks)", minval=0.1, step=0.1, group=grp_vp)
@@ -337,9 +341,9 @@ float br_b_p = close > open ? math.min(0.9, 0.6 + b_pos_p * 0.3) : (close < open
 float buy_center  = (w_lower * 0.9 * (low + body_low)/2 + w_body * br_b_p * b_center_p + w_upper * 0.1 * (body_high + high)/2) / math.max(0.001, (w_lower * 0.9 + w_body * br_b_p + w_upper * 0.1))
 float sell_center = (w_upper * 0.9 * (high + body_high)/2 + w_body * (1 - br_b_p) * b_center_p + w_lower * 0.1 * (low + body_low)/2) / math.max(0.001, (w_upper * 0.9 + w_body * (1 - br_b_p) + w_lower * 0.1))
 
-// Accurate Bubble Placement (Real-time LTF POC + Historical Heuristic)
-float buy_loc  = (barstate.isrealtime and not na(rt_buy_poc)) ? rt_buy_poc : buy_center
-float sell_loc = (barstate.isrealtime and not na(rt_sell_poc)) ? rt_sell_poc : sell_center
+// Accurate Bubble Placement (LTF POC + Historical Heuristic Fallback)
+float buy_loc  = not na(rt_buy_poc) ? rt_buy_poc : buy_center
+float sell_loc = not na(rt_sell_poc) ? rt_sell_poc : sell_center
 
 // Distribution Heuristic for Profile
 distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
@@ -567,8 +571,8 @@ if barstate.isconfirmed
     else
         max_vol_history := math.max(max_vol_history * 0.995, total_volume)
 
-float vol_intensity_buy  = max_vol_history > 0 ? math.min(buy_volume / max_vol_history * sensitivity, 1.0) : 0
-float vol_intensity_sell = max_vol_history > 0 ? math.min(sell_volume / max_vol_history * sensitivity, 1.0) : 0
+float vol_intensity_buy  = max_vol_history > 0 ? math.pow(math.min(buy_volume / max_vol_history * sensitivity, 1.0), 0.8) : 0
+float vol_intensity_sell = max_vol_history > 0 ? math.pow(math.min(sell_volume / max_vol_history * sensitivity, 1.0), 0.8) : 0
 bool is_imbalance_buy    = buy_volume > sell_volume * 3 and vol_intensity_buy > 0.3
 bool is_imbalance_sell   = sell_volume > buy_volume * 3 and vol_intensity_sell > 0.3
 
@@ -848,18 +852,21 @@ if array.size(bubble_lines) > 400
 if array.size(bubble_summaries) > 400
     label.delete(array.shift(bubble_summaries))
 
-// Bubble (Optimized 2-tier Scaling to stay under plot limit)
-plotchar(show_b and vol_intensity_buy > 0.5 ? buy_loc : na, "B1H", char="●", location=location.absolute, color=color.new(c_buy_bubble, 40), size=size.large)
-plotchar(show_b and vol_intensity_buy <= 0.5 ? buy_loc : na, "B2L", char="●", location=location.absolute, color=color.new(c_buy_bubble, 70), size=size.small)
+// Bubble (Optimized 3-tier Scaling for High Accuracy & Visual Depth)
+plotchar(show_b and vol_intensity_buy > 0.75 ? buy_loc : na, "B1H", char="●", location=location.absolute, color=color.new(c_buy_bubble, 20), size=size.huge)
+plotchar(show_b and vol_intensity_buy <= 0.75 and vol_intensity_buy > 0.3 ? buy_loc : na, "B2M", char="●", location=location.absolute, color=color.new(c_buy_bubble, 45), size=size.normal)
+plotchar(show_b and vol_intensity_buy <= 0.3 ? buy_loc : na, "B3L", char="●", location=location.absolute, color=color.new(c_buy_bubble, 70), size=size.tiny)
 
 // Sell Side
-plotchar(show_s and vol_intensity_sell > 0.5 ? sell_loc : na, "S1H", char="●", location=location.absolute, color=color.new(c_sell_bubble, 40), size=size.large)
-plotchar(show_s and vol_intensity_sell <= 0.5 ? sell_loc : na, "S2L", char="●", location=location.absolute, color=color.new(c_sell_bubble, 70), size=size.small)
+plotchar(show_s and vol_intensity_sell > 0.75 ? sell_loc : na, "S1H", char="●", location=location.absolute, color=color.new(c_sell_bubble, 20), size=size.huge)
+plotchar(show_s and vol_intensity_sell <= 0.75 and vol_intensity_sell > 0.3 ? sell_loc : na, "S2M", char="●", location=location.absolute, color=color.new(c_sell_bubble, 45), size=size.normal)
+plotchar(show_s and vol_intensity_sell <= 0.3 ? sell_loc : na, "S3L", char="●", location=location.absolute, color=color.new(c_sell_bubble, 70), size=size.tiny)
 
 // -----------------------------------------------------------------------------
 // 6. SUPER GRADIENT VP + DELTA
 // -----------------------------------------------------------------------------
 var box[] vp_boxes = array.new_box()
+var box[] vp_s_boxes = array.new_box()
 var box[] total_boxes = array.new_box()
 var line[] total_grad_lines = array.new_line()
 var linefill[] total_fills = array.new<linefill>()
@@ -886,6 +893,10 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         for i = 0 to array.size(vp_boxes) - 1
             box.delete(array.get(vp_boxes, i))
         array.clear(vp_boxes)
+    if array.size(vp_s_boxes) > 0
+        for i = 0 to array.size(vp_s_boxes) - 1
+            box.delete(array.get(vp_s_boxes, i))
+        array.clear(vp_s_boxes)
     if array.size(total_boxes) > 0
         for i = 0 to array.size(total_boxes) - 1
             box.delete(array.get(total_boxes, i))
@@ -933,8 +944,8 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         
         if row_height > 0
             float inv_row_h = 1.0 / row_height
-            float inv_max_total_vol = 1.0
-            float inv_max_split_vol = 1.0
+
+            // --- MAIN PROFILE CALCULATION ---
             array<float> bucket_vol_total = array.new_float(n_rows, 0.0)
             array<float> bucket_vol_buy   = array.new_float(n_rows, 0.0)
             array<float> bucket_vol_sell  = array.new_float(n_rows, 0.0)
@@ -945,12 +956,27 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             add_ltf_vol(n_rows, lowest_p, inv_row_h, bucket_vol_total, bucket_vol_buy, bucket_vol_sell)
 
+            // --- SHORT-TERM PROFILE CALCULATION ---
+            array<float> bucket_s_total = array.new_float(n_rows, 0.0)
+            array<float> bucket_s_buy   = array.new_float(n_rows, 0.0)
+            array<float> bucket_s_sell  = array.new_float(n_rows, 0.0)
+
+            if show_vp_short
+                int s_hist_start = math.max(0, data_size - (vp_lookback_s - 1))
+                for i = s_hist_start to data_size - 1
+                    distribute_vol(n_rows, lowest_p, inv_row_h, array.get(hist_open, i), array.get(hist_high, i), array.get(hist_low, i), array.get(hist_close, i), array.get(hist_buy_vol, i) + array.get(hist_sell_vol, i), bucket_s_total, bucket_s_buy, bucket_s_sell)
+
+                // Also add current bar data to short term profile
+                add_ltf_vol(n_rows, lowest_p, inv_row_h, bucket_s_total, bucket_s_buy, bucket_s_sell)
+
             float max_total_vol = array.max(bucket_vol_total)
-            if max_total_vol != 0
-                inv_max_total_vol := 1.0 / max_total_vol
+            float inv_max_total_vol = max_total_vol != 0 ? 1.0 / max_total_vol : 1.0
+
             float max_split_vol = math.max(array.max(bucket_vol_buy), array.max(bucket_vol_sell))
-            if max_split_vol != 0
-                inv_max_split_vol := 1.0 / max_split_vol
+            float inv_max_split_vol = max_split_vol != 0 ? 1.0 / max_split_vol : 1.0
+
+            float max_s_vol = array.max(bucket_s_total)
+            float inv_max_s_vol = max_s_vol != 0 ? 1.0 / max_s_vol : 1.0
                 
             int poc_idx = array.indexof(bucket_vol_total, max_total_vol)
             float total_profile_vol = array.sum(bucket_vol_total)
@@ -1104,19 +1130,35 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             // --- DYNAMIC OFFSET CALCULATION ---
             int predict_count = math.min(predict_targets, array.size(targets_all))
             predict_reach := predict_count * predict_bars
-            int x_vp_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
             int width_scaler_vp = math.round(30 * (vp_width / 10.0))
+            int width_scaler_s = math.round(width_scaler_vp * 0.6)
+            int x_s_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
+            int x_vp_start = x_s_start + (show_vp_short ? width_scaler_s + vp_gap : 0)
             float inv_fade_range = 1.0 / (40 * row_height)
 
             for i = 0 to n_rows - 1
                 float b_vol = array.get(bucket_vol_total, i)
+                float b_s_vol = array.get(bucket_s_total, i)
+                float level_bottom = lowest_p + (i * row_height)
+                float level_top = level_bottom + row_height
+
+                // --- SHORT VP RENDERING ---
+                if show_vp_short and b_s_vol > 0
+                    float s_buy = array.get(bucket_s_buy, i)
+                    float s_sell = array.get(bucket_s_sell, i)
+                    float s_delta = s_buy - s_sell
+                    color s_base_c = vp_type == "Normal" ? col_poc : (s_delta > 0 ? c_buy : (s_delta < 0 ? c_sell : col_poc))
+                    float pct_s = b_s_vol * inv_max_s_vol
+                    int t_s = get_profile_alpha(pct_s, level_bottom, close, inv_fade_range)
+                    int len_s = math.round(width_scaler_s * pct_s)
+                    box bs = box.new(x_s_start, level_top, x_s_start + len_s, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s))
+                    array.push(vp_s_boxes, bs)
+
+                // --- MAIN VP RENDERING ---
                 if b_vol > 0
                     float b_buy = array.get(bucket_vol_buy, i)
                     float b_sell = array.get(bucket_vol_sell, i)
                     float b_delta = b_buy - b_sell
-                    
-                    float level_bottom = lowest_p + (i * row_height)
-                    float level_top = level_bottom + row_height
                     
                     // --- DELTA-BASED COLORING ---
                     // 1. Total VP (Buy Color -> Sell Color based on Delta or Normal)
