@@ -301,8 +301,8 @@ float ltf_s_poc    = na
 int ltf_count = array.size(ltf_v)
 float ltf_v_total = 0.0
 if ltf_count > 0
-    float max_b = -1.0
-    float max_s = -1.0
+    float sum_b_weighted = 0.0
+    float sum_s_weighted = 0.0
     for i = 0 to ltf_count - 1
         float _b = array.get(ltf_b, i)
         float _s = array.get(ltf_s, i)
@@ -310,47 +310,60 @@ if ltf_count > 0
         ltf_buy_sum  += _b
         ltf_sell_sum += _s
         ltf_v_total  += _v
-        if _b > max_b
-            max_b := _b
-            ltf_b_poc := (array.get(ltf_o, i) + array.get(ltf_h, i) + array.get(ltf_l, i) + array.get(ltf_c, i)) / 4
-        if _s > max_s
-            max_s := _s
-            ltf_s_poc := (array.get(ltf_o, i) + array.get(ltf_h, i) + array.get(ltf_l, i) + array.get(ltf_c, i)) / 4
+
+        float price_i = (array.get(ltf_o, i) + array.get(ltf_h, i) + array.get(ltf_l, i) + array.get(ltf_c, i)) / 4
+        sum_b_weighted += _b * price_i
+        sum_s_weighted += _s * price_i
+
+    if ltf_buy_sum > 0
+        ltf_b_poc := sum_b_weighted / ltf_buy_sum
+    if ltf_sell_sum > 0
+        ltf_s_poc := sum_s_weighted / ltf_sell_sum
 
 // Responsive Volume Engine: Sync LTF with actual HTF volume
 float missing_v = math.max(0, get_tick_volume() - ltf_v_total)
 [miss_b, miss_s] = calc_vol_partition(missing_v)
 
-float buy_volume  = ltf_buy_sum + miss_b
-float sell_volume = ltf_sell_sum + miss_s
-rt_buy_poc  := ltf_b_poc
-rt_sell_poc := ltf_s_poc
-float delta        = buy_volume - sell_volume
-float total_volume = buy_volume + sell_volume
-
+// Heuristic fallback calculations (for maximum real-time precision)
 float range_p    = high - low
 float body_high  = math.max(open, close)
 float body_low   = math.min(open, close)
 float upper_wick = high - body_high
 float lower_wick = body_low - low
 
-// Separate POC Estimation for Buy and Sell for maximum precision
-// We estimate where the "center of gravity" for each side likely was
 float w_body  = (range_p > 0) ? (body_high - body_low) / range_p : 0
 float w_upper = (range_p > 0) ? upper_wick / range_p : 0
 float w_lower = (range_p > 0) ? lower_wick / range_p : 0
 
-// Heuristic for buy/sell concentration (Enhanced 5-point weighting)
 float b_center_p = (open + close) / 2
 float b_pos_p = range_p > 0 ? (b_center_p - low) / range_p : 0.5
 float br_b_p = close > open ? math.min(0.9, 0.6 + b_pos_p * 0.3) : (close < open ? math.max(0.1, 0.4 - (1-b_pos_p) * 0.3) : 0.5)
 
-float buy_center  = (w_lower * 0.9 * (low + body_low)/2 + w_body * br_b_p * b_center_p + w_upper * 0.1 * (body_high + high)/2) / math.max(0.001, (w_lower * 0.9 + w_body * br_b_p + w_upper * 0.1))
-float sell_center = (w_upper * 0.9 * (high + body_high)/2 + w_body * (1 - br_b_p) * b_center_p + w_lower * 0.1 * (low + body_low)/2) / math.max(0.001, (w_upper * 0.9 + w_body * (1 - br_b_p) + w_lower * 0.1))
+float buy_denom = w_lower * 0.9 + w_body * br_b_p + w_upper * 0.1
+float buy_center = buy_denom > 0 ? (w_lower * 0.9 * (low + body_low)/2 + w_body * br_b_p * b_center_p + w_upper * 0.1 * (body_high + high)/2) / buy_denom : close
 
-// Accurate Bubble Placement (LTF POC + Historical Heuristic Fallback)
-float buy_loc  = not na(rt_buy_poc) ? rt_buy_poc : buy_center
-float sell_loc = not na(rt_sell_poc) ? rt_sell_poc : sell_center
+float sell_denom = w_upper * 0.9 + w_body * (1.0 - br_b_p) + w_lower * 0.1
+float sell_center = sell_denom > 0 ? (w_upper * 0.9 * (high + body_high)/2 + w_body * (1.0 - br_b_p) * b_center_p + w_lower * 0.1 * (low + body_low)/2) / sell_denom : close
+
+float buy_volume  = ltf_buy_sum + miss_b
+float sell_volume = ltf_sell_sum + miss_s
+
+if buy_volume > 0
+    rt_buy_poc := ((not na(ltf_b_poc) ? ltf_b_poc * ltf_buy_sum : 0.0) + miss_b * buy_center) / buy_volume
+else
+    rt_buy_poc := buy_center
+
+if sell_volume > 0
+    rt_sell_poc := ((not na(ltf_s_poc) ? ltf_s_poc * ltf_sell_sum : 0.0) + miss_s * sell_center) / sell_volume
+else
+    rt_sell_poc := sell_center
+
+float delta        = buy_volume - sell_volume
+float total_volume = buy_volume + sell_volume
+
+// Accurate Bubble Placement (Super Precise Volume-Weighted Price)
+float buy_loc  = rt_buy_poc
+float sell_loc = rt_sell_poc
 
 // Distribution Heuristic for Profile
 distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
