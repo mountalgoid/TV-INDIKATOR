@@ -142,6 +142,16 @@ get_manual_tf_string(opt) =>
         "3M"  => "3M"
         "6M"  => "6M"
         => "60"
+
+format_vol(float v) =>
+    float abs_v = math.abs(v)
+    if abs_v >= 1000000
+        str.tostring(v / 1000000, "#.##") + "M"
+    else if abs_v >= 1000
+        str.tostring(v / 1000, "#.#") + "K"
+    else
+        str.tostring(v, "0")
+
 // ==========================
 // LOGIC 2: AUTO HTF MAPPING (SMART LOGIC)
 // ==========================
@@ -185,6 +195,8 @@ vp_bins_in   = input.int(24, '● Volume Profile Bins', minval = 5, maxval = 100
 vp_type      = input.string('Normal Buy Sell Volume Profil', '● VP Type', options = ['Delta Profil', 'Normal Buy Sell Volume Profil'], group = pd_group)
 vp_va_perc   = input.float(70.0, '● Value Area (%)', minval = 0.0, maxval = 100.0, step = 5.0, group = pd_group)
 show_vp_lvn  = input.bool(true, '● Show LVN (Low Volume Nodes)', group = pd_group)
+show_vp_hvn  = input.bool(true, '● Show HVN (High Volume Nodes)', group = pd_group)
+hvn_threshold_perc = input.float(60.0, '● HVN Threshold (%)', minval = 0.0, maxval = 100.0, step = 5.0, group = pd_group)
 eq_group = 'EQH / EQL Settings'
 // UPDATED: Default set to FALSE
 show_eq = input.bool(true, 'Show EQH/EQL', group = eq_group)
@@ -369,6 +381,7 @@ var line ltf_poc_line = na
 var line ltf_vah_line = na
 var line ltf_val_line = na
 var box[] ltf_lvn_boxes = array.new_box()
+var box[] ltf_hvn_boxes = array.new_box()
 
 // --- VARIABLES FOR HTF ---
 var line htf_mid_line = na
@@ -379,6 +392,7 @@ var line htf_poc_line = na
 var line htf_vah_line = na
 var line htf_val_line = na
 var box[] htf_lvn_boxes = array.new_box()
+var box[] htf_hvn_boxes = array.new_box()
 
 // Arrays to store active EQ lines
 var array<line> eq_lines = array.new_line()
@@ -740,7 +754,7 @@ if isNewHtfBar
 //═══════════════════════════════════════════════════════════════════════════════
 
 // A. Universal PD Array (Premium/Discount) Updater
-f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_start, int _draw_end, line _mid_line, box _prem_box, box _disc_box, box[] _vp_boxes, line _poc_l, line _vah_l, line _val_l, box[] _lvn_boxes, string _tf_txt) =>
+f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_start, int _draw_end, line _mid_line, box _prem_box, box _disc_box, box[] _vp_boxes, line _poc_l, line _vah_l, line _val_l, box[] _lvn_boxes, box[] _hvn_boxes, string _tf_txt) =>
     if _show and not na(_h) and not na(_l)
         float _eq = (_h + _l) / 2
         int _end = _draw_end
@@ -776,6 +790,8 @@ f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_sta
                 box.delete(array.pop(_vp_boxes))
             while array.size(_lvn_boxes) > 0
                 box.delete(array.pop(_lvn_boxes))
+            while array.size(_hvn_boxes) > 0
+                box.delete(array.pop(_hvn_boxes))
             
             int _bars_back = bar_index - _calc_start
             if _bars_back > 0
@@ -852,6 +868,7 @@ f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_sta
                     line.set_color(_val_l, color.new(col_poc, 50))
 
                 float _lvn_threshold = _max_bin_vol * 0.2
+                float _hvn_threshold = _max_bin_vol * (hvn_threshold_perc / 100.0)
                 for j = 0 to vp_bins_in - 1
                     float _v_buy = array.get(_bin_vol_buy, j)
                     float _v_sell = array.get(_bin_vol_sell, j)
@@ -882,7 +899,11 @@ f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_sta
                     
                     if show_vp_lvn and _v_total < _lvn_threshold and j > 0 and j < vp_bins_in - 1
                         if _v_total < array.get(_total_bin_vols, j-1) and _v_total < array.get(_total_bin_vols, j+1)
-                            array.push(_lvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(white, 95), border_color=color.new(white, 70),text = "Lowest Volume Node",text_size = size.auto,text_halign = text.align_right,text_color =col_poc, border_width=1))
+                            array.push(_lvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(white, 95), border_color=color.new(white, 70), text = "LVN: " + str.tostring((_y_top + _y_bot) / 2, format.mintick) + " (" + format_vol(_v_total) + ")", text_size = size.auto, text_halign = text.align_right, text_color = col_poc, border_width = 1, border_style = line.style_dashed, text_formatting = text.format_bold))
+
+                    if show_vp_hvn and _v_total > _hvn_threshold and j > 0 and j < vp_bins_in - 1 and j != _poc_idx
+                        if _v_total > array.get(_total_bin_vols, j-1) and _v_total > array.get(_total_bin_vols, j+1)
+                            array.push(_hvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(white, 95), border_color=color.new(white, 70), text = "HVN: " + str.tostring((_y_top + _y_bot) / 2, format.mintick) + " (" + format_vol(_v_total) + ")", text_size = size.auto, text_halign = text.align_right, text_color = col_poc, border_width = 1, border_style = line.style_solid, text_formatting = text.format_bold))
 
 // B. Universal SND Mitigation
 f_mitigate_snd_universal(bool _is_supply, bool _is_htf, float[] _levels, bool[] _mit_status, box[] _boxes, line[] _lines, float _price_trigger) =>
@@ -1111,7 +1132,7 @@ if na(htf_poc_line)
     htf_val_line := line.new(na, na, na, na, color=color.new(col_poc, 50), style=line.style_dashed, width=1)
 
 ltf_calc_start = math.min(nz(ltf_last_sh_idx, bar_index), nz(ltf_last_sl_idx, bar_index))
-f_update_pd_zones(show_pd_ltf, ltf_last_sh, ltf_last_sl, ltf_calc_start, last_bar_index + OFF_LTF_PD_S, last_bar_index + OFF_LTF_PD_E, ltf_mid_line, ltf_premium_box, ltf_discount_box, ltf_vp_boxes, ltf_poc_line, ltf_vah_line, ltf_val_line, ltf_lvn_boxes, "LTF")
+f_update_pd_zones(show_pd_ltf, ltf_last_sh, ltf_last_sl, ltf_calc_start, last_bar_index + OFF_LTF_PD_S, last_bar_index + OFF_LTF_PD_E, ltf_mid_line, ltf_premium_box, ltf_discount_box, ltf_vp_boxes, ltf_poc_line, ltf_vah_line, ltf_val_line, ltf_lvn_boxes, ltf_hvn_boxes, "LTF")
 
 htf_calc_start = bar_index
 if barstate.islast
@@ -1124,7 +1145,7 @@ if barstate.islast
             if time[i] <= long_ago
                 htf_calc_start := bar_index - i
                 break
-f_update_pd_zones(show_pd_htf, htf_sh, htf_sl, htf_calc_start, last_bar_index + OFF_HTF_PD_S, last_bar_index + OFF_HTF_PD_E, htf_mid_line, htf_premium_box, htf_discount_box, htf_vp_boxes, htf_poc_line, htf_vah_line, htf_val_line, htf_lvn_boxes, "HTF")
+f_update_pd_zones(show_pd_htf, htf_sh, htf_sl, htf_calc_start, last_bar_index + OFF_HTF_PD_S, last_bar_index + OFF_HTF_PD_E, htf_mid_line, htf_premium_box, htf_discount_box, htf_vp_boxes, htf_poc_line, htf_vah_line, htf_val_line, htf_lvn_boxes, htf_hvn_boxes, "HTF")
 
 // ==========================================
 // 1. DETECT LOGIC (GLOBAL SCOPE)
