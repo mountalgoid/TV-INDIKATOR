@@ -34,10 +34,10 @@ type PredictHist
     label lbl_target
     label lbl_price
 
-var line[] predict_lines = array.new_line()
-var label[] predict_labels = array.new_label()
-var box[] predict_boxes = array.new_box()
-var box[] dom_boxes = array.new_box()
+var line[] predict_lines = array.new<line>()
+var label[] predict_labels = array.new<label>()
+var box[] predict_boxes = array.new<box>()
+var box[] dom_boxes = array.new<box>()
 var array<PredictHist> predict_history = array.new<PredictHist>()
 var int total_predictions = 0
 var int hits_count = 0
@@ -506,9 +506,9 @@ if show_hpoc and (barstate.isconfirmed or barstate.islast)
         float r_h = (h_p - l_p) / n_rows
         if r_h > 0
             float inv_rh = 1.0 / r_h
-            array<float> buckets = array.new_float(n_rows, 0.0)
-            array<float> dummy_b = array.new_float(n_rows, 0.0)
-            array<float> dummy_s = array.new_float(n_rows, 0.0)
+            array<float> buckets = array.new<float>(n_rows, 0.0)
+            array<float> dummy_b = array.new<float>(n_rows, 0.0)
+            array<float> dummy_s = array.new<float>(n_rows, 0.0)
             
             int start_idx = math.max(0, data_size - (vp_lookback - 1))
             for i = start_idx to data_size - 1
@@ -747,9 +747,9 @@ color c_buy_bubble  = get_bubble_color(vol_intensity_buy, true)
 color c_sell_bubble = get_bubble_color(vol_intensity_sell, false)
 
 // Bubble Labels Logic
-var label[] bubble_labels = array.new_label()
-var line[] bubble_lines = array.new_line()
-var label[] bubble_summaries = array.new_label()
+var label[] bubble_labels = array.new<label>()
+var line[] bubble_lines = array.new<line>()
+var label[] bubble_summaries = array.new<label>()
 
 // Persistent variables for real-time bar
 var label rt_lbl_buy = na
@@ -886,19 +886,19 @@ plotchar(show_s and vol_intensity_sell <= 0.3 ? sell_loc : na, "S3L", char="●"
 // -----------------------------------------------------------------------------
 // 6. SUPER GRADIENT VP + DELTA
 // -----------------------------------------------------------------------------
-var box[] vp_boxes = array.new_box()
-var box[] vp_s_boxes = array.new_box()
-var box[] total_boxes = array.new_box()
-var line[] total_grad_lines = array.new_line()
+var box[] vp_boxes = array.new<box>()
+var box[] vp_s_boxes = array.new<box>()
+var box[] total_boxes = array.new<box>()
+var line[] total_grad_lines = array.new<line>()
 var linefill[] total_fills = array.new<linefill>()
-var line[] vp_lines = array.new_line()
-var label[] vp_labels = array.new_label()
+var line[] vp_lines = array.new<line>()
+var label[] vp_labels = array.new<label>()
 var box[] lvn_boxes = array.new<box>()
 var box[] lvn_s_boxes = array.new<box>()
 var box[] hvn_boxes = array.new<box>()
 var box[] hvn_s_boxes = array.new<box>()
-var line[] vp_s_lines = array.new_line()
-var label[] vp_s_labels = array.new_label()
+var line[] vp_s_lines = array.new<line>()
+var label[] vp_s_labels = array.new<label>()
 
 var int vp_tick_count = 0
 var float vp_live_h = 0.0
@@ -997,9 +997,9 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             float inv_row_h = 1.0 / row_height
             
             // --- MAIN PROFILE CALCULATION ---
-            array<float> bucket_vol_total = array.new_float(n_rows, 0.0)
-            array<float> bucket_vol_buy   = array.new_float(n_rows, 0.0)
-            array<float> bucket_vol_sell  = array.new_float(n_rows, 0.0)
+            array<float> bucket_vol_total = array.new<float>(n_rows, 0.0)
+            array<float> bucket_vol_buy   = array.new<float>(n_rows, 0.0)
+            array<float> bucket_vol_sell  = array.new<float>(n_rows, 0.0)
             
             int hist_start = math.max(0, data_size - (vp_lookback - 1))
             for i = hist_start to data_size - 1
@@ -1008,9 +1008,9 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             add_ltf_vol(n_rows, lowest_p, inv_row_h, bucket_vol_total, bucket_vol_buy, bucket_vol_sell)
 
             // --- SHORT-TERM PROFILE CALCULATION ---
-            array<float> bucket_s_total = array.new_float(n_rows, 0.0)
-            array<float> bucket_s_buy   = array.new_float(n_rows, 0.0)
-            array<float> bucket_s_sell  = array.new_float(n_rows, 0.0)
+            array<float> bucket_s_total = array.new<float>(n_rows, 0.0)
+            array<float> bucket_s_buy   = array.new<float>(n_rows, 0.0)
+            array<float> bucket_s_sell  = array.new<float>(n_rows, 0.0)
             
             if show_vp_short
                 int s_hist_start = math.max(0, data_size - (vp_lookback_s - 1))
@@ -1056,7 +1056,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             float vah_s_price = lowest_p + (va_top_s * row_height) + row_height
             float val_s_price = lowest_p + (va_bot_s * row_height)
             
-            array<int> lvn_s_indices = array.new_int(0)
+            array<int> lvn_s_indices = array.new<int>(0)
             if show_vp_short and show_lvn
                 float thresh_s = max_s_vol * lvn_threshold
                 for i = 1 to n_rows - 2
@@ -1066,7 +1066,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     if v_curr < v_prev and v_curr < v_next and v_curr < thresh_s
                         array.push(lvn_s_indices, i)
 
-            array<int> hvn_s_indices = array.new_int(0)
+            array<int> hvn_s_indices = array.new<int>(0)
             if show_vp_short and show_hvn
                 float thresh_s_hvn = max_s_vol * hvn_threshold
                 for i = 1 to n_rows - 2
@@ -1103,7 +1103,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             float val_price = lowest_p + (va_bot * row_height)
             
             // --- LVN IDENTIFICATION ---
-            array<int> lvn_indices = array.new_int(0)
+            array<int> lvn_indices = array.new<int>(0)
             if show_lvn
                 float threshold_vol = max_total_vol * lvn_threshold
                 for i = 1 to n_rows - 2
@@ -1114,7 +1114,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         array.push(lvn_indices, i)
 
             // --- HVN IDENTIFICATION ---
-            array<int> hvn_indices = array.new_int(0)
+            array<int> hvn_indices = array.new<int>(0)
             if show_hvn
                 float threshold_hvn_vol = max_total_vol * hvn_threshold
                 for i = 1 to n_rows - 2
@@ -1190,7 +1190,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 int size_all = array.size(targets_all)
                 if size_all > 1
                     // Pre-calculate sorting scores to avoid redundant calculations in nested loops
-                    array<float> sort_scores = array.new_float(size_all)
+                    array<float> sort_scores = array.new<float>(size_all)
                     for i = 0 to size_all - 1
                         HVT t = array.get(targets_all, i)
                         
@@ -1280,7 +1280,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         float poc_s_p = level_bottom + (row_height/2)
                         line l_poc_s = line.new(x_s_start, poc_s_p, x_s_start + width_scaler_s, poc_s_p, color=col_poc, width=1)
                         array.push(vp_s_lines, l_poc_s)
-                        lbl_poc_s = label.new(x_s_start + width_scaler_s, poc_s_p, "POC[S]: " + format_vol(max_s_vol), color=color.new(col_poc, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
+                        lbl_poc_s = label.new(x_s_start + width_scaler_s, poc_s_p, "POC[S]: " + str.tostring(poc_s_p, format.mintick) + " (" + format_vol(max_s_vol) + ")", color=color.new(col_poc, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
                         array.push(vp_s_labels, lbl_poc_s)
 
                 // --- MAIN VP RENDERING ---
@@ -1903,7 +1903,7 @@ var line Line1b5 = na
 var line Line1b6 = na
 var line Line1b7 = na
 var line Line1b8 = na
-var label[] brand_labels = array.new_label()
+var label[] brand_labels = array.new<label>()
 
 // Hapus Garis Sebelumnya (Selalu dijalankan agar bersih saat dimatikan)
 if not na(Line1b)
