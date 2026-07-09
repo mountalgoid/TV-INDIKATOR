@@ -899,11 +899,11 @@ f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_sta
                     
                     if show_vp_lvn and _v_total < _lvn_threshold and j > 0 and j < vp_bins_in - 1
                         if _v_total < array.get(_total_bin_vols, j-1) and _v_total < array.get(_total_bin_vols, j+1)
-                            array.push(_lvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(white, 95), border_color=color.new(white, 70), text = "LVN: " + str.tostring((_y_top + _y_bot) / 2, format.mintick) + " (" + format_vol(_v_total) + ")", text_size = size.auto, text_halign = text.align_right, text_color = col_poc, border_width = 1, border_style = line.style_dashed, text_formatting = text.format_bold))
+                            array.push(_lvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(white, 95), border_color=color.new(white, 70), text = "LVN", text_size = size.auto, text_halign = text.align_right, text_color = col_poc, border_width = 1, border_style = line.style_dashed, text_formatting = text.format_bold))
 
                     if show_vp_hvn and _v_total > _hvn_threshold and j > 0 and j < vp_bins_in - 1 and j != _poc_idx
                         if _v_total > array.get(_total_bin_vols, j-1) and _v_total > array.get(_total_bin_vols, j+1)
-                            array.push(_hvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(white, 95), border_color=color.new(white, 70), text = "HVN: " + str.tostring((_y_top + _y_bot) / 2, format.mintick) + " (" + format_vol(_v_total) + ")", text_size = size.auto, text_halign = text.align_right, text_color = col_poc, border_width = 1, border_style = line.style_solid, text_formatting = text.format_bold))
+                            array.push(_hvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(white, 95), border_color=color.new(white, 70), text = "HVN", text_size = size.auto, text_halign = text.align_right, text_color = col_poc, border_width = 1, border_style = line.style_solid, text_formatting = text.format_bold))
 
 // B. Universal SND Mitigation
 f_mitigate_snd_universal(bool _is_supply, bool _is_htf, float[] _levels, bool[] _mit_status, box[] _boxes, line[] _lines, float _price_trigger) =>
