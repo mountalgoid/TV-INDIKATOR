@@ -1,0 +1,280 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © MLTFX
+
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © MLTFX
+
+//@version=6
+//🅼🅻🆃🅵🆇 
+//@version=5
+indicator(title          = "𝘼𝘿𝙑𝘼𝙉𝘾𝙀𝘿 𝙑𝙊𝙇𝙐𝙈𝙀 𝙋𝙍𝙊𝙁𝙄𝙇𝙄𝙉𝙂 V.2.0.2 🅼🅻🆃🅵🆇"
+  , shorttitle           = "𝘼𝘿𝙑𝘼𝙉𝘾𝙀𝘿 𝙑𝙊𝙇𝙐𝙈𝙀 𝙋𝙍𝙊𝙁𝙄𝙇𝙄𝙉𝙂 V.2.0.2 🅼🅻🆃🅵🆇"
+  , overlay              = true
+  , max_bars_back        = 500
+  , max_lines_count      = 500
+  , max_boxes_count      = 500)
+
+//════════════════════════════════════════════════════════════════════════
+// GROUP & SETTINGS
+//════════════════════════════════════════════════════════════════════════
+GlobalGroup = '𝙂𝙇𝙊𝘽𝘼𝙇 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎'
+group_general       = "General Settings"
+group_display       = "Display Controls"
+group_sensitivity   = "Sensitivity Settings"
+
+// COLOR TYPE
+dark = #141c16
+white = #c4d3ff
+green = #179c74
+purple = #5134ff
+gray = #3d4c74
+red = #e91e63
+yellow = #ffeb3b
+brown = #6a5635
+blue = #1848cc
+Transparent_Color = color.new(color.new(white, 0), 100)
+
+// INPUT COLOR THEME
+color_theme = input.string(defval = '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎', title = '⬤ 𝙎𝙀𝙇𝙀𝘾𝙏 𝘾𝙊𝙇𝙊𝙍 𝙏𝙃𝙀𝙈𝙀', options = ['𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀', '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎', '𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀', '𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀', '𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿', '𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀','𝙃𝙊𝙇𝙔 𝙎𝙄𝙉𝘾𝙀𝙍𝙀'], group = GlobalGroup)
+
+// NEW INPUT: Intrabar Resolution for Accuracy
+ltf_res = input.timeframe("1", "⬤ 𝙄𝙉𝙏𝙍𝘼𝘽𝘼𝙍 𝙍𝙀𝙎𝙊𝙇𝙐𝙏𝙄𝙊𝙉 (𝘼𝘾𝘾𝙐𝙍𝘼𝘾𝙔)", group=GlobalGroup, tooltip="Resolusi lower timeframe untuk menghitung volume buy/sell nyata")
+
+// COLOR ASSIGNMENT
+col_bull = switch color_theme
+    '𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => white 
+    '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎' => purple 
+    '𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => green 
+    '𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀' => green 
+    '𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿' => yellow 
+    '𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀' => purple 
+    => blue
+col_bear = switch color_theme
+    '𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => gray 
+    '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎' => green 
+    '𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => red 
+    '𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀' => gray 
+    '𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿' => gray 
+    '𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀' => yellow 
+    => white
+box_col_bull = switch color_theme 
+    '𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => color.new(white, 80) 
+    '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎' => color.new(purple, 80) 
+    '𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => color.new(green, 80) 
+    '𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀' => color.new(green, 80) 
+    '𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿' => color.new(yellow, 80) 
+    '𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀' => color.new(purple, 80) 
+    => color.new(blue,80)
+box_col_bear = switch color_theme
+    '𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => color.new(gray, 80) 
+    '𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎' => color.new(green, 80) 
+    '𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀' => color.new(red, 80) 
+    '𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀' => color.new(gray, 80) 
+    '𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿' => color.new(gray, 80) 
+    '𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀' => color.new(yellow, 80) 
+    => color.new(white,80)
+mitigated_color = brown
+mitigated_box_color = color.new(brown, 80)
+
+//════════════════════════════════════════════════════════════════════════
+// ADVANCED VOLUME PROFILING
+//════════════════════════════════════════════════════════════════════════
+volumeLevels        = input.int(10, maxval=10, title="𝙉𝙐𝙈𝘽𝙀𝙍 𝙊𝙁 𝙑𝙊𝙇𝙐𝙈𝙀 𝙇𝙀𝙑𝙀𝙇𝙎", group=group_general)
+maxBoxDisplay       = input.int(500, minval=10, maxval=5000, title="𝙈𝘼𝙓𝙄𝙈𝙐𝙈 𝘽𝙊𝙓𝙀𝙎 𝘿𝙄𝙎𝙋𝙇𝘼𝙔𝙀𝘿", group=group_general)
+showBuySellVolume   = true //input.bool(false,"𝙎𝙃𝙊𝙒 𝙍𝙄𝙇𝙇𝙏𝙄𝙈𝙀 𝙊𝙍𝘿𝙀𝙍𝙁𝙇𝙊𝙒 𝙊𝙉 𝘾𝘼𝙉𝘿𝙇𝙀")
+ShowDVBoxAndKeypoint= true //input.bool(true, title="𝙎𝙃𝙊𝙒 𝙆𝙀𝙔 𝙋𝙊𝙄𝙉𝙏𝙎", group=group_display)
+showDeltaVolumeLine = true //input.bool(true, title="𝙎𝙃𝙊𝙒 𝘿𝙀𝙇𝙏𝘼 𝙑𝙊𝙇𝙐𝙈𝙀 𝙇𝙄𝙉𝙀 ", group=group_display)
+showCandle          = true //input.bool(true, title="𝙎𝙃𝙊𝙒 𝘾𝙐𝙎𝙏𝙊𝙈 𝘾𝘼𝙉𝘿𝙇𝙀 ", group=group_display)
+volumeSensitivity   = input.float(0.5, minval=0.1, maxval=1.0, title="𝙑𝙊𝙇𝙐𝙈𝙀 𝙎𝙀𝙉𝙎𝙄𝙏𝙄𝙑𝙄𝙏𝙔", group=group_sensitivity, step=0.1)
+
+// === UTILITY FUNCTIONS ===
+f_formatNumber(float value) =>
+    if value == 0
+        "0"
+    else if math.abs(value) >= 1000000
+        str.tostring(value / 1000000, "#.1M")
+    else if math.abs(value) >= 1000
+        str.tostring(value / 1000, "#.1K")
+    else
+        str.tostring(value, "#.0")
+
+// === GLOBAL VARIABLES ===
+var box[] DeltaVolumeBox = array.new_box()
+var box[] volumeBoxes    = array.new_box()
+var line[] deltaVolumeLines = array.new_line()
+
+// === [NEW] INTRABAR DATA FETCHING FOR ACCURACY ===
+// Mengambil data Intrbar (Open, Close, Volume)
+[o_ltf, c_ltf, v_ltf] = request.security_lower_tf(syminfo.tickerid, ltf_res, [open, close, volume])
+
+// Fungsi hitung volume real dari intrabar
+get_real_volume(o_arr, c_arr, v_arr) =>
+    float b_vol = 0.0
+    float s_vol = 0.0
+    if array.size(v_arr) > 0
+        for i = 0 to array.size(v_arr) - 1
+            float vol_i = array.get(v_arr, i)
+            float close_i = array.get(c_arr, i)
+            float open_i = array.get(o_arr, i)
+            // Jika Close >= Open di TF kecil, anggap Buy volume
+            if close_i >= open_i
+                b_vol += vol_i
+            else
+                s_vol += vol_i
+    [b_vol, s_vol]
+
+// === MAIN ANALYSIS FUNCTION ===
+bodycol = close > open ? color.new(col_bull,0) : color.new(col_bear,0)
+
+volumeAnalysis() =>
+    // 1. Get Real Accurate Volume
+    [realBuyVol, realSellVol] = get_real_volume(o_ltf, c_ltf, v_ltf)
+    
+    // Fallback jika intrabar data null (misal bar belum closed atau limit tercapai)
+    float buyVolCurrent = (na(realBuyVol) ? (close >= open ? volume : 0) : realBuyVol) * volumeSensitivity
+    float sellVolCurrent = (na(realSellVol) ? (close < open ? volume : 0) : realSellVol) * volumeSensitivity
+
+    // 2. Memory Management
+    if array.size(volumeBoxes) > maxBoxDisplay
+        for i = 0 to array.size(volumeBoxes) - maxBoxDisplay
+            box.delete(array.get(volumeBoxes, i))
+        array.clear(volumeBoxes)
+    
+    if array.size(DeltaVolumeBox) > maxBoxDisplay
+        for i = 0 to array.size(DeltaVolumeBox) - maxBoxDisplay
+            box.delete(array.get(DeltaVolumeBox, i))
+        array.clear(DeltaVolumeBox)
+    
+    // 3. Calculate Price Levels & Distribution
+    float priceStep = (high - low) / volumeLevels
+    float[] buyVolumeLevels  = array.new_float(volumeLevels, 0)
+    float[] sellVolumeLevels = array.new_float(volumeLevels, 0)
+    
+    for i = 0 to volumeLevels - 1
+        float levelLow  = low + (i * priceStep)
+        float levelHigh = levelLow + priceStep
+        // Distribute the REAL volume across levels (approximation based on range)
+        float buyVolLevel  = buyVolCurrent * (0.5 + (i / volumeLevels) * 0.5 * volumeSensitivity)
+        float sellVolLevel = sellVolCurrent * (0.5 + (i / volumeLevels) * 0.5 * volumeSensitivity)
+        array.set(buyVolumeLevels, i, buyVolLevel)
+        array.set(sellVolumeLevels, i, sellVolLevel)
+    
+    float maxBuyVol  = array.max(buyVolumeLevels)
+    float minBuyVol  = array.min(buyVolumeLevels)
+    float maxSellVol = array.max(sellVolumeLevels)
+    float minSellVol = array.min(sellVolumeLevels)
+    
+    // 4. Visualize Boxes
+    for i = 0 to volumeLevels - 1
+        float levelLow  = low + (i * priceStep)
+        float levelHigh = levelLow + priceStep
+        float buyVol    = array.get(buyVolumeLevels, i)
+        float sellVol   = array.get(sellVolumeLevels, i)
+        
+        color buyBoxColor   = buyVol > sellVol ? (buyVol == maxBuyVol ? box_col_bull : box_col_bull) :  box_col_bull
+        color sellBoxColor  = sellVol > buyVol ? (sellVol == maxSellVol ? box_col_bear : box_col_bear) : box_col_bear
+        color buyTextColor  = buyVol > sellVol ? (buyVol == maxBuyVol ? color.new(mitigated_color,0) : color.new(mitigated_color, 50)) :  color.new(col_bull, 0)
+        color sellTextColor = sellVol > buyVol ? (sellVol == maxSellVol ? color.new(mitigated_color,0) : color.new(mitigated_color, 50)) : color.new(col_bear, 0) 
+
+        if showBuySellVolume
+            box buyBox = box.new( bar_index, levelLow, bar_index + 1, levelHigh,border_color=color.new(bodycol, 0),   bgcolor=color.new(buyBoxColor,100), text="▲" + f_formatNumber(buyVol), text_size=size.auto, text_halign=text.align_left,text_color = buyTextColor,border_style = line.style_dashed)
+            array.push(volumeBoxes, buyBox)  
+            box sellBox = box.new(bar_index, levelLow, bar_index + 1, levelHigh, border_color=color.new(bodycol, 0),  bgcolor=color.new(sellBoxColor,100), text="▼" + f_formatNumber(sellVol),text_size=size.auto,text_halign=text.align_right,text_color = sellTextColor,border_style = line.style_dashed)
+            array.push(volumeBoxes, sellBox)
+        
+    // 5. Advanced Key Point Analysis
+    float totalBuyVolume = array.sum(buyVolumeLevels)
+    float totalSellVolume = array.sum(sellVolumeLevels)
+    float volumeDelta = totalBuyVolume - totalSellVolume
+    float volumeDeltaPercentage = (volumeDelta / (totalBuyVolume + totalSellVolume)) * 100
+    float volumeDeltaCurrent = buyVolCurrent - sellVolCurrent
+    float volumeDeltaPercentageCurrent = (volumeDeltaCurrent / (buyVolCurrent + sellVolCurrent)) * 100
+    
+    // Indicators
+    float vwap = ta.vwap(close)
+    float rsi = ta.rsi(close, 14)
+    float cci = ta.cci(close, 14)
+    float deltaPriceLevel = low + (priceStep * (volumeDelta > 0 ? volumeLevels * 0.75 : volumeLevels * 0.25))
+
+    // [NEW] Relative Volume (RVOL) Filter for Validity
+    float avgVol = ta.sma(volume, 20)
+    float rvol = volume / avgVol
+    bool isHighVolume = rvol > 1.2 // Threshold volume validity
+
+    // Delta Volume Line
+    deltacolor = volumeDelta > 0 ? col_bull : col_bear
+    if showDeltaVolumeLine
+        line deltaVolLine = line.new(bar_index, deltaPriceLevel, bar_index + 2, deltaPriceLevel, color=mitigated_color, width=2, style=line.style_solid)
+        array.push(deltaVolumeLines, deltaVolLine)
+
+    // Trend Strength Evaluation (Updated with RVOL)
+    bool strongBullish = close > vwap and rsi > 50 and volumeDelta > 0 and volumeDeltaCurrent > 0 and cci > 100 and isHighVolume
+    bool strongBearish = close < vwap and rsi < 50 and volumeDelta < 0 and volumeDeltaCurrent < 0 and cci < -100 and isHighVolume
+
+    color keyPointColor = strongBullish ? color.new(col_bull,0) : 
+                          strongBearish ? color.new(col_bear, 0) : 
+                          color.new(mitigated_color, 0)
+
+    if ShowDVBoxAndKeypoint
+        box DeltaVolBox = box.new(bar_index,deltaPriceLevel,bar_index + 1,deltaPriceLevel + (high - low) * 0.1,border_color=color.new(deltacolor,0), bgcolor = color.new(deltacolor,0),text="TDV : " + f_formatNumber(volumeDelta) + "(" + str.tostring(volumeDeltaPercentage,"#.1") + "%)",text_size=size.auto,text_color = dark,border_width = 2)
+        array.push(DeltaVolumeBox, DeltaVolBox)
+        // High/Low Markers based on Strength
+        if strongBearish
+            line.new( x1 = bar_index,  y1 = high, x2 = bar_index + 1,  y2 = high,  width =4, color = col_bear,  style = line.style_solid )
+        if strongBullish
+            line.new( x1 = bar_index,  y1 = low, x2 = bar_index + 1,  y2 = low,  width =4, color = col_bull,  style = line.style_solid )
+
+
+    // === DETAILED DATA TABLE ===
+    var table volumeTable = table.new(position.top_right, 2, 14, border_width=1,frame_width =1,frame_color = mitigated_color)
+
+    table.cell(volumeTable, 0, 0, "𝘼𝙉𝘼𝙇𝙔𝙎𝙄𝙎", bgcolor=dark, text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 0, "𝙑𝘼𝙇𝙐𝙀", bgcolor=dark, text_size = size.tiny, text_color = mitigated_color)
+
+    table.cell(volumeTable, 0, 1, "Total Buy Vol", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 1, f_formatNumber(totalBuyVolume),bgcolor = box_col_bull , text_size = size.tiny, text_color = dark)
+    
+    table.cell(volumeTable, 0, 2, "Max Buy Vol", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 2, f_formatNumber(maxBuyVol), bgcolor=box_col_bull, text_size = size.tiny, text_color = dark)
+    
+    table.cell(volumeTable, 0, 3, "Total Sell Vol", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 3, f_formatNumber(totalSellVolume),bgcolor = box_col_bear, text_size = size.tiny, text_color = dark)
+
+    table.cell(volumeTable, 0, 4, "Max Sell Vol", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 4, f_formatNumber(maxSellVol), bgcolor=box_col_bear, text_size = size.tiny, text_color = dark)
+
+    table.cell(volumeTable, 0, 5, "Total Delta", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 5, f_formatNumber(volumeDelta), bgcolor=volumeDelta > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+    
+    table.cell(volumeTable, 0, 6, "Total Delta %", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 6, str.tostring(volumeDeltaPercentage, "#.1") + "%", bgcolor=volumeDeltaPercentage > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+
+    table.cell(volumeTable, 0, 7, "Cur Delta", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 7, f_formatNumber(volumeDeltaCurrent), bgcolor=volumeDelta > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+    
+    table.cell(volumeTable, 0, 8, "Cur Delta %", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 8, str.tostring(volumeDeltaPercentageCurrent, "#.1") + "%", bgcolor=volumeDeltaPercentage > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+
+    table.cell(volumeTable, 0, 9, "RSI", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 9, str.tostring(rsi, "#.1"),  bgcolor=rsi > 60 ? box_col_bear : rsi < 40 ? box_col_bull : gray, text_size = size.tiny, text_color = dark)
+
+    table.cell(volumeTable, 0, 10, "VWAP", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 10, str.tostring(vwap, "#.2"), bgcolor=close < vwap ? box_col_bear : close > vwap ? box_col_bull : gray, text_size = size.tiny, text_color = dark)
+
+    table.cell(volumeTable, 0, 11, "CCI", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 11, str.tostring(cci, "#.1"), bgcolor = cci > 100 ? box_col_bull : cci < -100 ?box_col_bear: gray, text_size = size.tiny, text_color = dark)
+
+    // [NEW] RVOL Table Row
+    table.cell(volumeTable, 0, 12, "RVOL (Vol Str)", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 12, str.tostring(rvol, "#.1") + "x", bgcolor = isHighVolume ? (close>open? col_bull : col_bear) : gray, text_size = size.tiny, text_color = dark)
+
+    table.cell(volumeTable, 0, 13, "Zone", text_size = size.tiny, text_color = mitigated_color)
+    table.cell(volumeTable, 1, 13, strongBullish ? "STRONG BULL" : strongBearish ? "STRONG BEAR" : "NEUTRAL", bgcolor= keyPointColor, text_size = size.tiny, text_color = dark)
+
+// Run the analysis
+volumeAnalysis()
+
+// Custom candle plotting
+if showCandle
+    box.new(bar_index,open, bar_index + 1,close, border_color = bodycol,bgcolor = color.new(bodycol,70),border_width = 1)
+    box.new(bar_index,high, bar_index + 1,low, border_color = Transparent_Color,bgcolor = color.new(bodycol,100),border_width = 1)
