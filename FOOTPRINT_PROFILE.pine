@@ -9,6 +9,7 @@ indicator("Bookmap Footprint Profile 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο", shortt
 // -----------------------------------------------------------------------------
 string GlobalGroup = "Visual Themes & Global"
 string grp_footprint = "Footprint Profile Settings"
+string grp_lines = "VAH, VAL & POC Line Settings"
 string grp_candle = "Custom Candle Settings"
 string grp_tdv = "Total Delta Volume (TDV) Box Settings"
 
@@ -77,6 +78,14 @@ int lookback_bars = input.int(15, "Lookback Bars to Display", minval=5, maxval=2
 int volume_levels = input.int(20, "Volume Profile Levels", minval=5, maxval=50, group=grp_footprint, tooltip="Configure the number of volume rows/levels rendered within each candle profile (default 20)")
 bool show_values = input.bool(true, "Show Volume Values Inside Boxes", group=grp_footprint)
 
+// VAH, VAL & POC Line Settings (High Visibility Inputs)
+color color_poc_line = input.color(#ff9800, "POC Line Color", group=grp_lines, tooltip="Point of Control (POC) high-visibility color")
+int width_poc_line = input.int(3, "POC Line Width", minval=1, maxval=5, group=grp_lines)
+
+color color_va_lines = input.color(#00e5ff, "VAH/VAL Lines Color", group=grp_lines, tooltip="Value Area High (VAH) and Value Area Low (VAL) color")
+int width_va_lines = input.int(2, "VAH/VAL Lines Width", minval=1, maxval=5, group=grp_lines)
+string style_va_lines = input.string("Solid", "VAH/VAL Lines Style", options=["Solid", "Dashed", "Dotted"], group=grp_lines)
+
 // HVN & LVN Settings
 bool show_hvn_lvn = input.bool(true, "Identify HVN & LVN Levels", group=grp_footprint)
 float hvn_threshold_pct = input.float(60.0, "HVN Volume Threshold (%)", minval=0.0, maxval=100.0, step=5.0, group=grp_footprint, tooltip="Peak percentage of maximum volume to qualify as HVN")
@@ -123,10 +132,13 @@ format_vol(float v) =>
         res := str.tostring(v, "0.##")
     res
 
-// Smooth text color transitions based on transparency (30 is solid dark/black text contrast, 95 is transparent white/poc text contrast)
-get_smooth_text_color(int trans, color col_poc, color dark) =>
-    float norm_trans = math.max(0.0, math.min(1.0, (trans - 30.0) / 65.0))
-    color.from_gradient(norm_trans, 0.0, 1.0, dark, col_poc)
+// Get line style from input string
+get_line_style(string s) =>
+    switch s
+        "Solid"  => line.style_solid
+        "Dashed" => line.style_dashed
+        "Dotted" => line.style_dotted
+        => line.style_dashed
 
 // -----------------------------------------------------------------------------
 // 4. MAIN VISUALIZATION LOGIC
@@ -338,8 +350,8 @@ if barstate.islast
 
                     // Text format: ▲Buy | ▼Sell
                     string txt = show_values ? ("▲" + format_vol(lvl_buy) + " | ▼" + format_vol(lvl_sell)) : ""
-                    // Highly sophisticated smooth text color transitions based on background transparency
-                    color txt_color = get_smooth_text_color(trans, col_poc, dark)
+                    // All text is set to fully opaque white color for clean professional look
+                    color txt_color = color.white
 
                     box b = box.new(idx, lvl_high, idx + 1, lvl_low,
                                     bgcolor=color.new(base_col, trans),
@@ -347,8 +359,8 @@ if barstate.islast
                                     text=txt,
                                     text_size=size.auto,
                                     text_color=txt_color,
-                                    text_formatting=text.format_bold,
-                                    text_valign=text.align_center,
+                                    text_style=text.style_bold,
+                                    text_valign=text.valign_center,
                                     text_halign=text.align_center)
                     array.push(profile_boxes, b)
 
@@ -367,41 +379,44 @@ if barstate.islast
                         if is_hvn
                             box hvn_b = box.new(idx, lvl_high, idx + 1, lvl_low,
                                                 bgcolor=color.new(dark, 100),
-                                                border_color=color.new(col_poc, 50),
+                                                border_color=color.new(color.white, 50),
                                                 border_width=1,
                                                 border_style=line.style_solid,
                                                 text="HVN",
                                                 text_size=size.auto,
-                                                text_color=color.new(col_poc, 40),
-                                                text_formatting=text.format_bold,
-                                                text_valign=text.align_center,
+                                                text_color=color.new(color.white, 30),
+                                                text_style=text.style_bold,
+                                                text_valign=text.valign_center,
                                                 text_halign=text.align_right)
                             array.push(profile_boxes, hvn_b)
                         else if is_lvn
                             box lvn_b = box.new(idx, lvl_high, idx + 1, lvl_low,
                                                 bgcolor=color.new(dark, 100),
-                                                border_color=color.new(gray, 50),
+                                                border_color=color.new(color.white, 40),
                                                 border_width=1,
                                                 border_style=line.style_dashed,
                                                 text="LVN",
                                                 text_size=size.auto,
-                                                text_color=color.new(gray, 40),
-                                                text_formatting=text.format_bold,
-                                                text_valign=text.align_center,
+                                                text_color=color.new(color.white, 30),
+                                                text_style=text.style_bold,
+                                                text_valign=text.valign_center,
                                                 text_halign=text.align_right)
                             array.push(profile_boxes, lvn_b)
 
             // --- DRAW KEY HORIZONTAL LINES (VAH, VAL, POC) ---
+            // Render lines with high visibility colors and custom widths to ensure they stand out clearly
+            line.style style_va = get_line_style(style_va_lines)
+
             // POC Line: Spanning exactly across the volume profile bar width (idx to idx + 1)
-            line l_poc = line.new(idx, poc_price, idx + 1, poc_price, color=col_poc, width=2, style=line.style_solid)
+            line l_poc = line.new(idx, poc_price, idx + 1, poc_price, color=color_poc_line, width=width_poc_line, style=line.style_solid)
             array.push(level_lines, l_poc)
 
             // VAH Line: Spanning exactly across the volume profile bar width (idx to idx + 1)
-            line l_vah = line.new(idx, vah_price, idx + 1, vah_price, color=color.new(col_poc, 50), width=1, style=line.style_dashed)
+            line l_vah = line.new(idx, vah_price, idx + 1, vah_price, color=color_va_lines, width=width_va_lines, style=style_va)
             array.push(level_lines, l_vah)
 
             // VAL Line: Spanning exactly across the volume profile bar width (idx to idx + 1)
-            line l_val = line.new(idx, val_price, idx + 1, val_price, color=color.new(col_poc, 50), width=1, style=line.style_dashed)
+            line l_val = line.new(idx, val_price, idx + 1, val_price, color=color_va_lines, width=width_va_lines, style=style_va)
             array.push(level_lines, l_val)
 
             // ---------------------------------------------------------------------
@@ -442,8 +457,8 @@ if barstate.islast
                                     border_color=na,
                                     text=tdv_text,
                                     text_size=size.auto,
-                                    text_color=get_smooth_text_color(tdv_trans, col_poc, dark),
-                                    text_formatting=text.format_bold,
-                                    text_valign=text.align_center,
+                                    text_color=color.white,
+                                    text_style=text.style_bold,
+                                    text_valign=text.valign_center,
                                     text_halign=text.align_center)
                 array.push(tdv_boxes, tdv_b)
