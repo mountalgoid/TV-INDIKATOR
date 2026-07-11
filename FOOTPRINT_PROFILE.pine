@@ -296,8 +296,8 @@ if barstate.islast
                     // Glass effect transparency
                     int trans = math.round(95 - intensity * 65)
 
-                    // Text format: Buy | Sell
-                    string txt = show_values ? (format_vol(lvl_buy) + " | " + format_vol(lvl_sell)) : ""
+                    // Text format: ▲Buy | ▼Sell
+                    string txt = show_values ? ("▲" + format_vol(lvl_buy) + " | ▼" + format_vol(lvl_sell)) : ""
                     // High-contrast text legibility based on background transparency
                     color txt_color = trans > 75 ? col_poc : dark
 
