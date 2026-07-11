@@ -405,7 +405,7 @@ if barstate.islast
 
             // --- DRAW KEY HORIZONTAL LINES (VAH, VAL, POC) ---
             // Render lines with high visibility colors and custom widths to ensure they stand out clearly
-            line.style style_va = get_line_style(style_va_lines)
+            string style_va = get_line_style(style_va_lines)
 
             // POC Line: Spanning exactly across the volume profile bar width (idx to idx + 1)
             line l_poc = line.new(idx, poc_price, idx + 1, poc_price, color=color_poc_line, width=width_poc_line, style=line.style_solid)
