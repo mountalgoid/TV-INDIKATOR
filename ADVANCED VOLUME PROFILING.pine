@@ -186,320 +186,316 @@ distribute_bar_vol(float _v, float _o, float _h, float _l, float _c, float _htf_
 // === MAIN ANALYSIS FUNCTION ===
 bodycol = close > open ? color.new(col_bull,0) : color.new(col_bear,0)
 
-volumeAnalysis() =>
-    // Helper variable for Large Volume Tracking
-    int largeBuyCount = 0
-    int largeSellCount = 0
+// Helper variable for Large Volume Tracking
+int largeBuyCount = 0
+int largeSellCount = 0
 
-    // 1. Memory Management
-    if array.size(volumeBoxes) > maxBoxDisplay
-        for i = 0 to array.size(volumeBoxes) - maxBoxDisplay
-            box.delete(array.get(volumeBoxes, i))
-        array.clear(volumeBoxes)
-    
-    if array.size(DeltaVolumeLabels) > maxBoxDisplay
-        for i = 0 to array.size(DeltaVolumeLabels) - maxBoxDisplay
-            label.delete(array.get(DeltaVolumeLabels, i))
-        array.clear(DeltaVolumeLabels)
-    
-    // 2. Calculate Price Levels & Distribution
-    float priceStep = (high - low) / volumeLevels
-    float[] buyVolumeLevels  = array.new_float(volumeLevels, 0)
-    float[] sellVolumeLevels = array.new_float(volumeLevels, 0)
-    
-    // Process LTF data for precise buy and sell volumes according to price levels
-    int ltf_size = not na(v_ltf) ? array.size(v_ltf) : 0
-    float ltf_v_sum = 0.0
-    if ltf_size > 0
-        for i = 0 to ltf_size - 1
-            float _o = array.get(o_ltf, i)
-            float _h = array.get(h_ltf, i)
-            float _l = array.get(l_ltf, i)
-            float _c = array.get(c_ltf, i)
-            float _v = array.get(v_ltf, i)
-            if not (na(_o) or na(_h) or na(_l) or na(_c) or na(_v))
-                float _v_sens = _v * volumeSensitivity
-                distribute_bar_vol(_v_sens, _o, _h, _l, _c, low, priceStep, volumeLevels, buyVolumeLevels, sellVolumeLevels)
-                ltf_v_sum += _v
+// 1. Memory Management
+if array.size(volumeBoxes) > maxBoxDisplay
+    for i = 0 to array.size(volumeBoxes) - maxBoxDisplay
+        box.delete(array.get(volumeBoxes, i))
+    array.clear(volumeBoxes)
 
-    // Fallback/Responsive sync for missing or real-time volume
-    float remain_v = math.max(0.0, volume - ltf_v_sum)
-    if remain_v > 0
-        float _v_sens = remain_v * volumeSensitivity
-        distribute_bar_vol(_v_sens, open, high, low, close, low, priceStep, volumeLevels, buyVolumeLevels, sellVolumeLevels)
-    
-    float maxBuyVol  = array.max(buyVolumeLevels)
-    float minBuyVol  = array.min(buyVolumeLevels)
-    float maxSellVol = array.max(sellVolumeLevels)
-    float minSellVol = array.min(sellVolumeLevels)
-    
-    // Calculate Average Volume across levels for Large Volume thresholds
-    float totalBuyVolForAvg = array.sum(buyVolumeLevels)
-    float totalSellVolForAvg = array.sum(sellVolumeLevels)
-    float avgBuyVol = totalBuyVolForAvg / volumeLevels
-    float avgSellVol = totalSellVolForAvg / volumeLevels
+if array.size(DeltaVolumeLabels) > maxBoxDisplay
+    for i = 0 to array.size(DeltaVolumeLabels) - maxBoxDisplay
+        label.delete(array.get(DeltaVolumeLabels, i))
+    array.clear(DeltaVolumeLabels)
 
-    // Reset counts for table
-    largeBuyCount := 0
-    largeSellCount := 0
+// 2. Calculate Price Levels & Distribution
+float priceStep = (high - low) / volumeLevels
+float[] buyVolumeLevels  = array.new_float(volumeLevels, 0)
+float[] sellVolumeLevels = array.new_float(volumeLevels, 0)
 
-    // 3. Calculate Key Profile Levels: POC, VAH, VAL, HVN, LVN
-    float[] level_vols = array.new_float(volumeLevels, 0.0)
-    for i = 0 to volumeLevels - 1
-        float l_vol = array.get(buyVolumeLevels, i) + array.get(sellVolumeLevels, i)
-        array.set(level_vols, i, l_vol)
+// Process LTF data for precise buy and sell volumes according to price levels
+int ltf_size = not na(v_ltf) ? array.size(v_ltf) : 0
+float ltf_v_sum = 0.0
+if ltf_size > 0
+    for i = 0 to ltf_size - 1
+        float _o = array.get(o_ltf, i)
+        float _h = array.get(h_ltf, i)
+        float _l = array.get(l_ltf, i)
+        float _c = array.get(c_ltf, i)
+        float _v = array.get(v_ltf, i)
+        if not (na(_o) or na(_h) or na(_l) or na(_c) or na(_v))
+            float _v_sens = _v * volumeSensitivity
+            distribute_bar_vol(_v_sens, _o, _h, _l, _c, low, priceStep, volumeLevels, buyVolumeLevels, sellVolumeLevels)
+            ltf_v_sum += _v
 
-    float max_level_vol = array.max(level_vols)
-    int poc_idx = array.indexof(level_vols, max_level_vol)
+// Fallback/Responsive sync for missing or real-time volume
+float remain_v = math.max(0.0, volume - ltf_v_sum)
+if remain_v > 0
+    float _v_sens = remain_v * volumeSensitivity
+    distribute_bar_vol(_v_sens, open, high, low, close, low, priceStep, volumeLevels, buyVolumeLevels, sellVolumeLevels)
 
-    float total_volume_sum = array.sum(level_vols)
-    float va_target_vol = total_volume_sum * 0.70
-    int val_idx = poc_idx
-    int vah_idx = poc_idx
-    float va_sum = max_level_vol
+float maxBuyVol  = array.max(buyVolumeLevels)
+float minBuyVol  = array.min(buyVolumeLevels)
+float maxSellVol = array.max(sellVolumeLevels)
+float minSellVol = array.min(sellVolumeLevels)
 
-    for iteration = 0 to volumeLevels
-        if va_sum >= va_target_vol
-            break
-        bool can_expand_down = val_idx > 0
-        bool can_expand_up = vah_idx < volumeLevels - 1
-        if can_expand_down and can_expand_up
-            float down_vol = array.get(level_vols, val_idx - 1)
-            float up_vol = array.get(level_vols, vah_idx + 1)
-            if down_vol >= up_vol
-                val_idx := val_idx - 1
-                va_sum := va_sum + down_vol
-            else
-                vah_idx := vah_idx + 1
-                va_sum := va_sum + up_vol
-        else if can_expand_down
+// Calculate Average Volume across levels for Large Volume thresholds
+float totalBuyVolForAvg = array.sum(buyVolumeLevels)
+float totalSellVolForAvg = array.sum(sellVolumeLevels)
+float avgBuyVol = totalBuyVolForAvg / volumeLevels
+float avgSellVol = totalSellVolForAvg / volumeLevels
+
+// Reset counts for table
+largeBuyCount := 0
+largeSellCount := 0
+
+// 3. Calculate Key Profile Levels: POC, VAH, VAL, HVN, LVN
+float[] level_vols = array.new_float(volumeLevels, 0.0)
+for i = 0 to volumeLevels - 1
+    float l_vol = array.get(buyVolumeLevels, i) + array.get(sellVolumeLevels, i)
+    array.set(level_vols, i, l_vol)
+
+float max_level_vol = array.max(level_vols)
+int poc_idx = array.indexof(level_vols, max_level_vol)
+
+float total_volume_sum = array.sum(level_vols)
+float va_target_vol = total_volume_sum * 0.70
+int val_idx = poc_idx
+int vah_idx = poc_idx
+float va_sum = max_level_vol
+
+for iteration = 0 to volumeLevels
+    if va_sum >= va_target_vol
+        break
+    bool can_expand_down = val_idx > 0
+    bool can_expand_up = vah_idx < volumeLevels - 1
+    if can_expand_down and can_expand_up
+        float down_vol = array.get(level_vols, val_idx - 1)
+        float up_vol = array.get(level_vols, vah_idx + 1)
+        if down_vol >= up_vol
             val_idx := val_idx - 1
-            va_sum := va_sum + array.get(level_vols, val_idx)
-        else if can_expand_up
-            vah_idx := vah_idx + 1
-            va_sum := va_sum + array.get(level_vols, vah_idx)
+            va_sum := va_sum + down_vol
         else
-            break
+            vah_idx := vah_idx + 1
+            va_sum := va_sum + up_vol
+    else if can_expand_down
+        val_idx := val_idx - 1
+        va_sum := va_sum + array.get(level_vols, val_idx)
+    else if can_expand_up
+        vah_idx := vah_idx + 1
+        va_sum := va_sum + array.get(level_vols, vah_idx)
+    else
+        break
 
-    float vah_price = low + (vah_idx + 1) * priceStep
-    float val_price = low + val_idx * priceStep
-    float poc_price = low + poc_idx * priceStep + priceStep / 2
+float vah_price = low + (vah_idx + 1) * priceStep
+float val_price = low + val_idx * priceStep
+float poc_price = low + poc_idx * priceStep + priceStep / 2
 
-    // Identify HVN and LVN indices
-    float avg_level_vol = total_volume_sum / volumeLevels
-    bool[] is_hvn = array.new_bool(volumeLevels, false)
-    bool[] is_lvn = array.new_bool(volumeLevels, false)
+// Identify HVN and LVN indices
+float avg_level_vol = total_volume_sum / volumeLevels
+bool[] is_hvn = array.new_bool(volumeLevels, false)
+bool[] is_lvn = array.new_bool(volumeLevels, false)
 
-    for i = 0 to volumeLevels - 1
-        float vol_i = array.get(level_vols, i)
-        float vol_prev = i > 0 ? array.get(level_vols, i - 1) : 0.0
-        float vol_next = i < volumeLevels - 1 ? array.get(level_vols, i + 1) : 0.0
-
-        bool is_local_max = false
-        bool is_local_min = false
-
-        if volumeLevels > 1
-            if i == 0
-                is_local_max := vol_i > vol_next
-                is_local_min := vol_i < vol_next
-            else if i == volumeLevels - 1
-                is_local_max := vol_i > vol_prev
-                is_local_min := vol_i < vol_prev
-            else
-                is_local_max := vol_i > vol_prev and vol_i > vol_next
-                is_local_min := vol_i < vol_prev and vol_i < vol_next
-
-        if is_local_max and vol_i > avg_level_vol and vol_i > 0
-            array.set(is_hvn, i, true)
-        if is_local_min and vol_i < avg_level_vol and vol_i > 0
-            array.set(is_lvn, i, true)
-
-    // 4. Visualize Boxes (Horizontal splitting to ensure non-overlapping, with transparent border and dynamic heatmap bgcolor)
-    int t_start = time
-    int t_end = not na(time_close) ? time_close : time + (time - nz(time[1], time))
-    if na(t_end) or t_end <= t_start
-        t_end := t_start + 60000
-    int bar_width = t_end - t_start
-    int buy_left = t_start
-    int buy_right = t_start + math.round(bar_width * 0.48)
-    int sell_left = t_start + math.round(bar_width * 0.52)
-    int sell_right = t_end
-
-    for i = 0 to volumeLevels - 1
-        float levelLow  = low + (i * priceStep)
-        float levelHigh = levelLow + priceStep
-        float buyVol    = array.get(buyVolumeLevels, i)
-        float sellVol   = array.get(sellVolumeLevels, i)
-        
-        float buyRatio = maxBuyVol > 0 ? buyVol / maxBuyVol : 0.0
-        float sellRatio = maxSellVol > 0 ? sellVol / maxSellVol : 0.0
-
-        int buyAlpha = int(math.round(95 - buyRatio * 45)) // range 95 (low volume) to 50 (max volume)
-        int sellAlpha = int(math.round(95 - sellRatio * 45)) // range 95 (low volume) to 50 (max volume)
-
-        color buyBgColor  = color.new(col_bull, buyAlpha)
-        color sellBgColor = color.new(col_bear, sellAlpha)
-
-        // Identify Large Volume Buy/Sell
-        bool isLargeBuy  = showLargeVol and buyVol > avgBuyVol * largeVolMult and buyVol > sellVol
-        bool isLargeSell = showLargeVol and sellVol > avgSellVol * largeVolMult and sellVol > buyVol
-
-        if isLargeBuy
-            largeBuyCount := largeBuyCount + 1
-            buyBgColor := color.new(col_large_buy, 40)
-        if isLargeSell
-            largeSellCount := largeSellCount + 1
-            sellBgColor := color.new(col_large_sell, 40)
-
-        // Professional tags (VAH, VAL, POC, HVN, LVN) inside box text
-        string tag = ""
-        if i == poc_idx
-            tag := " [POC]"
-        else if i == vah_idx
-            tag := " [VAH]"
-        else if i == val_idx
-            tag := " [VAL]"
-        else if array.get(is_hvn, i)
-            tag := " [HVN]"
-        else if array.get(is_lvn, i)
-            tag := " [LVN]"
-
-        string buyText  = (isLargeBuy ? "⚡▲" : "▲") + f_formatNumber(buyVol) + tag
-        string sellText = (isLargeSell ? "⚡▼" : "▼") + f_formatNumber(sellVol) + tag
-
-        color buyTextColor  = buyVol > sellVol ? (buyVol == maxBuyVol ? col_bull : color.new(col_bull, 20)) : color.new(col_bull, 40)
-        color sellTextColor = sellVol > buyVol ? (sellVol == maxSellVol ? col_bear : color.new(col_bear, 20)) : color.new(col_bear, 40)
-
-        color buyTxtColor  = isLargeBuy ? col_large_buy : buyTextColor
-        color sellTxtColor = isLargeSell ? col_large_sell : sellTextColor
-
-        if showBuySellVolume
-            box buyBox = box.new(left=buy_left, top=levelHigh, right=buy_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=buyBgColor, text=buyText, text_size=size.auto, text_halign=text.align_left, text_color=buyTxtColor, text_valign=text.align_center)
-            array.push(volumeBoxes, buyBox)  
-            box sellBox = box.new(left=sell_left, top=levelHigh, right=sell_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=sellBgColor, text=sellText, text_size=size.auto, text_halign=text.align_right, text_color=sellTxtColor, text_valign=text.align_center)
-            array.push(volumeBoxes, sellBox)
-        
-    // 5. Advanced Key Point Analysis
-    float totalBuyVolume = array.sum(buyVolumeLevels)
-    float totalSellVolume = array.sum(sellVolumeLevels)
-    float volumeDelta = totalBuyVolume - totalSellVolume
-    float volumeDeltaPercentage = (totalBuyVolume + totalSellVolume > 0) ? (volumeDelta / (totalBuyVolume + totalSellVolume)) * 100 : 0.0
-    float volumeDeltaCurrent = volumeDelta
-    float volumeDeltaPercentageCurrent = volumeDeltaPercentage
+for i = 0 to volumeLevels - 1
+    float vol_i = array.get(level_vols, i)
+    float vol_prev = i > 0 ? array.get(level_vols, i - 1) : 0.0
+    float vol_next = i < volumeLevels - 1 ? array.get(level_vols, i + 1) : 0.0
     
-    // Indicators
-    float vwap = ta.vwap(close)
-    float rsi = ta.rsi(close, 14)
-    float cci = ta.cci(close, 14)
-    float deltaPriceLevel = low + (priceStep * (volumeDelta > 0 ? volumeLevels * 0.75 : volumeLevels * 0.25))
-
-    // [NEW] Relative Volume (RVOL) Filter for Validity
-    float avgVol = ta.sma(volume, 20)
-    float rvol = volume / avgVol
-    bool isHighVolume = rvol > 1.2 // Threshold volume validity
-
-    // Delta Volume Line
-    deltacolor = volumeDelta > 0 ? col_bull : col_bear
-    if showDeltaVolumeLine
-        line deltaVolLine = line.new(bar_index, deltaPriceLevel, bar_index + 2, deltaPriceLevel, color=mitigated_color, width=2, style=line.style_solid)
-        array.push(deltaVolumeLines, deltaVolLine)
-
-    // Trend Strength Evaluation (Updated with RVOL)
-    bool strongBullish = close > vwap and rsi > 50 and volumeDelta > 0 and volumeDeltaCurrent > 0 and cci > 100 and isHighVolume
-    bool strongBearish = close < vwap and rsi < 50 and volumeDelta < 0 and volumeDeltaCurrent < 0 and cci < -100 and isHighVolume
-
-    color keyPointColor = strongBullish ? color.new(col_bull,0) : 
-                          strongBearish ? color.new(col_bear, 0) : 
-                          color.new(mitigated_color, 0)
-
-    if ShowDVBoxAndKeypoint
-        string tdvText = "TDV : " + f_formatNumber(volumeDelta) + " (" + str.tostring(volumeDeltaPercentage, "#.1") + "%)"
-        float label_y = volumeDelta > 0 ? (low - ta.atr(14) * 0.3) : (high + ta.atr(14) * 0.3)
-        string label_style = volumeDelta > 0 ? label.style_label_up : label.style_label_down
-        color label_color = volumeDelta > 0 ? color.new(col_bull, 10) : color.new(col_bear, 10)
-        color label_textcolor = volumeDelta > 0 ? dark : white
-
-        label tdvLabel = label.new(x=bar_index, y=label_y, text=tdvText, style=label_style, color=label_color, textcolor=label_textcolor, size=size.small)
-        array.push(DeltaVolumeLabels, tdvLabel)
-
-        // High/Low Markers based on Strength
-        if strongBearish
-            line.new( x1 = bar_index,  y1 = high, x2 = bar_index + 1,  y2 = high,  width =4, color = col_bear,  style = line.style_solid )
-        if strongBullish
-            line.new( x1 = bar_index,  y1 = low, x2 = bar_index + 1,  y2 = low,  width =4, color = col_bull,  style = line.style_solid )
-
-    // Mark VAH, VAL, and POC on the last bar
-    if barstate.islast
-        line.delete(line_vah)
-        line.delete(line_val)
-        line.delete(line_poc)
-        label.delete(label_vah)
-        label.delete(label_val)
-        label.delete(label_poc)
-
-        line_vah := line.new(x1=bar_index, y1=vah_price, x2=bar_index + 10, y2=vah_price, color=color.new(col_bear, 40), width=1, style=line.style_dashed)
-        line_val := line.new(x1=bar_index, y1=val_price, x2=bar_index + 10, y2=val_price, color=color.new(col_bull, 40), width=1, style=line.style_dashed)
-        line_poc := line.new(x1=bar_index, y1=poc_price, x2=bar_index + 10, y2=poc_price, color=col_poc, width=2, style=line.style_solid)
-
-        label_vah := label.new(x=bar_index + 10, y=vah_price, text="VAH: " + str.tostring(vah_price, "#.2f"), style=label.style_label_left, color=color.new(col_bear, 90), textcolor=col_bear, size=size.tiny)
-        label_val := label.new(x=bar_index + 10, y=val_price, text="VAL: " + str.tostring(val_price, "#.2f"), style=label.style_label_left, color=color.new(col_bull, 90), textcolor=col_bull, size=size.tiny)
-        label_poc := label.new(x=bar_index + 10, y=poc_price, text="POC: " + str.tostring(poc_price, "#.2f"), style=label.style_label_left, color=color.new(col_poc, 90), textcolor=col_poc, size=size.tiny)
-
-    // === DETAILED DATA TABLE ===
-    var table volumeTable = table.new(position.top_right, 2, 16, border_width=1,frame_width =1,frame_color = mitigated_color)
-
-    table.cell(volumeTable, 0, 0, "𝘼𝙉𝘼𝙇𝙔𝙎𝙄𝙎", bgcolor=dark, text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 0, "𝙑𝘼𝙇𝙐𝙀", bgcolor=dark, text_size = size.tiny, text_color = mitigated_color)
-
-    table.cell(volumeTable, 0, 1, "Total Buy Vol", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 1, f_formatNumber(totalBuyVolume),bgcolor = box_col_bull , text_size = size.tiny, text_color = dark)
+    bool is_local_max = false
+    bool is_local_min = false
     
-    table.cell(volumeTable, 0, 2, "Max Buy Vol", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 2, f_formatNumber(maxBuyVol), bgcolor=box_col_bull, text_size = size.tiny, text_color = dark)
+    if volumeLevels > 1
+        if i == 0
+            is_local_max := vol_i > vol_next
+            is_local_min := vol_i < vol_next
+        else if i == volumeLevels - 1
+            is_local_max := vol_i > vol_prev
+            is_local_min := vol_i < vol_prev
+        else
+            is_local_max := vol_i > vol_prev and vol_i > vol_next
+            is_local_min := vol_i < vol_prev and vol_i < vol_next
+
+    if is_local_max and vol_i > avg_level_vol and vol_i > 0
+        array.set(is_hvn, i, true)
+    if is_local_min and vol_i < avg_level_vol and vol_i > 0
+        array.set(is_lvn, i, true)
+
+// 4. Visualize Boxes (Horizontal splitting to ensure non-overlapping, with transparent border and dynamic heatmap bgcolor)
+int t_start = time
+int t_end = not na(time_close) ? time_close : time + (time - nz(time[1], time))
+if na(t_end) or t_end <= t_start
+    t_end := t_start + 60000
+int bar_width = t_end - t_start
+int buy_left = t_start
+int buy_right = t_start + math.round(bar_width * 0.48)
+int sell_left = t_start + math.round(bar_width * 0.52)
+int sell_right = t_end
+
+for i = 0 to volumeLevels - 1
+    float levelLow  = low + (i * priceStep)
+    float levelHigh = levelLow + priceStep
+    float buyVol    = array.get(buyVolumeLevels, i)
+    float sellVol   = array.get(sellVolumeLevels, i)
     
-    table.cell(volumeTable, 0, 3, "Total Sell Vol", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 3, f_formatNumber(totalSellVolume),bgcolor = box_col_bear, text_size = size.tiny, text_color = dark)
-
-    table.cell(volumeTable, 0, 4, "Max Sell Vol", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 4, f_formatNumber(maxSellVol), bgcolor=box_col_bear, text_size = size.tiny, text_color = dark)
-
-    table.cell(volumeTable, 0, 5, "Total Delta", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 5, f_formatNumber(volumeDelta), bgcolor=volumeDelta > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+    float buyRatio = maxBuyVol > 0 ? buyVol / maxBuyVol : 0.0
+    float sellRatio = maxSellVol > 0 ? sellVol / maxSellVol : 0.0
     
-    table.cell(volumeTable, 0, 6, "Total Delta %", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 6, str.tostring(volumeDeltaPercentage, "#.1") + "%", bgcolor=volumeDeltaPercentage > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
-
-    table.cell(volumeTable, 0, 7, "Cur Delta", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 7, f_formatNumber(volumeDeltaCurrent), bgcolor=volumeDelta > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+    int buyAlpha = int(math.round(95 - buyRatio * 45)) // range 95 (low volume) to 50 (max volume)
+    int sellAlpha = int(math.round(95 - sellRatio * 45)) // range 95 (low volume) to 50 (max volume)
     
-    table.cell(volumeTable, 0, 8, "Cur Delta %", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 8, str.tostring(volumeDeltaPercentageCurrent, "#.1") + "%", bgcolor=volumeDeltaPercentage > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+    color buyBgColor  = color.new(col_bull, buyAlpha)
+    color sellBgColor = color.new(col_bear, sellAlpha)
 
-    table.cell(volumeTable, 0, 9, "RSI", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 9, str.tostring(rsi, "#.1"),  bgcolor=rsi > 60 ? box_col_bear : rsi < 40 ? box_col_bull : gray, text_size = size.tiny, text_color = dark)
+    // Identify Large Volume Buy/Sell
+    bool isLargeBuy  = showLargeVol and buyVol > avgBuyVol * largeVolMult and buyVol > sellVol
+    bool isLargeSell = showLargeVol and sellVol > avgSellVol * largeVolMult and sellVol > buyVol
 
-    table.cell(volumeTable, 0, 10, "VWAP", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 10, str.tostring(vwap, "#.2"), bgcolor=close < vwap ? box_col_bear : close > vwap ? box_col_bull : gray, text_size = size.tiny, text_color = dark)
+    if isLargeBuy
+        largeBuyCount := largeBuyCount + 1
+        buyBgColor := color.new(col_large_buy, 40)
+    if isLargeSell
+        largeSellCount := largeSellCount + 1
+        sellBgColor := color.new(col_large_sell, 40)
 
-    table.cell(volumeTable, 0, 11, "CCI", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 11, str.tostring(cci, "#.1"), bgcolor = cci > 100 ? box_col_bull : cci < -100 ?box_col_bear: gray, text_size = size.tiny, text_color = dark)
+    // Professional tags (VAH, VAL, POC, HVN, LVN) inside box text
+    string tag = ""
+    if i == poc_idx
+        tag := " [POC]"
+    else if i == vah_idx
+        tag := " [VAH]"
+    else if i == val_idx
+        tag := " [VAL]"
+    else if array.get(is_hvn, i)
+        tag := " [HVN]"
+    else if array.get(is_lvn, i)
+        tag := " [LVN]"
 
-    // [NEW] RVOL Table Row
-    table.cell(volumeTable, 0, 12, "RVOL (Vol Str)", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 12, str.tostring(rvol, "#.1") + "x", bgcolor = isHighVolume ? (close>open? col_bull : col_bear) : gray, text_size = size.tiny, text_color = dark)
+    string buyText  = (isLargeBuy ? "⚡▲" : "▲") + f_formatNumber(buyVol) + tag
+    string sellText = (isLargeSell ? "⚡▼" : "▼") + f_formatNumber(sellVol) + tag
+    
+    color buyTextColor  = buyVol > sellVol ? (buyVol == maxBuyVol ? col_bull : color.new(col_bull, 20)) : color.new(col_bull, 40)
+    color sellTextColor = sellVol > buyVol ? (sellVol == maxSellVol ? col_bear : color.new(col_bear, 20)) : color.new(col_bear, 40)
 
-    table.cell(volumeTable, 0, 13, "Zone", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 13, strongBullish ? "STRONG BULL" : strongBearish ? "STRONG BEAR" : "NEUTRAL", bgcolor= keyPointColor, text_size = size.tiny, text_color = dark)
+    color buyTxtColor  = isLargeBuy ? col_large_buy : buyTextColor
+    color sellTxtColor = isLargeSell ? col_large_sell : sellTextColor
 
-    // Large Volume Levels Count Row
-    table.cell(volumeTable, 0, 14, "Large Buy Levels", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 14, str.tostring(largeBuyCount), bgcolor = largeBuyCount > 0 ? col_large_buy : gray, text_size = size.tiny, text_color = dark)
+    if showBuySellVolume
+        box buyBox = box.new(left=buy_left, top=levelHigh, right=buy_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=buyBgColor, text=buyText, text_size=size.auto, text_halign=text.align_left, text_color=buyTxtColor, text_valign=text.align_center)
+        array.push(volumeBoxes, buyBox)
+        box sellBox = box.new(left=sell_left, top=levelHigh, right=sell_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=sellBgColor, text=sellText, text_size=size.auto, text_halign=text.align_right, text_color=sellTxtColor, text_valign=text.align_center)
+        array.push(volumeBoxes, sellBox)
 
-    table.cell(volumeTable, 0, 15, "Large Sell Levels", text_size = size.tiny, text_color = mitigated_color)
-    table.cell(volumeTable, 1, 15, str.tostring(largeSellCount), bgcolor = largeSellCount > 0 ? col_large_sell : gray, text_size = size.tiny, text_color = dark)
+// 5. Advanced Key Point Analysis
+float totalBuyVolume = array.sum(buyVolumeLevels)
+float totalSellVolume = array.sum(sellVolumeLevels)
+float volumeDelta = totalBuyVolume - totalSellVolume
+float volumeDeltaPercentage = (totalBuyVolume + totalSellVolume > 0) ? (volumeDelta / (totalBuyVolume + totalSellVolume)) * 100 : 0.0
+float volumeDeltaCurrent = volumeDelta
+float volumeDeltaPercentageCurrent = volumeDeltaPercentage
 
-// Run the analysis
-volumeAnalysis()
+// Indicators
+float vwap = ta.vwap(close)
+float rsi = ta.rsi(close, 14)
+float cci = ta.cci(close, 14)
+float deltaPriceLevel = low + (priceStep * (volumeDelta > 0 ? volumeLevels * 0.75 : volumeLevels * 0.25))
+
+// [NEW] Relative Volume (RVOL) Filter for Validity
+float avgVol = ta.sma(volume, 20)
+float rvol = volume / avgVol
+bool isHighVolume = rvol > 1.2 // Threshold volume validity
+
+// Delta Volume Line
+deltacolor = volumeDelta > 0 ? col_bull : col_bear
+if showDeltaVolumeLine
+    line deltaVolLine = line.new(bar_index, deltaPriceLevel, bar_index + 2, deltaPriceLevel, color=mitigated_color, width=2, style=line.style_solid)
+    array.push(deltaVolumeLines, deltaVolLine)
+
+// Trend Strength Evaluation (Updated with RVOL)
+bool strongBullish = close > vwap and rsi > 50 and volumeDelta > 0 and volumeDeltaCurrent > 0 and cci > 100 and isHighVolume
+bool strongBearish = close < vwap and rsi < 50 and volumeDelta < 0 and volumeDeltaCurrent < 0 and cci < -100 and isHighVolume
+
+color keyPointColor = strongBullish ? color.new(col_bull,0) :
+                      strongBearish ? color.new(col_bear, 0) :
+                      color.new(mitigated_color, 0)
+
+if ShowDVBoxAndKeypoint
+    string tdvText = "TDV : " + f_formatNumber(volumeDelta) + " (" + str.tostring(volumeDeltaPercentage, "#.1") + "%)"
+    float label_y = volumeDelta > 0 ? (low - ta.atr(14) * 0.3) : (high + ta.atr(14) * 0.3)
+    string label_style = volumeDelta > 0 ? label.style_label_up : label.style_label_down
+    color label_color = volumeDelta > 0 ? color.new(col_bull, 10) : color.new(col_bear, 10)
+    color label_textcolor = volumeDelta > 0 ? dark : white
+
+    label tdvLabel = label.new(x=bar_index, y=label_y, text=tdvText, style=label_style, color=label_color, textcolor=label_textcolor, size=size.small)
+    array.push(DeltaVolumeLabels, tdvLabel)
+
+    // High/Low Markers based on Strength
+    if strongBearish
+        line.new( x1 = bar_index,  y1 = high, x2 = bar_index + 1,  y2 = high,  width =4, color = col_bear,  style = line.style_solid )
+    if strongBullish
+        line.new( x1 = bar_index,  y1 = low, x2 = bar_index + 1,  y2 = low,  width =4, color = col_bull,  style = line.style_solid )
+
+// Mark VAH, VAL, and POC on the last bar
+if barstate.islast
+    line.delete(line_vah)
+    line.delete(line_val)
+    line.delete(line_poc)
+    label.delete(label_vah)
+    label.delete(label_val)
+    label.delete(label_poc)
+    
+    line_vah := line.new(x1=bar_index, y1=vah_price, x2=bar_index + 10, y2=vah_price, color=color.new(col_bear, 40), width=1, style=line.style_dashed)
+    line_val := line.new(x1=bar_index, y1=val_price, x2=bar_index + 10, y2=val_price, color=color.new(col_bull, 40), width=1, style=line.style_dashed)
+    line_poc := line.new(x1=bar_index, y1=poc_price, x2=bar_index + 10, y2=poc_price, color=col_poc, width=2, style=line.style_solid)
+    
+    label_vah := label.new(x=bar_index + 10, y=vah_price, text="VAH: " + str.tostring(vah_price, "#.2f"), style=label.style_label_left, color=color.new(col_bear, 90), textcolor=col_bear, size=size.tiny)
+    label_val := label.new(x=bar_index + 10, y=val_price, text="VAL: " + str.tostring(val_price, "#.2f"), style=label.style_label_left, color=color.new(col_bull, 90), textcolor=col_bull, size=size.tiny)
+    label_poc := label.new(x=bar_index + 10, y=poc_price, text="POC: " + str.tostring(poc_price, "#.2f"), style=label.style_label_left, color=color.new(col_poc, 90), textcolor=col_poc, size=size.tiny)
+
+// === DETAILED DATA TABLE ===
+var table volumeTable = table.new(position.top_right, 2, 16, border_width=1,frame_width =1,frame_color = mitigated_color)
+
+table.cell(volumeTable, 0, 0, "𝘼𝙉𝘼𝙇𝙔𝙎𝙄𝙎", bgcolor=dark, text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 0, "𝙑𝘼𝙇𝙐𝙀", bgcolor=dark, text_size = size.tiny, text_color = mitigated_color)
+
+table.cell(volumeTable, 0, 1, "Total Buy Vol", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 1, f_formatNumber(totalBuyVolume),bgcolor = box_col_bull , text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 2, "Max Buy Vol", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 2, f_formatNumber(maxBuyVol), bgcolor=box_col_bull, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 3, "Total Sell Vol", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 3, f_formatNumber(totalSellVolume),bgcolor = box_col_bear, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 4, "Max Sell Vol", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 4, f_formatNumber(maxSellVol), bgcolor=box_col_bear, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 5, "Total Delta", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 5, f_formatNumber(volumeDelta), bgcolor=volumeDelta > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 6, "Total Delta %", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 6, str.tostring(volumeDeltaPercentage, "#.1") + "%", bgcolor=volumeDeltaPercentage > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 7, "Cur Delta", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 7, f_formatNumber(volumeDeltaCurrent), bgcolor=volumeDelta > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 8, "Cur Delta %", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 8, str.tostring(volumeDeltaPercentageCurrent, "#.1") + "%", bgcolor=volumeDeltaPercentage > 0 ? col_bull : col_bear, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 9, "RSI", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 9, str.tostring(rsi, "#.1"),  bgcolor=rsi > 60 ? box_col_bear : rsi < 40 ? box_col_bull : gray, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 10, "VWAP", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 10, str.tostring(vwap, "#.2"), bgcolor=close < vwap ? box_col_bear : close > vwap ? box_col_bull : gray, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 11, "CCI", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 11, str.tostring(cci, "#.1"), bgcolor = cci > 100 ? box_col_bull : cci < -100 ?box_col_bear: gray, text_size = size.tiny, text_color = dark)
+
+// [NEW] RVOL Table Row
+table.cell(volumeTable, 0, 12, "RVOL (Vol Str)", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 12, str.tostring(rvol, "#.1") + "x", bgcolor = isHighVolume ? (close>open? col_bull : col_bear) : gray, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 13, "Zone", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 13, strongBullish ? "STRONG BULL" : strongBearish ? "STRONG BEAR" : "NEUTRAL", bgcolor= keyPointColor, text_size = size.tiny, text_color = dark)
+
+// Large Volume Levels Count Row
+table.cell(volumeTable, 0, 14, "Large Buy Levels", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 14, str.tostring(largeBuyCount), bgcolor = largeBuyCount > 0 ? col_large_buy : gray, text_size = size.tiny, text_color = dark)
+
+table.cell(volumeTable, 0, 15, "Large Sell Levels", text_size = size.tiny, text_color = mitigated_color)
+table.cell(volumeTable, 1, 15, str.tostring(largeSellCount), bgcolor = largeSellCount > 0 ? col_large_sell : gray, text_size = size.tiny, text_color = dark)
 
 // Custom candle plotting
 if showCandle
