@@ -531,7 +531,7 @@ table.cell(volumeTable, 1, 14, str.tostring(largeBuyCount), bgcolor = largeBuyCo
 table.cell(volumeTable, 0, 15, "Large Sell Levels", text_size = size.tiny, text_color = mitigated_color)
 table.cell(volumeTable, 1, 15, str.tostring(largeSellCount), bgcolor = largeSellCount > 0 ? col_large_sell : gray, text_size = size.tiny, text_color = dark)
 
-// Custom candle plotting
+// Custom candle plotting using thick transparent lines (wick size 6, body size 20)
 if showCandle
-    box.new(bar_index,open, bar_index + 1,close, border_color = bodycol,bgcolor = color.new(bodycol,70),border_width = 1)
-    box.new(bar_index,high, bar_index + 1,low, border_color = Transparent_Color,bgcolor = color.new(bodycol,100),border_width = 1)
+    line.new(x1=bar_index, y1=high, x2=bar_index, y2=low, color=color.new(bodycol, 40), width=6)
+    line.new(x1=bar_index, y1=open, x2=bar_index, y2=close, color=color.new(bodycol, 60), width=20)
