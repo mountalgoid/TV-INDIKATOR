@@ -359,8 +359,8 @@ if barstate.islast
                                     text=txt,
                                     text_size=size.auto,
                                     text_color=txt_color,
-                                    text_style=text.style_bold,
-                                    text_valign=text.valign_center,
+                                    text_formatting=text.format_bold,
+                                    text_valign=text.align_center,
                                     text_halign=text.align_center)
                     array.push(profile_boxes, b)
 
@@ -385,8 +385,8 @@ if barstate.islast
                                                 text="HVN",
                                                 text_size=size.auto,
                                                 text_color=color.new(color.white, 30),
-                                                text_style=text.style_bold,
-                                                text_valign=text.valign_center,
+                                                text_formatting=text.format_bold,
+                                                text_valign=text.align_center,
                                                 text_halign=text.align_right)
                             array.push(profile_boxes, hvn_b)
                         else if is_lvn
@@ -398,8 +398,8 @@ if barstate.islast
                                                 text="LVN",
                                                 text_size=size.auto,
                                                 text_color=color.new(color.white, 30),
-                                                text_style=text.style_bold,
-                                                text_valign=text.valign_center,
+                                                text_formatting=text.format_bold,
+                                                text_valign=text.align_center,
                                                 text_halign=text.align_right)
                             array.push(profile_boxes, lvn_b)
 
@@ -458,7 +458,7 @@ if barstate.islast
                                     text=tdv_text,
                                     text_size=size.auto,
                                     text_color=color.white,
-                                    text_style=text.style_bold,
-                                    text_valign=text.valign_center,
+                                    text_formatting=text.format_bold,
+                                    text_valign=text.align_center,
                                     text_halign=text.align_center)
                 array.push(tdv_boxes, tdv_b)
