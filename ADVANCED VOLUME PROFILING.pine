@@ -113,17 +113,10 @@ f_formatNumber(float value) =>
         str.tostring(value, "#.0")
 
 // === GLOBAL VARIABLES ===
-var label[] DeltaVolumeLabels = array.new_label()
+var box[] DeltaVolumeBox = array.new_box()
 var box[] volumeBoxes    = array.new_box()
 var line[] deltaVolumeLines = array.new_line()
-
-// Global variables for VAH, VAL, POC lines & labels on last bar
-var line line_vah = na
-var line line_val = na
-var line line_poc = na
-var label label_vah = na
-var label label_val = na
-var label label_poc = na
+var line[] footprintLines = array.new_line()
 
 // === [NEW] INTRABAR DATA FETCHING FOR ACCURACY ===
 // Mengambil data Intrabar (Open, High, Low, Close, Volume)
@@ -196,10 +189,15 @@ if array.size(volumeBoxes) > maxBoxDisplay
         box.delete(array.get(volumeBoxes, i))
     array.clear(volumeBoxes)
 
-if array.size(DeltaVolumeLabels) > maxBoxDisplay
-    for i = 0 to array.size(DeltaVolumeLabels) - maxBoxDisplay
-        label.delete(array.get(DeltaVolumeLabels, i))
-    array.clear(DeltaVolumeLabels)
+if array.size(DeltaVolumeBox) > maxBoxDisplay
+    for i = 0 to array.size(DeltaVolumeBox) - maxBoxDisplay
+        box.delete(array.get(DeltaVolumeBox, i))
+    array.clear(DeltaVolumeBox)
+
+if array.size(footprintLines) > maxBoxDisplay * 4
+    for i = 0 to array.size(footprintLines) - maxBoxDisplay * 4
+        line.delete(array.get(footprintLines, i))
+    array.clear(footprintLines)
 
 // 2. Calculate Price Levels & Distribution
 float priceStep = (high - low) / volumeLevels
@@ -323,6 +321,7 @@ int buy_left = t_start
 int buy_right = t_start + math.round(bar_width * 0.48)
 int sell_left = t_start + math.round(bar_width * 0.52)
 int sell_right = t_end
+int bar_center = t_start + math.round(bar_width * 0.5)
 
 for i = 0 to volumeLevels - 1
     float levelLow  = low + (i * priceStep)
@@ -365,18 +364,29 @@ for i = 0 to volumeLevels - 1
 
     string buyText  = (isLargeBuy ? "⚡▲" : "▲") + f_formatNumber(buyVol) + tag
     string sellText = (isLargeSell ? "⚡▼" : "▼") + f_formatNumber(sellVol) + tag
-    
+
     color buyTextColor  = buyVol > sellVol ? (buyVol == maxBuyVol ? col_bull : color.new(col_bull, 20)) : color.new(col_bull, 40)
     color sellTextColor = sellVol > buyVol ? (sellVol == maxSellVol ? col_bear : color.new(col_bear, 20)) : color.new(col_bear, 40)
 
     color buyTxtColor  = isLargeBuy ? col_large_buy : buyTextColor
     color sellTxtColor = isLargeSell ? col_large_sell : sellTextColor
 
+    // Point 5: Render HVN and LVN areas using vertical lines at center of the bar
+    if array.get(is_hvn, i)
+        line l_hvn = line.new(x1=bar_center, y1=levelLow, x2=bar_center, y2=levelHigh, xloc=xloc.bar_time, color=col_poc, width=4, style=line.style_solid)
+        array.push(footprintLines, l_hvn)
+    if array.get(is_lvn, i)
+        line l_lvn = line.new(x1=bar_center, y1=levelLow, x2=bar_center, y2=levelHigh, xloc=xloc.bar_time, color=gray, width=4, style=line.style_solid)
+        array.push(footprintLines, l_lvn)
+
+    // Point 2: Show only 1 dominant volume value per box
     if showBuySellVolume
-        box buyBox = box.new(left=buy_left, top=levelHigh, right=buy_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=buyBgColor, text=buyText, text_size=size.auto, text_halign=text.align_left, text_color=buyTxtColor, text_valign=text.align_center)
-        array.push(volumeBoxes, buyBox)
-        box sellBox = box.new(left=sell_left, top=levelHigh, right=sell_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=sellBgColor, text=sellText, text_size=size.auto, text_halign=text.align_right, text_color=sellTxtColor, text_valign=text.align_center)
-        array.push(volumeBoxes, sellBox)
+        if buyVol >= sellVol
+            box buyBox = box.new(left=buy_left, top=levelHigh, right=buy_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=buyBgColor, text=buyText, text_size=size.auto, text_halign=text.align_left, text_color=buyTxtColor, text_valign=text.align_center)
+            array.push(volumeBoxes, buyBox)
+        else
+            box sellBox = box.new(left=sell_left, top=levelHigh, right=sell_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=sellBgColor, text=sellText, text_size=size.auto, text_halign=text.align_right, text_color=sellTxtColor, text_valign=text.align_center)
+            array.push(volumeBoxes, sellBox)
 
 // 5. Advanced Key Point Analysis
 float totalBuyVolume = array.sum(buyVolumeLevels)
@@ -411,15 +421,22 @@ color keyPointColor = strongBullish ? color.new(col_bull,0) :
                       strongBearish ? color.new(col_bear, 0) :
                       color.new(mitigated_color, 0)
 
+// Point 3: TDV represented as box and placed separately above or below the candle
 if ShowDVBoxAndKeypoint
     string tdvText = "TDV : " + f_formatNumber(volumeDelta) + " (" + str.tostring(volumeDeltaPercentage, "#.1") + "%)"
-    float label_y = volumeDelta > 0 ? (low - ta.atr(14) * 0.3) : (high + ta.atr(14) * 0.3)
-    string label_style = volumeDelta > 0 ? label.style_label_up : label.style_label_down
-    color label_color = volumeDelta > 0 ? color.new(col_bull, 10) : color.new(col_bear, 10)
-    color label_textcolor = volumeDelta > 0 ? dark : white
+    color tdv_color = volumeDelta > 0 ? col_bull : col_bear
+    color tdv_bg = color.new(tdv_color, 20)
+    float tdv_top = 0.0
+    float tdv_bottom = 0.0
+    if volumeDelta > 0
+        tdv_top := low - ta.atr(14) * 0.1
+        tdv_bottom := low - ta.atr(14) * 0.3
+    else
+        tdv_top := high + ta.atr(14) * 0.3
+        tdv_bottom := high + ta.atr(14) * 0.1
 
-    label tdvLabel = label.new(x=bar_index, y=label_y, text=tdvText, style=label_style, color=label_color, textcolor=label_textcolor, size=size.small)
-    array.push(DeltaVolumeLabels, tdvLabel)
+    box tdvBox = box.new(left=t_start, top=tdv_top, right=t_end, bottom=tdv_bottom, xloc=xloc.bar_time, border_color=na, bgcolor=tdv_bg, text=tdvText, text_size=size.auto, text_color=dark, text_valign=text.align_center, text_halign=text.align_center)
+    array.push(DeltaVolumeBox, tdvBox)
 
     // High/Low Markers based on Strength
     if strongBearish
@@ -427,22 +444,13 @@ if ShowDVBoxAndKeypoint
     if strongBullish
         line.new( x1 = bar_index,  y1 = low, x2 = bar_index + 1,  y2 = low,  width =4, color = col_bull,  style = line.style_solid )
 
-// Mark VAH, VAL, and POC on the last bar
-if barstate.islast
-    line.delete(line_vah)
-    line.delete(line_val)
-    line.delete(line_poc)
-    label.delete(label_vah)
-    label.delete(label_val)
-    label.delete(label_poc)
-    
-    line_vah := line.new(x1=bar_index, y1=vah_price, x2=bar_index + 10, y2=vah_price, color=color.new(col_bear, 40), width=1, style=line.style_dashed)
-    line_val := line.new(x1=bar_index, y1=val_price, x2=bar_index + 10, y2=val_price, color=color.new(col_bull, 40), width=1, style=line.style_dashed)
-    line_poc := line.new(x1=bar_index, y1=poc_price, x2=bar_index + 10, y2=poc_price, color=col_poc, width=2, style=line.style_solid)
-    
-    label_vah := label.new(x=bar_index + 10, y=vah_price, text="VAH: " + str.tostring(vah_price, "#.2f"), style=label.style_label_left, color=color.new(col_bear, 90), textcolor=col_bear, size=size.tiny)
-    label_val := label.new(x=bar_index + 10, y=val_price, text="VAL: " + str.tostring(val_price, "#.2f"), style=label.style_label_left, color=color.new(col_bull, 90), textcolor=col_bull, size=size.tiny)
-    label_poc := label.new(x=bar_index + 10, y=poc_price, text="POC: " + str.tostring(poc_price, "#.2f"), style=label.style_label_left, color=color.new(col_poc, 90), textcolor=col_poc, size=size.tiny)
+// Point 4: Render POC, VAL, and VAH as horizontal lines matching the box width
+line l_vah = line.new(x1=t_start, y1=vah_price, x2=t_end, y2=vah_price, xloc=xloc.bar_time, color=color.new(col_bear, 25), width=2, style=line.style_dashed)
+line l_val = line.new(x1=t_start, y1=val_price, x2=t_end, y2=val_price, xloc=xloc.bar_time, color=color.new(col_bull, 25), width=2, style=line.style_dashed)
+line l_poc = line.new(x1=t_start, y1=poc_price, x2=t_end, y2=poc_price, xloc=xloc.bar_time, color=col_poc, width=3, style=line.style_solid)
+array.push(footprintLines, l_poc)
+array.push(footprintLines, l_vah)
+array.push(footprintLines, l_val)
 
 // === DETAILED DATA TABLE ===
 var table volumeTable = table.new(position.top_right, 2, 16, border_width=1,frame_width =1,frame_color = mitigated_color)
