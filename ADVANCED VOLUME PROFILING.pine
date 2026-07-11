@@ -115,66 +115,79 @@ f_formatNumber(float value) =>
 // === GLOBAL VARIABLES ===
 var box[] DeltaVolumeBox = array.new_box()
 var box[] volumeBoxes    = array.new_box()
-var line[] deltaVolumeLines = array.new_line()
 var line[] footprintLines = array.new_line()
 
 // === [NEW] INTRABAR DATA FETCHING FOR ACCURACY ===
 // Mengambil data Intrabar (Open, High, Low, Close, Volume)
 [o_ltf, h_ltf, l_ltf, c_ltf, v_ltf] = request.security_lower_tf(syminfo.tickerid, ltf_res, [open, high, low, close, volume])
 
-// Heuristic Volume Partitioning (Directional Candle Engine)
-calc_vol_partition(float _v, float _o, float _h, float _l, float _c) =>
-    float b_vol = 0.0
-    float s_vol = 0.0
-    if _c >= _o
-        b_vol := _v
-    else
-        s_vol := _v
-    [b_vol, s_vol]
-
-// Precise volume distribution across levels
+// Precise volume distribution across levels using premium 3-part partitioning
 distribute_bar_vol(float _v, float _o, float _h, float _l, float _c, float _htf_low, float _price_step, int _levels, array<float> _buy_levels, array<float> _sell_levels) =>
     float l_clamped = math.max(_htf_low, _l)
     float h_clamped = math.min(_htf_low + _levels * _price_step, _h)
     float range_val = h_clamped - l_clamped
     int max_idx = _levels - 1
 
-    [b_vol, s_vol] = calc_vol_partition(_v, _o, _h, _l, _c)
-
-    if range_val <= 0
-        int idx = math.min(max_idx, math.max(0, math.floor((_c - _htf_low) / _price_step)))
+    if range_val <= 0 or _levels <= 1 or _price_step <= 0
+        int idx = _price_step > 0 ? math.min(max_idx, math.max(0, math.floor((_c - _htf_low) / _price_step))) : 0
+        float b_vol = _c >= _o ? _v : 0.0
+        float s_vol = _c < _o ? _v : 0.0
         array.set(_buy_levels, idx, array.get(_buy_levels, idx) + b_vol)
         array.set(_sell_levels, idx, array.get(_sell_levels, idx) + s_vol)
     else
-        int idx_low = math.min(max_idx, math.max(0, math.floor((l_clamped - _htf_low) / _price_step)))
-        int idx_high = math.min(max_idx, math.max(0, math.floor((h_clamped - _htf_low) / _price_step)))
+        float body_high = math.max(_o, _c)
+        float body_low  = math.min(_o, _c)
+        float body_size = body_high - body_low
+        float upper_wick = _h - body_high
+        float lower_wick = body_low - _l
 
-        if idx_low == idx_high
-            array.set(_buy_levels, idx_low, array.get(_buy_levels, idx_low) + b_vol)
-            array.set(_sell_levels, idx_low, array.get(_sell_levels, idx_low) + s_vol)
-        else
-            float total_weight = 0.0
-            float[] level_weights = array.new_float(idx_high - idx_low + 1, 0.0)
+        float w_body = body_size / range_val
+        float w_upper = upper_wick / range_val
+        float w_lower = lower_wick / range_val
 
-            for idx = idx_low to idx_high
-                float bin_low = _htf_low + idx * _price_step
-                float bin_high = bin_low + _price_step
-                float overlap_low = math.max(l_clamped, bin_low)
-                float overlap_high = math.min(h_clamped, bin_high)
-                float overlap = math.max(0.0, overlap_high - overlap_low)
-                array.set(level_weights, idx - idx_low, overlap)
-                total_weight += overlap
+        float v_body = _v * w_body
+        float v_upper = _v * w_upper
+        float v_lower = _v * w_lower
 
-            if total_weight > 0
-                for idx = idx_low to idx_high
-                    float weight = array.get(level_weights, idx - idx_low) / total_weight
-                    array.set(_buy_levels, idx, array.get(_buy_levels, idx) + b_vol * weight)
-                    array.set(_sell_levels, idx, array.get(_sell_levels, idx) + s_vol * weight)
-            else
-                float share = 1.0 / (idx_high - idx_low + 1)
-                for idx = idx_low to idx_high
-                    array.set(_buy_levels, idx, array.get(_buy_levels, idx) + b_vol * share)
-                    array.set(_sell_levels, idx, array.get(_sell_levels, idx) + s_vol * share)
+        float body_buy_ratio = _c >= _o ? 0.8 : 0.2
+        float lower_buy_ratio = 0.7
+        float upper_buy_ratio = 0.3
+
+        // 1. Distribute Lower Wick (mostly buy/support pressure)
+        if v_lower > 0
+            int idx_l = math.min(max_idx, math.max(0, math.floor((l_clamped - _htf_low) / _price_step)))
+            int idx_h = math.min(max_idx, math.max(0, math.floor((body_low - _htf_low) / _price_step)))
+            int count = idx_h - idx_l + 1
+            float v_share = v_lower / count
+            float b_share = v_share * lower_buy_ratio
+            float s_share = v_share * (1.0 - lower_buy_ratio)
+            for idx = idx_l to idx_h
+                array.set(_buy_levels, idx, array.get(_buy_levels, idx) + b_share)
+                array.set(_sell_levels, idx, array.get(_sell_levels, idx) + s_share)
+
+        // 2. Distribute Candle Body (directional momentum)
+        if v_body > 0
+            int idx_l = math.min(max_idx, math.max(0, math.floor((body_low - _htf_low) / _price_step)))
+            int idx_h = math.min(max_idx, math.max(0, math.floor((body_high - _htf_low) / _price_step)))
+            int count = idx_h - idx_l + 1
+            float v_share = v_body / count
+            float b_share = v_share * body_buy_ratio
+            float s_share = v_share * (1.0 - body_buy_ratio)
+            for idx = idx_l to idx_h
+                array.set(_buy_levels, idx, array.get(_buy_levels, idx) + b_share)
+                array.set(_sell_levels, idx, array.get(_sell_levels, idx) + s_share)
+
+        // 3. Distribute Upper Wick (mostly sell/resistance pressure)
+        if v_upper > 0
+            int idx_l = math.min(max_idx, math.max(0, math.floor((body_high - _htf_low) / _price_step)))
+            int idx_h = math.min(max_idx, math.max(0, math.floor((h_clamped - _htf_low) / _price_step)))
+            int count = idx_h - idx_l + 1
+            float v_share = v_upper / count
+            float b_share = v_share * upper_buy_ratio
+            float s_share = v_share * (1.0 - upper_buy_ratio)
+            for idx = idx_l to idx_h
+                array.set(_buy_levels, idx, array.get(_buy_levels, idx) + b_share)
+                array.set(_sell_levels, idx, array.get(_sell_levels, idx) + s_share)
 
 // === MAIN ANALYSIS FUNCTION ===
 bodycol = close > open ? color.new(col_bull,0) : color.new(col_bear,0)
@@ -407,11 +420,6 @@ float avgVol = ta.sma(volume, 20)
 float rvol = volume / avgVol
 bool isHighVolume = rvol > 1.2 // Threshold volume validity
 
-// Delta Volume Line
-deltacolor = volumeDelta > 0 ? col_bull : col_bear
-if showDeltaVolumeLine
-    line deltaVolLine = line.new(bar_index, deltaPriceLevel, bar_index + 2, deltaPriceLevel, color=mitigated_color, width=2, style=line.style_solid)
-    array.push(deltaVolumeLines, deltaVolLine)
 
 // Trend Strength Evaluation (Updated with RVOL)
 bool strongBullish = close > vwap and rsi > 50 and volumeDelta > 0 and volumeDeltaCurrent > 0 and cci > 100 and isHighVolume
