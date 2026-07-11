@@ -182,11 +182,11 @@ distribute_bar_vol(float _v, float _o, float _h, float _l, float _c, float _htf_
 // === MAIN ANALYSIS FUNCTION ===
 bodycol = close > open ? color.new(col_bull,0) : color.new(col_bear,0)
 
-// Helper variable for Large Volume Tracking
-var int largeBuyCount = 0
-var int largeSellCount = 0
-
 volumeAnalysis() =>
+    // Helper variable for Large Volume Tracking
+    int largeBuyCount = 0
+    int largeSellCount = 0
+
     // 1. Memory Management
     if array.size(volumeBoxes) > maxBoxDisplay
         for i = 0 to array.size(volumeBoxes) - maxBoxDisplay
