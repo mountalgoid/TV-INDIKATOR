@@ -398,11 +398,9 @@ for i = 0 to volumeLevels - 1
     string buyText  = (isLargeBuy ? "⚡▲" : "▲") + f_formatNumber(buyVol) + tag
     string sellText = (isLargeSell ? "⚡▼" : "▼") + f_formatNumber(sellVol) + tag
 
-    color buyTextColor  = buyVol > sellVol ? (buyVol == maxBuyVol ? col_bull : color.new(col_bull, 20)) : color.new(col_bull, 40)
-    color sellTextColor = sellVol > buyVol ? (sellVol == maxSellVol ? col_bear : color.new(col_bear, 20)) : color.new(col_bear, 40)
-
-    color buyTxtColor  = isLargeBuy ? col_large_buy : buyTextColor
-    color sellTxtColor = isLargeSell ? col_large_sell : sellTextColor
+    // Dynamic text color (white and black) depending on background transparency
+    color buyTxtColor  = buyAlpha > 75 ? white : dark
+    color sellTxtColor = sellAlpha > 75 ? white : dark
 
     // Point 5: Render HVN and LVN areas using vertical lines at center of the bar
     if array.get(is_hvn, i)
@@ -412,12 +410,12 @@ for i = 0 to volumeLevels - 1
         line l_lvn = line.new(x1=bar_center, y1=levelLow, x2=bar_center, y2=levelHigh, xloc=xloc.bar_time, color=gray, width=4, style=line.style_solid)
         array.push(footprintLines, l_lvn)
 
-    // Point 2: Show only 1 dominant volume value per box
+    // Draw both buy and sell side-by-side on each level to show full profile details without overlapping
     if showBuySellVolume
-        if buyVol >= sellVol
+        if buyVol > 0
             box buyBox = box.new(left=buy_left, top=levelHigh, right=buy_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=buyBgColor, text=buyText, text_size=size.auto, text_halign=text.align_left, text_color=buyTxtColor, text_valign=text.align_center)
             array.push(volumeBoxes, buyBox)
-        else
+        if sellVol > 0
             box sellBox = box.new(left=sell_left, top=levelHigh, right=sell_right, bottom=levelLow, xloc=xloc.bar_time, border_color=na, bgcolor=sellBgColor, text=sellText, text_size=size.auto, text_halign=text.align_right, text_color=sellTxtColor, text_valign=text.align_center)
             array.push(volumeBoxes, sellBox)
 
