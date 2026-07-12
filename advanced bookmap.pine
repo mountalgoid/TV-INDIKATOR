@@ -1769,6 +1769,7 @@ if show_table and barstate.islast
         "top_right"    => position.top_right
         "bottom_left"  => position.bottom_left
         "bottom_right" => position.bottom_right
+        => position.bottom_left
     
     // Trends & Colors
     string delta_trend     = delta >= p_delta ? " (+)" : " (-)"
