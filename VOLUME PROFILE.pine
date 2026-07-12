@@ -124,6 +124,7 @@ show_vp_labels = input.bool(true, "Show POC/VAH/VAL Labels", group=g_display)
 show_lvn_hvn = input.bool(true, "Show HVN and LVN Levels", group=g_display)
 show_analysis_table = input.bool(true, "Show Trading Analysis Table", group=g_display)
 show_volume_ladder = input.bool(true, "Show Volume Ladder Table", group=g_display)
+show_logo = input.bool(true, "Show Logo", group="Logo Settings", tooltip="Enable/Disable visual logo display")
 
 // ______________________________________________________________________________________________________________________________________________________
 //| COLORS & UTILS                                                                                                                                        |
@@ -427,26 +428,54 @@ if barstate.islast
     var table analysis_tbl = table.new(position.bottom_center, 3, 9, bgcolor=mitigated_box_color, border_width=0,frame_width = 1,frame_color = mitigated_color, border_color=Transparent_Color)
     if show_analysis_table
         table.clear(analysis_tbl, 0, 0)
+
+        // 4. Gradient background colors based on values in the analysis table
+        // Max value references for normalization:
+        // Delta cells (Bar Delta can range, Cum Delta can be large. Let's scale up to current values)
+        color delta_cell_bg_buy = color.from_gradient(math.max(0.0, current_delta), 0.0, math.max(1.0, current_buy_vol), color.new(POSITIVE_COLOR, 85), color.new(POSITIVE_COLOR, 40))
+        color delta_cell_bg_sell = color.from_gradient(math.max(0.0, -current_delta), 0.0, math.max(1.0, current_sell_vol), color.new(NEGATIVE_COLOR, 85), color.new(NEGATIVE_COLOR, 40))
+
+        // RSI gradient colors (bull starts at rsi_bull_level, bear starts below rsi_bear_level)
+        color rsi_cell_bg_buy = color.from_gradient(math.max(0.0, rsi - rsi_bull_level), 0.0, 100.0 - rsi_bull_level, color.new(POSITIVE_COLOR, 85), color.new(POSITIVE_COLOR, 40))
+        color rsi_cell_bg_sell = color.from_gradient(math.max(0.0, rsi_bear_level - rsi), 0.0, rsi_bear_level, color.new(NEGATIVE_COLOR, 85), color.new(NEGATIVE_COLOR, 40))
+
+        // Trend cells
+        color trend_cell_bg_buy = is_uptrend ? color.new(POSITIVE_COLOR, 50) : color.new(mitigated_color, 85)
+        color trend_cell_bg_sell = is_downtrend ? color.new(NEGATIVE_COLOR, 50) : color.new(mitigated_color, 85)
+
+        // Key Levels cells (Price > VWAP & Price < POC)
+        color level_cell_bg_buy = close > vwap_val ? color.new(POSITIVE_COLOR, 50) : color.new(mitigated_color, 85)
+        color level_cell_bg_sell = (not na(poc_price) and close < poc_price) ? color.new(NEGATIVE_COLOR, 50) : color.new(mitigated_color, 85)
+
+        // Signal cells
+        bool longSignal = current_delta > 0 and rsi > rsi_bull_level and close > vwap_val and is_uptrend
+        bool shortSignal = current_delta < 0 and rsi < rsi_bear_level and close < vwap_val and is_downtrend
+        color signal_cell_bg_buy = longSignal ? color.new(POSITIVE_COLOR, 20) : color.new(mitigated_color, 85)
+        color signal_cell_bg_sell = shortSignal ? color.new(NEGATIVE_COLOR, 20) : color.new(mitigated_color, 85)
+
         table.cell(analysis_tbl, 0, 0, "AOF Analysis v6.0", bgcolor=HEADER_COLOR, text_color=TEXT_COLOR, text_size=size.small)
         table.cell(analysis_tbl, 1, 0, "Bullish", bgcolor=HEADER_COLOR, text_size=size.small, text_color=TEXT_COLOR)
         table.cell(analysis_tbl, 2, 0, "Bearish", bgcolor=HEADER_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+
         table.cell(analysis_tbl, 0, 1, "Delta", text_color=TEXT_COLOR, text_size=size.tiny)
-        table.cell(analysis_tbl, 1, 1, "Bar Delta: " + str.tostring(current_delta, "#"), bgcolor=current_delta > 0 ? POSITIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
-        table.cell(analysis_tbl, 2, 1, "Cum Delta: " + f_formatNumber(cum_delta, true), bgcolor=cum_delta < 0 ? NEGATIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 1, 1, "Bar Delta: " + str.tostring(current_delta, "#"), bgcolor=current_delta > 0 ? delta_cell_bg_buy : color.new(mitigated_color, 85), text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 1, "Cum Delta: " + f_formatNumber(cum_delta, true), bgcolor=cum_delta < 0 ? delta_cell_bg_sell : color.new(mitigated_color, 85), text_size=size.small, text_color=TEXT_COLOR)
+
         table.cell(analysis_tbl, 0, 2, "Momentum", text_color=TEXT_COLOR, text_size=size.tiny)
-        table.cell(analysis_tbl, 1, 2, "RSI: " + str.tostring(rsi, "#.0"), bgcolor=rsi > rsi_bull_level ? POSITIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
-        table.cell(analysis_tbl, 2, 2, "RSI: " + str.tostring(rsi, "#.0"), bgcolor=rsi < rsi_bear_level ? NEGATIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 1, 2, "RSI: " + str.tostring(rsi, "#.0"), bgcolor=rsi > rsi_bull_level ? rsi_cell_bg_buy : color.new(mitigated_color, 85), text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 2, "RSI: " + str.tostring(rsi, "#.0"), bgcolor=rsi < rsi_bear_level ? rsi_cell_bg_sell : color.new(mitigated_color, 85), text_size=size.small, text_color=TEXT_COLOR)
+
         table.cell(analysis_tbl, 0, 3, "Trend", text_color=TEXT_COLOR, text_size=size.tiny)
-        table.cell(analysis_tbl, 1, 3, is_uptrend ? "Strong Up" : "Neutral", bgcolor=is_uptrend ? POSITIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
-        table.cell(analysis_tbl, 2, 3, is_downtrend ? "Strong Down" : "Neutral", bgcolor=is_downtrend ? NEGATIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 1, 3, is_uptrend ? "Strong Up" : "Neutral", bgcolor=trend_cell_bg_buy, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 3, is_downtrend ? "Strong Down" : "Neutral", bgcolor=trend_cell_bg_sell, text_size=size.small, text_color=TEXT_COLOR)
+
         table.cell(analysis_tbl, 0, 4, "Key Levels", text_color=TEXT_COLOR, text_size=size.tiny)
-        table.cell(analysis_tbl, 1, 4, "Price > VWAP", bgcolor=close > vwap_val ? POSITIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
-        table.cell(analysis_tbl, 2, 4, "Price < POC", bgcolor=not na(poc_price) and close < poc_price ? NEGATIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
-        bool longSignal = current_delta > 0 and rsi > rsi_bull_level and close > vwap_val and is_uptrend
-        bool shortSignal = current_delta < 0 and rsi < rsi_bear_level and close < vwap_val and is_downtrend
+        table.cell(analysis_tbl, 1, 4, "Price > VWAP", bgcolor=level_cell_bg_buy, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 4, "Price < POC", bgcolor=level_cell_bg_sell, text_size=size.small, text_color=TEXT_COLOR)
+
         table.cell(analysis_tbl, 0, 6, "Entry Signal", text_color=TEXT_COLOR, text_size=size.small)
-        table.cell(analysis_tbl, 1, 6, longSignal ? "✓ Long" : "✗", bgcolor=longSignal ? color.new(POSITIVE_COLOR, 0) : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
-        table.cell(analysis_tbl, 2, 6, shortSignal ? "✓ Short" : "✗", bgcolor=shortSignal ? color.new(NEGATIVE_COLOR, 0) : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 1, 6, longSignal ? "✓ Long" : "✗", bgcolor=signal_cell_bg_buy, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 6, shortSignal ? "✓ Short" : "✗", bgcolor=signal_cell_bg_sell, text_size=size.small, text_color=TEXT_COLOR)
 
     var table ladder_tbl = table.new(position.top_right, 4, vp_resolution + 1, bgcolor=dark, border_width=1, border_color=Transparent_Color,frame_color = mitigated_color,frame_width = 1)
     if show_volume_ladder and total_profile_volume > 0
@@ -530,12 +559,13 @@ if barstate.islast
     // 5. DRAW HISTOGRAM & LINES
     if show_vp_histogram and price_range > 0
         float avg_profile_vol = array.avg(volume_at_price)
-        int profile_start_x = bar_index + 62
+        // 2. Perdekat lagi volume profile dengan right sekitar 20 (menggunakan offset + 20 dan + 22)
+        int profile_start_x = bar_index + 22
         int max_profile_width = 58
         int start_bar_for_drawing = vp_mode == "Recent Bars" ? bar_index - vp_period + 1 : bar_index - ta.barssince(time >= vp_startTime)
         
         // Frame Box
-        box bvp = box.new(start_bar_for_drawing, vp_high, bar_index + 60, vp_low,
+        box bvp = box.new(start_bar_for_drawing, vp_high, bar_index + 20, vp_low,
              border_color=mitigated_color, border_style=line.style_dashed, border_width=2,
              bgcolor=Transparent_Color, extend=extend.none)
         array.push(vp_boxes, bvp)
@@ -562,24 +592,24 @@ if barstate.islast
         if not na(poc_price)
             // 2. ubah label val vah poc ber bgcolor jelas dan text jelas
             // POC
-            line lpoc = line.new(start_bar_for_drawing, poc_price, bar_index + 65, poc_price, color=POC_COLOR_LINE, style=line.style_solid, width=2)
+            line lpoc = line.new(start_bar_for_drawing, poc_price, bar_index + 25, poc_price, color=POC_COLOR_LINE, style=line.style_solid, width=2)
             array.push(vp_lines, lpoc)
             if show_vp_labels
-                label lb_poc = label.new(bar_index + 65, poc_price, "POC\n" + str.tostring(poc_price, format.mintick), color=col_poc, textcolor=dark, style=label.style_label_left, size=size.tiny)
+                label lb_poc = label.new(bar_index + 25, poc_price, "POC\n" + str.tostring(poc_price, format.mintick), color=col_poc, textcolor=dark, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_poc)
 
             // VAH
-            line lvah = line.new(start_bar_for_drawing, vah_price, bar_index + 65, vah_price, color=VAH_COLOR_LINE, style=line.style_dashed, width=1)
+            line lvah = line.new(start_bar_for_drawing, vah_price, bar_index + 25, vah_price, color=VAH_COLOR_LINE, style=line.style_dashed, width=1)
             array.push(vp_lines, lvah)
             if show_vp_labels
-                label lb_vah = label.new(bar_index + 65, vah_price, "VAH\n" + str.tostring(vah_price, format.mintick), color=col_bull, textcolor=dark, style=label.style_label_left, size=size.tiny)
+                label lb_vah = label.new(bar_index + 25, vah_price, "VAH\n" + str.tostring(vah_price, format.mintick), color=col_bull, textcolor=dark, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_vah)
             
             // VAL
-            line lval = line.new(start_bar_for_drawing, val_price, bar_index + 65, val_price, color=VAL_COLOR_LINE, style=line.style_dashed, width=1)
+            line lval = line.new(start_bar_for_drawing, val_price, bar_index + 25, val_price, color=VAL_COLOR_LINE, style=line.style_dashed, width=1)
             array.push(vp_lines, lval)
             if show_vp_labels
-                label lb_val = label.new(bar_index + 65, val_price, "VAL\n" + str.tostring(val_price, format.mintick), color=col_bear, textcolor=dark, style=label.style_label_left, size=size.tiny)
+                label lb_val = label.new(bar_index + 25, val_price, "VAL\n" + str.tostring(val_price, format.mintick), color=col_bear, textcolor=dark, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_val)
 
         // 7. HVN AND LVN RE-INTEGRATED AS RE-PROCESSED BOXES (NOT SUPPLY/DEMAND BLOCKS)
@@ -594,40 +624,66 @@ if barstate.islast
                 float level_price_bottom = vp_low + i * price_step
                 float level_price_top = level_price_bottom + price_step
 
+                // 3. Untuk left box hvn lvn barindex
                 // HVN detection (Local Maxima above threshold multiplier of average volume) - Draw Area Box with solid border and strict "HVN" text inside
                 if v_curr > v_prev and v_curr > v_next and v_curr > avg_profile_vol * vp_hvn_threshold
-                    box bhvn = box.new(start_bar_for_drawing, level_price_top, bar_index + 65, level_price_bottom,
+                    box bhvn = box.new(bar_index, level_price_top, bar_index + 25, level_price_bottom,
                          border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
                          bgcolor=color.new(col_bull, 90), text="HVN", text_color=TEXT_COLOR, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                     array.push(vp_boxes, bhvn)
 
                 // LVN detection (Local Minima below threshold volume) - Draw Area Box with dashed border and strict "LVN" text inside
                 if v_curr < v_prev and v_curr < v_next and v_curr < threshold_lvn
-                    box blvn = box.new(start_bar_for_drawing, level_price_top, bar_index + 65, level_price_bottom,
+                    box blvn = box.new(bar_index, level_price_top, bar_index + 25, level_price_bottom,
                          border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
                          bgcolor=color.new(col_bear, 90), text="LVN", text_color=TEXT_COLOR, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                     array.push(vp_boxes, blvn)
 
-//════════════════════════════════════
-// LOGO (UNTOUCHED AND PROFESSIONAL)
-//════════════════════════════════════
-LG_Line_Widthb = 2
-periodb = 70
-col_logo        = close > open ? col_bull: close < open ? col_bear : mitigated_color
-lowest1b = ta.lowest(low, periodb)
-lowest2b = ta.lowest(low, periodb - 1)
-lowest3b = ta.lowest(low, periodb - 2)
-lowest4b = ta.lowest(low, periodb - 3) 
-point1b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.99
-point2b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.994
-point3b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.9915
-point4b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.9955
-point5b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.986
-point6b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.99
-point7b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.9975
-point8b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.997
-point9b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.99
-point1b0 = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.988
+//═══════════════════════════════════════════════════════════════════════════════
+// 1. LOGO GRADIENT ENHANCED - PORTED FROM BOOKMAP.PINE
+//═══════════════════════════════════════════════════════════════════════════════
+color bull_c1 = col_bull
+color bull_c2 = col_bear
+color bear_c1 = col_bull
+color bear_c2 = col_bear
+
+// --- 2. LOGIKA ANIMASI & TREND ---
+bool  trend_check = ta.ema(close, 2) > ta.ema(open, 2)
+color c_start     = trend_check ? bull_c1 : bear_c1
+color c_end       = trend_check ? bull_c2 : bear_c2
+
+// Animasi "Breathing"
+float time_cycle = timenow / 1000
+float breathe    = (math.sin(time_cycle * 3) + 1) / 2
+
+int LG_Line_Widthb = 1
+int periodb        = 200
+
+// --- 3. PERHITUNGAN TITIK STABIL (VOLATILITY & RANGE SYNC) ---
+float logo_base_raw = ta.lowest(low, periodb)
+float logo_range    = ta.highest(high, periodb) - logo_base_raw
+var float h_unit    = na
+
+// Calculate a stable height unit based on a mix of ATR and recent range
+float target_h = math.max(ta.atr(periodb) * 1.5, logo_range * 0.22)
+h_unit := na(h_unit) ? target_h : h_unit * 0.98 + target_h * 0.02
+
+// Offset the logo slightly below the lowest low to prevent price overlap
+float logo_base = logo_base_raw - h_unit * 0.2
+
+// Normalized points
+float point1b  = logo_base + h_unit * 0.71
+float point2b  = logo_base + h_unit * 0.43
+float point3b  = logo_base + h_unit * 0.61
+float point4b  = logo_base + h_unit * 0.32
+float point5b  = logo_base + h_unit * 1.00 // Peak
+float point6b  = logo_base + h_unit * 0.71
+float point7b  = logo_base + h_unit * 0.18 // Base Top
+float point8b  = logo_base + h_unit * 0.21
+float point9b  = logo_base + h_unit * 0.71
+float point1b0 = logo_base + h_unit * 0.86
+
+// Logo Visual Objects
 var line Line1b  = na
 var line Line2b  = na
 var line Line3b  = na
@@ -646,64 +702,88 @@ var line Line1b5 = na
 var line Line1b6 = na
 var line Line1b7 = na
 var line Line1b8 = na
-if (not na(Line1b))
+var label[] brand_labels = array.new<label>()
+
+// Hapus Garis Sebelumnya
+if not na(Line1b)
     line.delete(Line1b)
-if (not na(Line2b))
     line.delete(Line2b)
-if (not na(Line3b))
     line.delete(Line3b)
-if (not na(Line4b))
     line.delete(Line4b)
-if (not na(Line5b))
     line.delete(Line5b)
-if (not na(Line6b))
     line.delete(Line6b)
-if (not na(Line7b))
     line.delete(Line7b)
-if (not na(Line8b))
     line.delete(Line8b)
-if (not na(Line9b))
     line.delete(Line9b)
-if (not na(Line1b0))
     line.delete(Line1b0)
-if (not na(Line1b1))
     line.delete(Line1b1)
-if (not na(Line1b2))
     line.delete(Line1b2)
-if (not na(Line1b3))
     line.delete(Line1b3)
-if (not na(Line1b4))
     line.delete(Line1b4)
-if (not na(Line1b5))
     line.delete(Line1b5)
-if (not na(Line1b6))
     line.delete(Line1b6)
-if (not na(Line1b7))
     line.delete(Line1b7)
-if (not na(Line1b8))
     line.delete(Line1b8)
-Line1b  := line.new(x1=bar_index + 28, y1=point7b, x2=bar_index + 35, y2=point1b, color=col_logo, width=LG_Line_Widthb)
-Line2b  := line.new(x1=bar_index + 32, y1=point7b, x2=bar_index + 35, y2=point2b, color=col_logo, width=LG_Line_Widthb)
-Line3b  := line.new(x1=bar_index + 35, y1=point1b, x2=bar_index + 37, y2=point3b, color=col_logo, width=LG_Line_Widthb)
-Line4b  := line.new(x1=bar_index + 35, y1=point2b, x2=bar_index + 37, y2=point4b, color=col_logo, width=LG_Line_Widthb)
-Line5b  := line.new(x1=bar_index + 37, y1=point3b, x2=bar_index + 43, y2=point5b, color=col_logo, width=LG_Line_Widthb)
-Line6b  := line.new(x1=bar_index + 37, y1=point4b, x2=bar_index + 43, y2=point6b, color=col_logo, width=LG_Line_Widthb)
-Line7b  := line.new(x1=bar_index + 43, y1=point5b, x2=bar_index + 48, y2=point3b, color=col_logo, width=LG_Line_Widthb)
-Line8b  := line.new(x1=bar_index + 43, y1=point6b, x2=bar_index + 48, y2=point4b, color=col_logo, width=LG_Line_Widthb)
-Line9b  := line.new(x1=bar_index + 48, y1=point3b, x2=bar_index + 50, y2=point1b, color=col_logo, width=LG_Line_Widthb)
-Line1b0 := line.new(x1=bar_index + 48, y1=point4b, x2=bar_index + 50, y2=point2b, color=col_logo, width=LG_Line_Widthb)
-Line1b1 := line.new(x1=bar_index + 50, y1=point1b, x2=bar_index + 60, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
-Line1b2 := line.new(x1=bar_index + 50, y1=point2b, x2=bar_index + 56, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
-Line1b3 := line.new(x1=bar_index + 26, y1=point7b, x2=bar_index + 50, y2=point7b, color=col_logo, width=LG_Line_Widthb)
-Line1b4 := line.new(x1=bar_index + 24, y1=lowest1b, x2=bar_index + 48, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
-Line1b5 := line.new(x1=bar_index + 26, y1=point7b, x2=bar_index + 24, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
-Line1b6 := line.new(x1=bar_index + 50, y1=point7b, x2=bar_index + 48, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
-Line1b7 := line.new(x1=bar_index + 56, y1=lowest1b, x2=bar_index + 60, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
-Line1b8 := line.new(x1=bar_index + 37, y1=point1b0, x2=bar_index + 38, y2=point1b0, color=col_logo, width=1)
-plotshape(point1b0,offset = 37, style=shape.circle,size = size.huge,color =color.new(col_logo,90),show_last = 1,location = location.absolute,text = "MLTFX",textcolor = col_logo)
-plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 0), linewidth=10,style = plot.style_circles)
-plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 80), linewidth=20,style = plot.style_circles)
-plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 84), linewidth=30,style = plot.style_circles)
-plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 88), linewidth=40,style = plot.style_circles)
-plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 92), linewidth=50,style = plot.style_circles)
-plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 96), linewidth=60,style = plot.style_circles)
+    while array.size(brand_labels) > 0
+        label.delete(array.pop(brand_labels))
+
+// --- FUNGSI WARNA ---
+get_adv_color(step) =>
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15)
+    if dynamic_ratio > 1
+        dynamic_ratio := 1
+    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+
+get_fade_alpha(float x_rel) =>
+    float dist = math.abs(x_rel - 32)
+    float ratio = dist / 32.0
+    math.round(80 * (1 - ratio))
+
+// Logo placement offset relative to bar_index
+int l_off = 35
+
+// --- PEMBUATAN GARIS ---
+if show_logo and barstate.islast
+    color c_head_sync = get_adv_color(1)
+
+    Line1b := line.new(x1 = bar_index + l_off + 4, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line2b := line.new(x1 = bar_index + l_off + 8, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, get_fade_alpha(7.5)))
+
+    Line3b := line.new(x1 = bar_index + l_off + 11, y1 = point1b, x2 = bar_index + l_off + 13, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line4b := line.new(x1 = bar_index + l_off + 11, y1 = point2b, x2 = bar_index + l_off + 13, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), get_fade_alpha(12.0)))
+
+    Line5b := line.new(x1 = bar_index + l_off + 13, y1 = point3b, x2 = bar_index + l_off + 19, y2 = point5b, color = col_poc, width = LG_Line_Widthb)
+    Line6b := line.new(x1 = bar_index + l_off + 13, y1 = point4b, x2 = bar_index + l_off + 19, y2 = point6b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), get_fade_alpha(16.0)))
+
+    Line7b := line.new(x1 = bar_index + l_off + 19, y1 = point5b, x2 = bar_index + l_off + 24, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line8b := line.new(x1 = bar_index + l_off + 19, y1 = point6b, x2 = bar_index + l_off + 24, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), get_fade_alpha(21.5)))
+
+    Line9b := line.new(x1 = bar_index + l_off + 24, y1 = point3b, x2 = bar_index + l_off + 26, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line1b0 := line.new(x1 = bar_index + l_off + 24, y1 = point4b, x2 = bar_index + l_off + 26, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), get_fade_alpha(25.0)))
+
+    Line1b1 := line.new(x1 = bar_index + l_off + 26, y1 = point1b, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b2 := line.new(x1 = bar_index + l_off + 26, y1 = point2b, x2 = bar_index + l_off + 32, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), get_fade_alpha(31.0)))
+
+    // --- BAGIAN BASE HORIZONTAL ---
+    Line1b3 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 26, y2 = point7b, color = col_poc, width = LG_Line_Widthb)
+    Line1b4 := line.new(x1 = bar_index + l_off + 0, y1 = logo_base, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, get_fade_alpha(13.0)))
+
+    Line1b5 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 0, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b6 := line.new(x1 = bar_index + l_off + 26, y1 = point7b, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b7 := line.new(x1 = bar_index + l_off + 32, y1 = logo_base, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    label l = label.new(bar_index + l_off + 54, point2b, "MountAlgo", style=label.style_none, textcolor=col_poc, size=size.huge, textalign=text.align_right)
+    array.push(brand_labels, l)
+
+    label glow1 = label.new(bar_index + l_off + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
+    label glow2 = label.new(bar_index + l_off + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc, size=size.huge)
+    array.push(brand_labels, glow1)
+    array.push(brand_labels, glow2)
