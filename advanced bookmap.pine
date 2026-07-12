@@ -207,7 +207,7 @@ color c_imb  = col_poc
 
 // Table
 bool   show_table        = input.bool(true, "Show Info Table")
-string table_position    = input.string("top_right", "Position", options=["top_left", "top_right", "bottom_left", "bottom_right"])
+string table_position    = input.string("bottom_left", "Position", options=["top_left", "top_right", "bottom_left", "bottom_right"])
 string table_orientation = input.string("Horizontal", "Table Orientation", options=["Vertical", "Horizontal"])
 string table_size_input  = input.string("Tiny", "Table Size", options=["Tiny", "Small", "Normal", "Large", "Huge"])
 bool   show_logo         = input.bool(true, "Show Logo", group = "Logo Settings", tooltip = "Enable/Disable visual logo display")
@@ -216,7 +216,7 @@ bool   show_logo         = input.bool(true, "Show Logo", group = "Logo Settings"
 bool   show_volume_ladder = input.bool(true, "Show Volume Ladder Table")
 string ladder_position_input = input.string("top_right", "Volume Ladder Position", options=["top_left", "top_right", "bottom_left", "bottom_right"])
 float  vp_imbalance_threshold = input.float(3.0, "Delta Imbalance Ratio", minval=1.5, step=0.5)
-int    ladder_max_rows = input.int(30, "Volume Ladder Max Rows", minval=5, maxval=100)
+int    ladder_max_rows = input.int(28, "Volume Ladder Max Rows", minval=5, maxval=100)
 var table ladder_tbl = na
 
 // -----------------------------------------------------------------------------
