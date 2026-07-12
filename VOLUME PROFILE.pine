@@ -500,7 +500,7 @@ if barstate.islast
 
             string sell_buy_str = f_formatNumber(level_sell_vol) + " | " + f_formatNumber(level_buy_vol)
 
-            // 4. Tambahkan Identifikasi HVN LVN dengan border dan text HVN LVN pada tabel volume ladder
+            // 4. Tambahkan Identifikasi HVN LVN, VAH, VAL, POC pada tabel volume ladder
             string price_str = str.tostring(level_price, format.mintick)
             if i == current_price_row_idx
                 price_str := "▶ " + price_str + " ◀"
@@ -508,6 +508,14 @@ if barstate.islast
                 price_str := "[HVN] " + price_str
             else if is_lvn
                 price_str := "[LVN] " + price_str
+
+            if i == va_high_idx
+                price_str := "[VAH] " + price_str
+            else if i == va_low_idx
+                price_str := "[VAL] " + price_str
+
+            if i == poc_index
+                price_str := "[POC] " + price_str
 
             table.cell(ladder_tbl, 0, row, sell_buy_str, bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
             table.cell(ladder_tbl, 1, row, f_formatNumber(level_vol), bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
@@ -517,7 +525,6 @@ if barstate.islast
                 delta_bgcolor := color.new(base_delta_color, 0)
             table.cell(ladder_tbl, 2, row, f_formatNumber(level_delta, true), bgcolor=delta_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
 
-            // Style cells with borders for HVN/LVN identification
             table.cell(ladder_tbl, 3, row, price_str, bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
 
     // 5. DRAW HISTOGRAM & LINES
