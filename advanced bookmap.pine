@@ -137,7 +137,7 @@ bool show_vp_labels = input.bool(true, "Show Text Labels", group=grp_vp)
 int  vp_lookback    = input.int(1000, "Main VP Lookback Length", minval=2, maxval=2000, group=grp_vp) 
 bool show_vp_short  = input.bool(true, "Show Short-Term VP", group=grp_vp)
 int  vp_lookback_s  = input.int(200, "Short VP Lookback Length", minval=2, maxval=1000, group=grp_vp)
-int  vp_rows        = input.int(50, "Profile Row Count", minval=10, maxval=100, group=grp_vp)
+int  vp_rows        = input.int(50, "Profile Row Count", minval=10, maxval=500, group=grp_vp)
 bool vp_use_grain   = input.bool(false, "Use Price Grain (Tick-based)", group=grp_vp)
 float vp_grain      = input.float(1.0, "Price Grain (Ticks)", minval=0.1, step=0.1, group=grp_vp)
 bool show_lvn       = input.bool(true, "Show LVN (Low Volume Nodes)", group=grp_vp)
@@ -207,10 +207,17 @@ color c_imb  = col_poc
 
 // Table
 bool   show_table        = input.bool(true, "Show Info Table")
-string table_position    = input.string("top_right", "Position", options=["top_left", "top_right", "bottom_left", "bottom_right"])
+string table_position    = input.string("bottom_left", "Position", options=["top_left", "top_right", "bottom_left", "bottom_right"])
 string table_orientation = input.string("Horizontal", "Table Orientation", options=["Vertical", "Horizontal"])
 string table_size_input  = input.string("Tiny", "Table Size", options=["Tiny", "Small", "Normal", "Large", "Huge"])
 bool   show_logo         = input.bool(true, "Show Logo", group = "Logo Settings", tooltip = "Enable/Disable visual logo display")
+
+// Volume Ladder Settings
+bool   show_volume_ladder = input.bool(true, "Show Volume Ladder Table")
+string ladder_position_input = input.string("top_right", "Volume Ladder Position", options=["top_left", "top_right", "bottom_left", "bottom_right"])
+float  vp_imbalance_threshold = input.float(3.0, "Delta Imbalance Ratio", minval=1.5, step=0.5)
+int    ladder_max_rows = input.int(28, "Volume Ladder Max Rows", minval=5, maxval=100)
+var table ladder_tbl = na
 
 // -----------------------------------------------------------------------------
 // 2. TREND & EMA ENGINE
@@ -222,6 +229,31 @@ float ema_slope    = (ema_long_val - ema_long_val[10]) / 10
 // 2. VOLUME CALCULATION ENGINE
 // -----------------------------------------------------------------------------
 get_tick_volume() => math.max(volume, 0)
+
+// Helper colors and functions for Volume Ladder
+color mitigated_color = brown
+color Transparent_Color = color.new(white, 100)
+
+f_gradientColor(base_color, current_value, max_value) =>
+    float ratio = max_value > 0 ? math.abs(current_value) / max_value : 0
+    int transparency = math.round(85 - (ratio * 45))
+    color.new(base_color, transparency)
+
+f_formatNumber(number, add_sign) =>
+    string sign = ""
+    if add_sign
+        sign := number >= 0 ? "+" : ""
+    string res = na
+    float abs_number = math.abs(number)
+    if abs_number >= 1000000000
+        res := sign + str.tostring(abs_number / 1000000000, "#.##") + "B"
+    else if abs_number >= 1000000
+        res := sign + str.tostring(abs_number / 1000000, "#.##") + "M"
+    else if abs_number >= 1000
+        res := sign + str.tostring(abs_number / 1000, "#.##") + "K"
+    else
+        res := sign + str.tostring(abs_number, "#")
+    res
 
 get_table_bg(int c, int r, int total_c, int total_r) =>
     float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
@@ -502,7 +534,7 @@ if show_hpoc and (barstate.isconfirmed or barstate.islast)
         float l_p = math.min(array.min(hist_low), low)
         
         int n_rows = vp_use_grain ? math.round((h_p - l_p) / (syminfo.mintick * vp_grain)) : hpoc_rows
-        n_rows := math.min(150, math.max(10, n_rows))
+        n_rows := math.min(500, math.max(10, n_rows))
         float r_h = (h_p - l_p) / n_rows
         if r_h > 0
             float inv_rh = 1.0 / r_h
@@ -916,6 +948,7 @@ if vp_hl_expanded
 bool trigger_vp = barstate.isconfirmed or barstate.isrealtime
 
 if barstate.islast and (trigger_vp or not show_vp or not show_predict)
+    table.delete(ladder_tbl)
     if array.size(vp_boxes) > 0
         for i = 0 to array.size(vp_boxes) - 1
             box.delete(array.get(vp_boxes, i))
@@ -990,7 +1023,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         float highest_p = math.max(array.max(hist_high), high)
         float lowest_p = math.min(array.min(hist_low), low)
         int n_rows = vp_use_grain ? math.round((highest_p - lowest_p) / (syminfo.mintick * vp_grain)) : vp_rows
-        n_rows := math.min(150, math.max(10, n_rows))
+        n_rows := math.min(500, math.max(10, n_rows))
         float row_height = (highest_p - lowest_p) / n_rows
         
         if row_height > 0
@@ -1555,6 +1588,129 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     // Update cursor for next zigzag segment
                     cur_x := x_end
                     cur_y := y_end
+
+            // --- VOLUME LADDER TABLE RENDERING ---
+            if show_volume_ladder and total_profile_vol > 0
+                string l_pos = switch ladder_position_input
+                    "top_left"     => position.top_left
+                    "top_right"    => position.top_right
+                    "bottom_left"  => position.bottom_left
+                    "bottom_right" => position.bottom_right
+                    => position.top_right
+
+                // Calculate max_abs_delta for delta cell gradients
+                float max_abs_delta = 0.0
+                for r = 0 to n_rows - 1
+                    float b_vol = array.get(bucket_vol_total, r)
+                    if b_vol > 0
+                        float b_buy = array.get(bucket_vol_buy, r)
+                        float b_sell = array.get(bucket_vol_sell, r)
+                        float b_delta = b_buy - b_sell
+                        max_abs_delta := math.max(max_abs_delta, math.abs(b_delta))
+
+                // Current price index identification
+                int current_price_row_idx = -1
+                if close >= lowest_p and close <= highest_p
+                    current_price_row_idx := math.floor((close - lowest_p) / row_height)
+                    current_price_row_idx := math.max(0, math.min(n_rows - 1, current_price_row_idx))
+
+                // Avg Buy and Avg Sell index identification
+                int avg_buy_row_idx = -1
+                if not na(hist_avg_buy_g) and hist_avg_buy_g >= lowest_p and hist_avg_buy_g <= highest_p
+                    avg_buy_row_idx := math.floor((hist_avg_buy_g - lowest_p) / row_height)
+                    avg_buy_row_idx := math.max(0, math.min(n_rows - 1, avg_buy_row_idx))
+
+                int avg_sell_row_idx = -1
+                if not na(hist_avg_sell_g) and hist_avg_sell_g >= lowest_p and hist_avg_sell_g <= highest_p
+                    avg_sell_row_idx := math.floor((hist_avg_sell_g - lowest_p) / row_height)
+                    avg_sell_row_idx := math.max(0, math.min(n_rows - 1, avg_sell_row_idx))
+
+                // Determine display rows window
+                int display_rows = math.min(n_rows, ladder_max_rows)
+                int center_idx = current_price_row_idx != -1 ? current_price_row_idx : poc_idx
+                int start_r = center_idx - math.floor(display_rows / 2)
+                int end_r = start_r + display_rows - 1
+                if start_r < 0
+                    start_r := 0
+                    end_r := display_rows - 1
+                if end_r >= n_rows
+                    end_r := n_rows - 1
+                    start_r := math.max(0, end_r - display_rows + 1)
+
+                ladder_tbl := table.new(l_pos, 4, display_rows + 1, bgcolor=dark, border_width=1, border_color=Transparent_Color, frame_color=mitigated_color, frame_width=1)
+                table.cell(ladder_tbl, 0, 0, "Sell | Buy", bgcolor=dark, text_color=white, text_size=size.tiny)
+                table.cell(ladder_tbl, 1, 0, "Total Vol", bgcolor=dark, text_color=white, text_size=size.tiny)
+                table.cell(ladder_tbl, 2, 0, "Delta", bgcolor=dark, text_color=white, text_size=size.tiny)
+                table.cell(ladder_tbl, 3, 0, "Price", bgcolor=dark, text_color=white, text_size=size.tiny)
+
+                for r = start_r to end_r
+                    int tbl_row = end_r - r + 1
+                    float level_price = lowest_p + r * row_height
+                    float level_vol = array.get(bucket_vol_total, r)
+                    float level_buy_vol = array.get(bucket_vol_buy, r)
+                    float level_sell_vol = array.get(bucket_vol_sell, r)
+                    float level_delta = level_buy_vol - level_sell_vol
+                    color row_bgcolor = color.new(mitigated_color, 80)
+
+                    // Check HVN/LVN status locally based on advanced bookmap settings
+                    bool is_hvn = false
+                    bool is_lvn = false
+                    if r > 0 and r < n_rows - 1
+                        float v_prev = array.get(bucket_vol_total, r - 1)
+                        float v_curr = level_vol
+                        float v_next = array.get(bucket_vol_total, r + 1)
+                        if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= max_total_vol * hvn_threshold and r != poc_idx
+                            is_hvn := true
+                        if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < max_total_vol * lvn_threshold
+                            is_lvn := true
+
+                    if r == poc_idx
+                        row_bgcolor := color.new(col_poc, 40)
+                    else if is_hvn
+                        row_bgcolor := color.new(col_bull, 50)
+                    else if is_lvn
+                        row_bgcolor := color.new(col_bear, 50)
+                    else if r >= va_bot and r <= va_top
+                        row_bgcolor := color.new(mitigated_color, 65)
+
+                    // Current price highlighting
+                    if r == current_price_row_idx
+                        row_bgcolor := color_theme == "Gear Protocol" ? color.new(white, 20) : color.new(yellow, 30)
+
+                    string sell_buy_str = f_formatNumber(level_sell_vol, false) + " | " + f_formatNumber(level_buy_vol, false)
+                    string price_str = str.tostring(level_price, format.mintick)
+
+                    if r == current_price_row_idx
+                        price_str := "▶ " + price_str + " ◀"
+                    if is_hvn
+                        price_str := "[HVN] " + price_str
+                    else if is_lvn
+                        price_str := "[LVN] " + price_str
+
+                    if r == va_top
+                        price_str := "[VAH] " + price_str
+                    else if r == va_bot
+                        price_str := "[VAL] " + price_str
+
+                    if r == poc_idx
+                        price_str := "[POC] " + price_str
+
+                    if r == avg_buy_row_idx
+                        price_str := "[AVG BUY] " + price_str
+                    if r == avg_sell_row_idx
+                        price_str := "[AVG SELL] " + price_str
+
+                    table.cell(ladder_tbl, 0, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=white, text_size=size.tiny)
+                    table.cell(ladder_tbl, 1, tbl_row, f_formatNumber(level_vol, false), bgcolor=row_bgcolor, text_color=white, text_size=size.tiny)
+
+                    color base_delta_color = level_delta >= 0 ? col_bull : col_bear
+                    color delta_bgcolor = f_gradientColor(base_delta_color, level_delta, max_abs_delta)
+                    if (level_buy_vol > level_sell_vol * vp_imbalance_threshold and level_sell_vol > 0) or (level_sell_vol > level_buy_vol * vp_imbalance_threshold and level_buy_vol > 0)
+                        delta_bgcolor := color.new(base_delta_color, 0)
+
+                    table.cell(ladder_tbl, 2, tbl_row, f_formatNumber(level_delta, true), bgcolor=delta_bgcolor, text_color=white, text_size=size.tiny)
+                    table.cell(ladder_tbl, 3, tbl_row, price_str, bgcolor=row_bgcolor, text_color=white, text_size=size.tiny)
+
 // -----------------------------------------------------------------------------
 // 7. PRICE PREDICTION HISTORY & HIT DETECTION
 // -----------------------------------------------------------------------------
@@ -1613,6 +1769,7 @@ if show_table and barstate.islast
         "top_right"    => position.top_right
         "bottom_left"  => position.bottom_left
         "bottom_right" => position.bottom_right
+        => position.bottom_left
     
     // Trends & Colors
     string delta_trend     = delta >= p_delta ? " (+)" : " (-)"

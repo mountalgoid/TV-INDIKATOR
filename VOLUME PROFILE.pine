@@ -425,7 +425,7 @@ if barstate.islast
     float val_price = vp_low + va_low_idx * price_step // Bottom of the box
 
     // 4. DRAW TABLES
-    var table analysis_tbl = table.new(position.bottom_center, 3, 9, bgcolor=mitigated_box_color, border_width=0,frame_width = 1,frame_color = mitigated_color, border_color=Transparent_Color)
+    var table analysis_tbl = table.new(position.bottom_left, 3, 9, bgcolor=mitigated_box_color, border_width=0,frame_width = 1,frame_color = mitigated_color, border_color=Transparent_Color)
     if show_analysis_table
         table.clear(analysis_tbl, 0, 0)
 
