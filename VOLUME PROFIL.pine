@@ -1,0 +1,532 @@
+// ====================================================================================================================================================================================
+// | │█│║▌║││█║▌│║║█║                                                                                                                                      |
+// | ░█░                                    Advanced Order Flow & Volume Profile v6.0 (Value Area Edition)                                                  ░█░ |
+// | ░█░                                               Crafted by Gemini AI (Hedge Fund Analyst Mode)                                                         ░█░ |
+// | │█│║▌║││█║▌│║║█║                                                                                                                                      |
+// ====================================================================================================================================================================================
+// | CHANGELOG V6.0:                                                                                                                                          |
+// | 1. [LOGIC] Added True Value Area (VA) Calculation algorithm (Standard 70% volume rule).                                                                  |
+// | 2. [FEATURE] Added VAH (Value Area High) and VAL (Value Area Low) Lines.                                                                                 |
+// | 3. [UI] Added Labels for POC, VAH, and VAL with Price Tags.                                                                                              |
+// | 4. [STABILITY] Maintained array-based drawing management to prevent duplication.                                                                         |
+// ====================================================================================================================================================================================
+//🅼🅻🆃🅵🆇
+//@version=5
+//════════════════════════════════════
+indicator(title            = "ADVANCED ORDER FLOW & VOLUME PROFILE V6.0"
+  , shorttitle             = "𝘼𝙊𝙁-𝙑𝙋 V6.0 🅼🅻🆃🅵🆇"
+  , overlay                = true
+  , max_bars_back          = 500
+  , max_lines_count        = 500
+  , max_boxes_count        = 500
+  , max_labels_count       = 500)
+
+//COLOR TYPE
+//════════════════════════════════════
+dark                       = #0e1208
+white                      = #c4d3ff
+green                      = #179c74
+purple                     = #5134ff
+gray                       = #3d4c74
+red                        = #e91e63
+yellow                     = #ffeb3b
+brown                      = #574932 
+Transparent_Color          = color.new(color.new(white,0), 100)
+
+//════════════════════════════════════
+//GROUP
+//════════════════════════════════════
+GlobalGroup                = "𝙂𝙇𝙊𝘽𝘼𝙇 𝙎𝙀𝙏𝙏𝙄𝙉𝙂𝙎"
+
+//════════════════════════════════════
+//INPUT COLOR TYPE THEME
+//════════════════════════════════════
+color_theme                = input.string(defval ="𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀", 
+                                          title  =" 𝙎𝙀𝙇𝙀𝘾𝙏 𝘾𝙊𝙇𝙊𝙍 𝙏𝙃𝙀𝙈𝙀",
+                                          options=["𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀", "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎","𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀", "𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" , "𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿","𝙈𝙇𝙏𝙁𝙓 𝙎𝙐𝙋𝙀𝙍 𝙋𝙍𝙀𝙈𝙄𝙐𝙈 𝙏𝙃𝙀𝙈𝙀"],
+                                          group  = GlobalGroup)
+
+//════════════════════════════════════
+//COLOR BASED ON THEME
+//════════════════════════════════════
+col_bull                   = color_theme == "𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀" ? white: 
+                             color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? purple : 
+                             color_theme =="𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀" ? green : 
+                             color_theme == "𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? green : 
+                             color_theme == "𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿" ? yellow : purple
+
+
+col_bear                  = color_theme == "𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀" ? gray: 
+                             color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? green : 
+                             color_theme =="𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀" ? red : 
+                             color_theme == "𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? gray : 
+                             color_theme == "𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿" ? gray : yellow
+
+box_col_bull               = color_theme == "𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀" ? color.new(white,60): 
+                             color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? color.new(purple,60) : 
+                             color_theme == "𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀" ? color.new(green,60): 
+                             color_theme =="𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? color.new(green,60) : 
+                             color_theme =="𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿" ? color.new(yellow,60) :  color.new(purple,60)
+                             
+box_col_bear               = color_theme == "𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀" ? color.new(gray,60): 
+                             color_theme == "𝙈𝙇𝙏𝙁𝙓 𝙏𝙃𝙀𝙈𝙀𝙎" ? color.new(green,60) : 
+                             color_theme == "𝙎𝙏𝘼𝙉𝘿𝘼𝙍𝘿 𝙎𝙋𝘼𝙍𝙏𝘼𝙉 𝙀𝘿𝙂𝙀 𝙏𝙃𝙀𝙈𝙀" ? color.new(red,60): 
+                             color_theme =="𝘿𝘼𝙍𝙆 𝙄𝘾𝙏 𝙏𝙃𝙀𝙈𝙀" ? color.new(gray,60) : 
+                             color_theme =="𝙂𝘼𝙍𝙐𝘿𝘼 𝙂𝙊𝙇𝘿" ?  color.new(gray,60) : color.new(yellow,60)
+
+mitigated_color            = brown    
+mitigated_box_color        = color.new(brown,60)
+
+// ______________________________________________________________________________________________________________________________________________________
+//| INPUTS                                                                                                                                                |
+//|_______________________________________________________________________________________________________________________________________________________|
+
+var g_vp = "Volume Profile Settings"
+vp_mode = input.string("Recent Bars", "Profile Mode", options=["Recent Bars", "Fixed Range"], group=g_vp)
+vp_period = input.int(100, "Lookback Period (Recent Bars)", minval=10, maxval=500, group=g_vp)
+vp_resolution = input.int(50, "Profile Resolution (Rows)", minval=10, maxval=200, group=g_vp)
+vp_val_percent = input.int(70, "Value Area Volume %", minval=10, maxval=100, group=g_vp, tooltip="Percentage of total volume to include in the Value Area (Standard is 70%).")
+vp_startTime = input.time(timestamp("2023-01-01T00:00:00"), "Fixed Range Start Time", group=g_vp)
+vp_endTime = input.time(timestamp("2024-01-01T00:00:00"), "Fixed Range End Time", group=g_vp)
+vp_hvn_threshold = input.float(1.5, "S/D (HVN) Volume Multiplier", minval=1.0, step=0.25, group=g_vp)
+vp_imbalance_threshold = input.float(3.0, "Delta Imbalance Ratio", minval=1.5, step=0.5, group=g_vp)
+
+var g_delta = "Delta Calculation Settings"
+delta_tf = input.timeframe("1", "Delta Calculation Timeframe", group=g_delta)
+
+var g_ti = "Technical Indicator Settings"
+ma_fast_len = input.int(50, "Fast MA Length", group=g_ti)
+ma_slow_len = input.int(200, "Slow MA Length", group=g_ti)
+rsi_len = input.int(14, "RSI Length", group=g_ti)
+rsi_bull_level = input.float(55, "RSI Bullish Level", group=g_ti)
+rsi_bear_level = input.float(45, "RSI Bearish Level", group=g_ti)
+
+var g_display = "Display Settings"
+show_vp_histogram = input.bool(true, "Show VP Histogram", group=g_display)
+show_vp_labels = input.bool(true, "Show POC/VAH/VAL Labels", group=g_display)
+show_analysis_table = input.bool(true, "Show Trading Analysis Table", group=g_display)
+show_volume_ladder = input.bool(true, "Show Volume Ladder Table", group=g_display)
+
+// ______________________________________________________________________________________________________________________________________________________
+//| COLORS & UTILS                                                                                                                                        |
+//|_______________________________________________________________________________________________________________________________________________________|
+
+color POSITIVE_COLOR = box_col_bull
+color NEGATIVE_COLOR = box_col_bear
+color NEUTRAL_COLOR = mitigated_box_color
+color HEADER_COLOR = dark
+color TEXT_COLOR = white
+color POC_COLOR_BG = white
+color POC_COLOR_LINE = color.new(white, 0)
+color VAH_COLOR_LINE = color.new(green, 20)
+color VAL_COLOR_LINE = color.new(red, 20)
+
+bool isNewLtfBar = ta.change(open) != 0
+
+f_gradientColor(base_color, current_value, max_value) =>
+    float ratio = max_value > 0 ? math.abs(current_value) / max_value : 0
+    int transparency = math.round(85 - (ratio * 45))
+    color.new(base_color, transparency)
+
+f_formatNumber(number, add_sign = false) =>
+    string sign = ""
+    if add_sign
+        sign := number >= 0 ? "+" : ""
+    string res = na
+    float abs_number = math.abs(number)
+    if abs_number >= 1000000000
+        res := sign + str.tostring(abs_number / 1000000000, "#.##B")
+    else if abs_number >= 1000000
+        res := sign + str.tostring(abs_number / 1000000, "#.##M")
+    else if abs_number >= 1000
+        res := sign + str.tostring(abs_number / 1000, "#.##K")
+    else
+        res := sign + str.tostring(abs_number, "#")
+    res
+
+// ______________________________________________________________________________________________________________________________________________________
+//| CORE DATA & INDICATOR CALCULATION                                                                                                                     |
+//|_______________________________________________________________________________________________________________________________________________________|
+
+[ltf_open, ltf_close, ltf_volume] = request.security_lower_tf(syminfo.tickerid, delta_tf, [open, close, volume], ignore_invalid_symbol=true)
+f_getBarDelta(o_arr, c_arr, v_arr) =>
+    float bar_delta = 0.0
+    if array.size(c_arr) > 0
+        for i = 0 to array.size(c_arr) - 1
+            bar_delta += array.get(v_arr, i) * math.sign(array.get(c_arr, i) - array.get(o_arr, i))
+    bar_delta
+
+float current_delta = f_getBarDelta(ltf_open, ltf_close, ltf_volume)
+float current_buy_vol = (volume + current_delta) / 2
+float current_sell_vol = (volume - current_delta) / 2
+float cum_delta = ta.cum(current_delta)
+float rsi = ta.rsi(close, rsi_len)
+float ma50 = ta.sma(close, ma_fast_len)
+float ma200 = ta.sma(close, ma_slow_len)
+float vwap_val = ta.vwap(close)
+bool is_uptrend = ma50 > ma200 and close > ma50
+bool is_downtrend = ma50 < ma200 and close < ma50
+
+// ______________________________________________________________________________________________________________________________________________________
+//| VOLUME PROFILE ENGINE (DATA AGGREGATION)                                                                                                            |
+//|_______________________________________________________________________________________________________________________________________________________|
+
+var array<float> volume_at_price = array.new_float(vp_resolution, 0.0)
+var array<float> delta_at_price = array.new_float(vp_resolution, 0.0)
+var float vp_high = na
+var float vp_low = na
+
+// Reset & Calculate Range
+if vp_mode == "Recent Bars"
+    vp_high := ta.highest(high, vp_period)
+    vp_low := ta.lowest(low, vp_period)
+    array.fill(volume_at_price, 0.0)
+    array.fill(delta_at_price, 0.0)
+else // Fixed Range
+    var float fixed_high = na
+    var float fixed_low = na
+    if time >= vp_startTime and time[1] < vp_startTime
+        fixed_high := high
+        fixed_low := low
+        array.fill(volume_at_price, 0.0)
+        array.fill(delta_at_price, 0.0)
+    if time >= vp_startTime and time <= vp_endTime
+        if high > fixed_high
+            fixed_high := high
+        if low < fixed_low
+            fixed_low := low
+    vp_high := fixed_high
+    vp_low := fixed_low
+
+float price_range = vp_high - vp_low
+float price_step = price_range > 0 ? price_range / vp_resolution : 0
+
+// Populate Arrays
+if price_range > 0
+    if vp_mode == "Recent Bars"
+        for i = 0 to vp_period - 1
+            float h = high[i], l = low[i], v = volume[i], d = current_delta[i]
+            // Simplified calculation for speed: Add volume to buckets that the bar touches
+            // A more precise way requires iterating price steps, but for high res this is okay
+            int low_idx = math.floor((l - vp_low) / price_step)
+            int high_idx = math.floor((h - vp_low) / price_step)
+            // Clamp indices
+            low_idx := math.max(0, math.min(vp_resolution - 1, low_idx))
+            high_idx := math.max(0, math.min(vp_resolution - 1, high_idx))
+            
+            // Distribute volume equally among touched rows (approximation)
+            int rows_touched = high_idx - low_idx + 1
+            float vol_per_row = v / rows_touched
+            float delta_per_row = d / rows_touched
+            
+            for j = low_idx to high_idx
+                array.set(volume_at_price, j, array.get(volume_at_price, j) + vol_per_row)
+                array.set(delta_at_price, j, array.get(delta_at_price, j) + delta_per_row)
+
+    else // Fixed Range (Realtime Update)
+        if time >= vp_startTime and time <= vp_endTime
+            int low_idx = math.floor((low - vp_low) / price_step)
+            int high_idx = math.floor((high - vp_low) / price_step)
+            low_idx := math.max(0, math.min(vp_resolution - 1, low_idx))
+            high_idx := math.max(0, math.min(vp_resolution - 1, high_idx))
+            
+            int rows_touched = high_idx - low_idx + 1
+            float vol_per_row = volume / rows_touched
+            float delta_per_row = current_delta / rows_touched
+             
+            for j = low_idx to high_idx
+                array.set(volume_at_price, j, array.get(volume_at_price, j) + vol_per_row)
+                array.set(delta_at_price, j, array.get(delta_at_price, j) + delta_per_row)
+
+// ______________________________________________________________________________________________________________________________________________________
+//| VISUALIZATIONS & ALERTS                                                                                                                               |
+//|_______________________________________________________________________________________________________________________________________________________|
+
+// Arrays for object management (Prevent Duplication)
+var array<box>  vp_boxes = array.new_box()
+var array<line> vp_lines = array.new_line()
+var array<label> vp_labels = array.new_label()
+
+if barstate.islast
+    // 1. CLEANUP
+    if array.size(vp_boxes) > 0
+        for i = 0 to array.size(vp_boxes) - 1
+            box.delete(array.get(vp_boxes, i))
+        array.clear(vp_boxes)
+    if array.size(vp_lines) > 0
+        for i = 0 to array.size(vp_lines) - 1
+            line.delete(array.get(vp_lines, i))
+        array.clear(vp_lines)
+    if array.size(vp_labels) > 0
+        for i = 0 to array.size(vp_labels) - 1
+            label.delete(array.get(vp_labels, i))
+        array.clear(vp_labels)
+
+    // 2. CALCULATE POC & STATS
+    float total_profile_volume = array.sum(volume_at_price)
+    float max_profile_vol = 0.0
+    int poc_index = 0
+    float max_abs_delta = 0.0
+    
+    if total_profile_volume > 0
+        max_profile_vol := array.max(volume_at_price)
+        poc_index := array.indexof(volume_at_price, max_profile_vol)
+        for i = 0 to vp_resolution - 1
+            max_abs_delta := math.max(max_abs_delta, math.abs(array.get(delta_at_price, i)))
+
+    // 3. CALCULATE VALUE AREA (VAH / VAL) - Standard 70% Logic
+    int va_high_idx = poc_index
+    int va_low_idx = poc_index
+    float target_va_vol = total_profile_volume * (vp_val_percent / 100.0)
+    float current_va_vol = max_profile_vol // Start with POC volume
+    
+    // Expansion Algorithm
+    // Expand up and down from POC until 70% volume is reached
+    while current_va_vol < target_va_vol
+        float up_vol = (va_high_idx < vp_resolution - 1) ? array.get(volume_at_price, va_high_idx + 1) : 0.0
+        float down_vol = (va_low_idx > 0) ? array.get(volume_at_price, va_low_idx - 1) : 0.0
+        
+        // Break if we hit edges
+        if up_vol == 0.0 and down_vol == 0.0
+            break
+            
+        if up_vol >= down_vol
+            current_va_vol += up_vol
+            va_high_idx += 1
+        else
+            current_va_vol += down_vol
+            va_low_idx -= 1
+            
+    // Convert Indices to Prices
+    float poc_price = vp_low + (poc_index + 0.5) * price_step
+    float vah_price = vp_low + (va_high_idx + 1) * price_step // Top of the box
+    float val_price = vp_low + va_low_idx * price_step // Bottom of the box
+
+    // 4. DRAW TABLES
+    var analysis_tbl = table.new(position.bottom_center, 3, 9, bgcolor=mitigated_box_color, border_width=0,frame_width = 1,frame_color = mitigated_color, border_color=Transparent_Color)
+    if show_analysis_table
+        table.clear(analysis_tbl, 0, 0)
+        table.cell(analysis_tbl, 0, 0, "AOF ANALYSIS V6.0", bgcolor=HEADER_COLOR, text_color=TEXT_COLOR, text_size=size.small)
+        table.cell(analysis_tbl, 1, 0, "BULLISH", bgcolor=HEADER_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 0, "BEARISH", bgcolor=HEADER_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 0, 1, "Delta", text_color=TEXT_COLOR, text_size=size.tiny)
+        table.cell(analysis_tbl, 1, 1, "Bar Δ: " + str.tostring(current_delta, "#"), bgcolor=current_delta > 0 ? POSITIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 1, "Cum Δ: " + f_formatNumber(cum_delta, true), bgcolor=cum_delta < 0 ? NEGATIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 0, 2, "Momentum", text_color=TEXT_COLOR, text_size=size.tiny)
+        table.cell(analysis_tbl, 1, 2, "RSI: " + str.tostring(rsi, "#.0"), bgcolor=rsi > rsi_bull_level ? POSITIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 2, "RSI: " + str.tostring(rsi, "#.0"), bgcolor=rsi < rsi_bear_level ? NEGATIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 0, 3, "Trend", text_color=TEXT_COLOR, text_size=size.tiny)
+        table.cell(analysis_tbl, 1, 3, is_uptrend ? "Strong Up" : "Neutral", bgcolor=is_uptrend ? POSITIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 3, is_downtrend ? "Strong Down" : "Neutral", bgcolor=is_downtrend ? NEGATIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 0, 4, "Key Levels", text_color=TEXT_COLOR, text_size=size.tiny)
+        table.cell(analysis_tbl, 1, 4, "Price > VWAP", bgcolor=close > vwap_val ? POSITIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 4, "Price < POC", bgcolor=not na(poc_price) and close < poc_price ? NEGATIVE_COLOR : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        bool longSignal = current_delta > 0 and rsi > rsi_bull_level and close > vwap_val and is_uptrend
+        bool shortSignal = current_delta < 0 and rsi < rsi_bear_level and close < vwap_val and is_downtrend
+        table.cell(analysis_tbl, 0, 6, "ENTRY SIGNAL", text_color=TEXT_COLOR, text_size=size.small)
+        table.cell(analysis_tbl, 1, 6, longSignal ? "✓ LONG" : "✗", bgcolor=longSignal ? color.new(POSITIVE_COLOR, 0) : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+        table.cell(analysis_tbl, 2, 6, shortSignal ? "✓ SHORT" : "✗", bgcolor=shortSignal ? color.new(NEGATIVE_COLOR, 0) : NEUTRAL_COLOR, text_size=size.small, text_color=TEXT_COLOR)
+
+    var ladder_tbl = table.new(position.top_right, 4, vp_resolution + 1, bgcolor=dark, border_width=1, border_color=Transparent_Color,frame_color = mitigated_color,frame_width = 1)
+    if show_volume_ladder and total_profile_volume > 0
+        table.clear(ladder_tbl, 0, 0)
+        table.cell(ladder_tbl, 0, 0, "Sell | Buy", bgcolor=HEADER_COLOR, text_color=TEXT_COLOR, text_size=size.tiny)
+        table.cell(ladder_tbl, 1, 0, "Total Vol", bgcolor=HEADER_COLOR, text_color=TEXT_COLOR, text_size=size.tiny)
+        table.cell(ladder_tbl, 2, 0, "Delta", bgcolor=HEADER_COLOR, text_color=TEXT_COLOR, text_size=size.tiny)
+        table.cell(ladder_tbl, 3, 0, "Price", bgcolor=HEADER_COLOR, text_color=TEXT_COLOR, text_size=size.tiny)
+        float avg_profile_vol = array.avg(volume_at_price)
+        for i = 0 to vp_resolution - 1
+            int row = vp_resolution - i
+            float level_price = vp_low + i * price_step
+            float level_vol = array.get(volume_at_price, i)
+            float level_delta = array.get(delta_at_price, i)
+            float level_buy_vol = (level_vol + level_delta) / 2
+            float level_sell_vol = level_vol - level_buy_vol
+            color row_bgcolor = color.new(mitigated_color,80)
+            if i == poc_index
+                row_bgcolor := color.new(POC_COLOR_BG,40)
+            else if level_vol > avg_profile_vol * vp_hvn_threshold
+                row_bgcolor := color.new(NEUTRAL_COLOR, 30)
+            else if i >= va_low_idx and i <= va_high_idx
+                row_bgcolor := color.new(mitigated_color, 65) // Slightly lighter for Value Area
+                
+            string sell_buy_str = f_formatNumber(level_sell_vol) + " | " + f_formatNumber(level_buy_vol)
+            table.cell(ladder_tbl, 0, row, sell_buy_str, bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
+            table.cell(ladder_tbl, 1, row, f_formatNumber(level_vol), bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
+            color base_delta_color = level_delta >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR
+            color delta_bgcolor = f_gradientColor(base_delta_color, level_delta, max_abs_delta)
+            if (level_buy_vol > level_sell_vol * vp_imbalance_threshold and level_sell_vol > 0) or (level_sell_vol > level_buy_vol * vp_imbalance_threshold and level_buy_vol > 0)
+                delta_bgcolor := color.new(base_delta_color, 0)
+            table.cell(ladder_tbl, 2, row, f_formatNumber(level_delta, true), bgcolor=delta_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
+            table.cell(ladder_tbl, 3, row, str.tostring(level_price, format.mintick), bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
+
+    // 5. DRAW HISTOGRAM & LINES
+    if show_vp_histogram and price_range > 0
+        float avg_profile_vol = array.avg(volume_at_price)
+        int profile_start_x = bar_index + 62
+        int max_profile_width = 58
+        int start_bar_for_drawing = vp_mode == "Recent Bars" ? bar_index - vp_period + 1 : bar_index - ta.barssince(time >= vp_startTime)
+        
+        // Frame Box
+        box bvp = box.new(start_bar_for_drawing, vp_high, bar_index + 60, vp_low,
+             border_color=mitigated_color, border_style=line.style_dashed, border_width=2,
+             bgcolor=Transparent_Color, extend=extend.none)
+        array.push(vp_boxes, bvp)
+
+        for i = 0 to vp_resolution - 1
+            float level_price = vp_low + i * price_step
+            float next_level_price = level_price + price_step
+            float level_vol = array.get(volume_at_price, i)
+            float level_delta = array.get(delta_at_price, i)
+            if level_vol > 0
+                color base_color = level_delta >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR
+                color gradient_color = f_gradientColor(base_color, level_vol, max_profile_vol)
+                int box_width = math.round(level_vol / max_profile_vol * max_profile_width)
+                
+                // Color different for VA vs Non-VA
+                if i < va_low_idx or i > va_high_idx
+                    gradient_color := color.new(gradient_color, 60) // Fade out non-VA
+
+                // Histogram Bar
+                box bv1 = box.new(profile_start_x, next_level_price, profile_start_x + box_width, level_price, bgcolor=gradient_color, border_color=gradient_color)
+                array.push(vp_boxes, bv1)
+
+                // High Volume Nodes (Supply/Demand)
+                if level_vol > avg_profile_vol * vp_hvn_threshold
+                    string zone_type_text = level_delta > 0 ? "𝘿𝙀𝙈𝘼𝙉𝘿 ◉" : "𝙎𝙐𝙋𝙋𝙇𝙔 ◉"
+                    string zone_info_text = zone_type_text + " ▎Vol: " + f_formatNumber(level_vol) + " ▎Δ: " + f_formatNumber(level_delta, true)
+                    
+                    box bv2 = box.new(bar_index + 24, next_level_price, bar_index + 60, level_price, bgcolor=gradient_color, border_color=color.new(base_color, 40), extend=extend.none, text=zone_info_text, text_color=TEXT_COLOR, text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
+                    array.push(vp_boxes, bv2)
+                    
+                    box bv3 = box.new(bar_index + 2, next_level_price, bar_index + 24, level_price, bgcolor=color.new(gradient_color,90), border_color=color.new(base_color, 80), extend=extend.none, text='', text_color=TEXT_COLOR, text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
+                    array.push(vp_boxes, bv3)
+
+        // 6. DRAW POC / VAH / VAL LINES & LABELS
+        if not na(poc_price)
+            // POC
+            line lpoc = line.new(start_bar_for_drawing, poc_price, bar_index + 65, poc_price, color=POC_COLOR_LINE, style=line.style_solid, width=2)
+            array.push(vp_lines, lpoc)
+            if show_vp_labels
+                label lb_poc = label.new(bar_index + 65, poc_price, "POC\n" + str.tostring(poc_price, format.mintick), color=color.new(white, 100), textcolor=white, style=label.style_label_left, size=size.tiny)
+                array.push(vp_labels, lb_poc)
+
+            // VAH
+            line lvah = line.new(start_bar_for_drawing, vah_price, bar_index + 65, vah_price, color=VAH_COLOR_LINE, style=line.style_dashed, width=1)
+            array.push(vp_lines, lvah)
+            if show_vp_labels
+                label lb_vah = label.new(bar_index + 65, vah_price, "VAH\n" + str.tostring(vah_price, format.mintick), color=color.new(green, 100), textcolor=green, style=label.style_label_left, size=size.tiny)
+                array.push(vp_labels, lb_vah)
+            
+            // VAL
+            line lval = line.new(start_bar_for_drawing, val_price, bar_index + 65, val_price, color=VAL_COLOR_LINE, style=line.style_dashed, width=1)
+            array.push(vp_lines, lval)
+            if show_vp_labels
+                label lb_val = label.new(bar_index + 65, val_price, "VAL\n" + str.tostring(val_price, format.mintick), color=color.new(red, 100), textcolor=red, style=label.style_label_left, size=size.tiny)
+                array.push(vp_labels, lb_val)
+
+// ===== Plotting Basic Alerts on Every Bar =====
+bool strong_buy_pressure = current_delta > 0 and current_sell_vol > 0 and (current_buy_vol / current_sell_vol) > 2
+bool strong_sell_pressure = current_delta < 0 and current_buy_vol > 0 and (current_sell_vol / current_buy_vol) > 2
+plotshape(strong_buy_pressure, title="Strong Buying Pressure", location=location.belowbar, color=POSITIVE_COLOR, style=shape.triangleup, size=size.tiny)
+plotshape(strong_sell_pressure, title="Strong Selling Pressure", location=location.abovebar, color=NEGATIVE_COLOR, style=shape.triangledown, size=size.tiny)
+
+//════════════════════════════════════
+// LOGO (UNTOUCHED)
+//════════════════════════════════════
+LG_Line_Widthb = 2
+periodb = 70
+col_logo        = close > open ? col_bull: close < open ? col_bear : mitigated_color
+lowest1b = ta.lowest(low, periodb)
+lowest2b = ta.lowest(low, periodb - 1)
+lowest3b = ta.lowest(low, periodb - 2)
+lowest4b = ta.lowest(low, periodb - 3) 
+point1b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.99
+point2b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.994
+point3b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.9915
+point4b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.9955
+point5b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.986
+point6b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.99
+point7b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.9975
+point8b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.997
+point9b  = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.99
+point1b0 = (lowest1b + lowest2b + lowest3b + lowest4b) / 3.988
+var line Line1b  = na
+var line Line2b  = na
+var line Line3b  = na
+var line Line4b  = na
+var line Line5b  = na
+var line Line6b  = na
+var line Line7b  = na
+var line Line8b  = na
+var line Line9b  = na
+var line Line1b0 = na
+var line Line1b1 = na
+var line Line1b2 = na
+var line Line1b3 = na
+var line Line1b4 = na
+var line Line1b5 = na
+var line Line1b6 = na
+var line Line1b7 = na
+var line Line1b8 = na
+if (not na(Line1b))
+    line.delete(Line1b)
+if (not na(Line2b))
+    line.delete(Line2b)
+if (not na(Line3b))
+    line.delete(Line3b)
+if (not na(Line4b))
+    line.delete(Line4b)
+if (not na(Line5b))
+    line.delete(Line5b)
+if (not na(Line6b))
+    line.delete(Line6b)
+if (not na(Line7b))
+    line.delete(Line7b)
+if (not na(Line8b))
+    line.delete(Line8b)
+if (not na(Line9b))
+    line.delete(Line9b)
+if (not na(Line1b0))
+    line.delete(Line1b0)
+if (not na(Line1b1))
+    line.delete(Line1b1)
+if (not na(Line1b2))
+    line.delete(Line1b2)
+if (not na(Line1b3))
+    line.delete(Line1b3)
+if (not na(Line1b4))
+    line.delete(Line1b4)
+if (not na(Line1b5))
+    line.delete(Line1b5)
+if (not na(Line1b6))
+    line.delete(Line1b6)
+if (not na(Line1b7))
+    line.delete(Line1b7)
+if (not na(Line1b8))
+    line.delete(Line1b8)
+Line1b  := line.new(x1=bar_index + 28, y1=point7b, x2=bar_index + 35, y2=point1b, color=col_logo, width=LG_Line_Widthb)
+Line2b  := line.new(x1=bar_index + 32, y1=point7b, x2=bar_index + 35, y2=point2b, color=col_logo, width=LG_Line_Widthb)
+Line3b  := line.new(x1=bar_index + 35, y1=point1b, x2=bar_index + 37, y2=point3b, color=col_logo, width=LG_Line_Widthb)
+Line4b  := line.new(x1=bar_index + 35, y1=point2b, x2=bar_index + 37, y2=point4b, color=col_logo, width=LG_Line_Widthb)
+Line5b  := line.new(x1=bar_index + 37, y1=point3b, x2=bar_index + 43, y2=point5b, color=col_logo, width=LG_Line_Widthb)
+Line6b  := line.new(x1=bar_index + 37, y1=point4b, x2=bar_index + 43, y2=point6b, color=col_logo, width=LG_Line_Widthb)
+Line7b  := line.new(x1=bar_index + 43, y1=point5b, x2=bar_index + 48, y2=point3b, color=col_logo, width=LG_Line_Widthb)
+Line8b  := line.new(x1=bar_index + 43, y1=point6b, x2=bar_index + 48, y2=point4b, color=col_logo, width=LG_Line_Widthb)
+Line9b  := line.new(x1=bar_index + 48, y1=point3b, x2=bar_index + 50, y2=point1b, color=col_logo, width=LG_Line_Widthb)
+Line1b0 := line.new(x1=bar_index + 48, y1=point4b, x2=bar_index + 50, y2=point2b, color=col_logo, width=LG_Line_Widthb)
+Line1b1 := line.new(x1=bar_index + 50, y1=point1b, x2=bar_index + 60, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
+Line1b2 := line.new(x1=bar_index + 50, y1=point2b, x2=bar_index + 56, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
+Line1b3 := line.new(x1=bar_index + 26, y1=point7b, x2=bar_index + 50, y2=point7b, color=col_logo, width=LG_Line_Widthb)
+Line1b4 := line.new(x1=bar_index + 24, y1=lowest1b, x2=bar_index + 48, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
+Line1b5 := line.new(x1=bar_index + 26, y1=point7b, x2=bar_index + 24, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
+Line1b6 := line.new(x1=bar_index + 50, y1=point7b, x2=bar_index + 48, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
+Line1b7 := line.new(x1=bar_index + 56, y1=lowest1b, x2=bar_index + 60, y2=lowest1b, color=col_logo, width=LG_Line_Widthb)
+Line1b8 := line.new(x1=bar_index + 37, y1=point1b0, x2=bar_index + 38, y2=point1b0, color=col_logo, width=1)
+plotshape(point1b0,offset = 37, style=shape.circle,size = size.huge,color =color.new(col_logo,90),show_last = 1,location = location.absolute,text = "𝙈𝙇𝙏𝙁𝙓 ©",textcolor = col_logo)
+plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 0), linewidth=10,style = plot.style_circles)
+plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 80), linewidth=20,style = plot.style_circles)
+plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 84), linewidth=30,style = plot.style_circles)
+plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 88), linewidth=40,style = plot.style_circles)
+plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 92), linewidth=50,style = plot.style_circles)
+plot(point1b0,show_last = 1,offset = 37, color= color.new(col_logo, 96), linewidth=60,style = plot.style_circles)
