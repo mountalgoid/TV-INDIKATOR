@@ -535,7 +535,7 @@ if barstate.islast
                 label lb_val = label.new(bar_index + 65, val_price, "VAL\n" + str.tostring(val_price, format.mintick), color=color.new(col_bear, 100), textcolor=col_bear, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_val)
 
-        // 7. HVN AND LVN RE-INTEGRATED AS RE-PROCESSED LINES (NOT SUPPLY/DEMAND BLOCKS)
+        // 7. HVN AND LVN RE-INTEGRATED AS RE-PROCESSED BOXES (NOT SUPPLY/DEMAND BLOCKS)
         if show_lvn_hvn and total_profile_volume > 0 and price_range > 0
             float avg_profile_vol = array.avg(volume_at_price)
             float threshold_lvn = max_profile_vol * vp_lvn_threshold
@@ -544,23 +544,22 @@ if barstate.islast
                 float v_prev = array.get(volume_at_price, i - 1)
                 float v_curr = array.get(volume_at_price, i)
                 float v_next = array.get(volume_at_price, i + 1)
-                float level_price = vp_low + (i + 0.5) * price_step
+                float level_price_bottom = vp_low + i * price_step
+                float level_price_top = level_price_bottom + price_step
 
-                // HVN detection (Local Maxima above threshold multiplier of average volume)
+                // HVN detection (Local Maxima above threshold multiplier of average volume) - Draw Area Box with solid border and strict "HVN" text inside
                 if v_curr > v_prev and v_curr > v_next and v_curr > avg_profile_vol * vp_hvn_threshold
-                    line lhvn = line.new(start_bar_for_drawing, level_price, bar_index + 65, level_price, color=color.new(col_bull, 40), style=line.style_solid, width=1)
-                    array.push(vp_lines, lhvn)
-                    if show_vp_labels
-                        label lb_hvn = label.new(bar_index + 65, level_price, "HVN: " + str.tostring(level_price, format.mintick), color=color.new(col_bull, 100), textcolor=col_bull, style=label.style_label_left, size=size.tiny)
-                        array.push(vp_labels, lb_hvn)
+                    box bhvn = box.new(start_bar_for_drawing, level_price_top, bar_index + 65, level_price_bottom,
+                         border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
+                         bgcolor=color.new(col_bull, 90), text="HVN", text_color=TEXT_COLOR, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                    array.push(vp_boxes, bhvn)
 
-                // LVN detection (Local Minima below threshold volume)
+                // LVN detection (Local Minima below threshold volume) - Draw Area Box with dashed border and strict "LVN" text inside
                 if v_curr < v_prev and v_curr < v_next and v_curr < threshold_lvn
-                    line llvn = line.new(start_bar_for_drawing, level_price, bar_index + 65, level_price, color=color.new(col_bear, 40), style=line.style_dashed, width=1)
-                    array.push(vp_lines, llvn)
-                    if show_vp_labels
-                        label lb_lvn = label.new(bar_index + 65, level_price, "LVN: " + str.tostring(level_price, format.mintick), color=color.new(col_bear, 100), textcolor=col_bear, style=label.style_label_left, size=size.tiny)
-                        array.push(vp_labels, lb_lvn)
+                    box blvn = box.new(start_bar_for_drawing, level_price_top, bar_index + 65, level_price_bottom,
+                         border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
+                         bgcolor=color.new(col_bear, 90), text="LVN", text_color=TEXT_COLOR, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                    array.push(vp_boxes, blvn)
 
 // ===== Plotting Basic Alerts on Every Bar =====
 bool strong_buy_pressure = current_delta > 0 and current_sell_vol > 0 and (current_buy_vol / current_sell_vol) > 2
