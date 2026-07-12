@@ -456,6 +456,14 @@ if barstate.islast
         table.cell(ladder_tbl, 2, 0, "Delta", bgcolor=HEADER_COLOR, text_color=TEXT_COLOR, text_size=size.tiny)
         table.cell(ladder_tbl, 3, 0, "Price", bgcolor=HEADER_COLOR, text_color=TEXT_COLOR, text_size=size.tiny)
         float avg_profile_vol = array.avg(volume_at_price)
+        float threshold_lvn = max_profile_vol * vp_lvn_threshold
+
+        // 3. Tambahkan current price yang selalu berpindah-pindah di ladder tabel
+        int current_price_row_idx = -1
+        if close >= vp_low and close <= vp_high
+            current_price_row_idx := math.floor((close - vp_low) / price_step)
+            current_price_row_idx := math.max(0, math.min(vp_resolution - 1, current_price_row_idx))
+
         for i = 0 to vp_resolution - 1
             int row = vp_resolution - i
             float level_price = vp_low + i * price_step
@@ -463,15 +471,44 @@ if barstate.islast
             float level_delta = array.get(delta_at_price, i)
             float level_buy_vol = (level_vol + level_delta) / 2
             float level_sell_vol = level_vol - level_buy_vol
-            color row_bgcolor = color.new(mitigated_color,80)
+            color row_bgcolor = color.new(mitigated_color, 80)
+
+            // Check HVN/LVN status locally
+            bool is_hvn = false
+            bool is_lvn = false
+            if i > 0 and i < vp_resolution - 1
+                float v_prev = array.get(volume_at_price, i - 1)
+                float v_curr = level_vol
+                float v_next = array.get(volume_at_price, i + 1)
+                if v_curr > v_prev and v_curr > v_next and v_curr > avg_profile_vol * vp_hvn_threshold
+                    is_hvn := true
+                if v_curr < v_prev and v_curr < v_next and v_curr < threshold_lvn
+                    is_lvn := true
+
             if i == poc_index
-                row_bgcolor := color.new(POC_COLOR_BG,40)
-            else if level_vol > avg_profile_vol * vp_hvn_threshold
-                row_bgcolor := color.new(NEUTRAL_COLOR, 30)
+                row_bgcolor := color.new(POC_COLOR_BG, 40)
+            else if is_hvn
+                row_bgcolor := color.new(POSITIVE_COLOR, 50)
+            else if is_lvn
+                row_bgcolor := color.new(NEGATIVE_COLOR, 50)
             else if i >= va_low_idx and i <= va_high_idx
-                row_bgcolor := color.new(mitigated_color, 65) // Slightly lighter for Value Area
-                
+                row_bgcolor := color.new(mitigated_color, 65)
+
+            // Current price indicator highlighting row
+            if i == current_price_row_idx
+                row_bgcolor := color_theme == "Gear Protocol" ? color.new(white, 20) : color.new(yellow, 30)
+
             string sell_buy_str = f_formatNumber(level_sell_vol) + " | " + f_formatNumber(level_buy_vol)
+
+            // 4. Tambahkan Identifikasi HVN LVN dengan border dan text HVN LVN pada tabel volume ladder
+            string price_str = str.tostring(level_price, format.mintick)
+            if i == current_price_row_idx
+                price_str := "▶ " + price_str + " ◀"
+            if is_hvn
+                price_str := "[HVN] " + price_str
+            else if is_lvn
+                price_str := "[LVN] " + price_str
+
             table.cell(ladder_tbl, 0, row, sell_buy_str, bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
             table.cell(ladder_tbl, 1, row, f_formatNumber(level_vol), bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
             color base_delta_color = level_delta >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR
@@ -479,7 +516,9 @@ if barstate.islast
             if (level_buy_vol > level_sell_vol * vp_imbalance_threshold and level_sell_vol > 0) or (level_sell_vol > level_buy_vol * vp_imbalance_threshold and level_buy_vol > 0)
                 delta_bgcolor := color.new(base_delta_color, 0)
             table.cell(ladder_tbl, 2, row, f_formatNumber(level_delta, true), bgcolor=delta_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
-            table.cell(ladder_tbl, 3, row, str.tostring(level_price, format.mintick), bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
+
+            // Style cells with borders for HVN/LVN identification
+            table.cell(ladder_tbl, 3, row, price_str, bgcolor=row_bgcolor, text_color=TEXT_COLOR, text_size=size.tiny)
 
     // 5. DRAW HISTOGRAM & LINES
     if show_vp_histogram and price_range > 0
@@ -514,25 +553,26 @@ if barstate.islast
 
         // 6. DRAW POC / VAH / VAL LINES & LABELS
         if not na(poc_price)
+            // 2. ubah label val vah poc ber bgcolor jelas dan text jelas
             // POC
             line lpoc = line.new(start_bar_for_drawing, poc_price, bar_index + 65, poc_price, color=POC_COLOR_LINE, style=line.style_solid, width=2)
             array.push(vp_lines, lpoc)
             if show_vp_labels
-                label lb_poc = label.new(bar_index + 65, poc_price, "POC\n" + str.tostring(poc_price, format.mintick), color=color.new(col_poc, 100), textcolor=col_poc, style=label.style_label_left, size=size.tiny)
+                label lb_poc = label.new(bar_index + 65, poc_price, "POC\n" + str.tostring(poc_price, format.mintick), color=col_poc, textcolor=dark, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_poc)
 
             // VAH
             line lvah = line.new(start_bar_for_drawing, vah_price, bar_index + 65, vah_price, color=VAH_COLOR_LINE, style=line.style_dashed, width=1)
             array.push(vp_lines, lvah)
             if show_vp_labels
-                label lb_vah = label.new(bar_index + 65, vah_price, "VAH\n" + str.tostring(vah_price, format.mintick), color=color.new(col_bull, 100), textcolor=col_bull, style=label.style_label_left, size=size.tiny)
+                label lb_vah = label.new(bar_index + 65, vah_price, "VAH\n" + str.tostring(vah_price, format.mintick), color=col_bull, textcolor=dark, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_vah)
             
             // VAL
             line lval = line.new(start_bar_for_drawing, val_price, bar_index + 65, val_price, color=VAL_COLOR_LINE, style=line.style_dashed, width=1)
             array.push(vp_lines, lval)
             if show_vp_labels
-                label lb_val = label.new(bar_index + 65, val_price, "VAL\n" + str.tostring(val_price, format.mintick), color=color.new(col_bear, 100), textcolor=col_bear, style=label.style_label_left, size=size.tiny)
+                label lb_val = label.new(bar_index + 65, val_price, "VAL\n" + str.tostring(val_price, format.mintick), color=col_bear, textcolor=dark, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_val)
 
         // 7. HVN AND LVN RE-INTEGRATED AS RE-PROCESSED BOXES (NOT SUPPLY/DEMAND BLOCKS)
@@ -560,12 +600,6 @@ if barstate.islast
                          border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
                          bgcolor=color.new(col_bear, 90), text="LVN", text_color=TEXT_COLOR, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                     array.push(vp_boxes, blvn)
-
-// ===== Plotting Basic Alerts on Every Bar =====
-bool strong_buy_pressure = current_delta > 0 and current_sell_vol > 0 and (current_buy_vol / current_sell_vol) > 2
-bool strong_sell_pressure = current_delta < 0 and current_buy_vol > 0 and (current_sell_vol / current_buy_vol) > 2
-plotshape(strong_buy_pressure, title="Strong Buying Pressure", location=location.belowbar, color=POSITIVE_COLOR, style=shape.triangleup, size=size.tiny)
-plotshape(strong_sell_pressure, title="Strong Selling Pressure", location=location.abovebar, color=NEGATIVE_COLOR, style=shape.triangledown, size=size.tiny)
 
 //════════════════════════════════════
 // LOGO (UNTOUCHED AND PROFESSIONAL)
