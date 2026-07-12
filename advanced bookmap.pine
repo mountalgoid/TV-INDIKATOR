@@ -1614,6 +1614,17 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     current_price_row_idx := math.floor((close - lowest_p) / row_height)
                     current_price_row_idx := math.max(0, math.min(n_rows - 1, current_price_row_idx))
 
+                // Avg Buy and Avg Sell index identification
+                int avg_buy_row_idx = -1
+                if not na(hist_avg_buy_g) and hist_avg_buy_g >= lowest_p and hist_avg_buy_g <= highest_p
+                    avg_buy_row_idx := math.floor((hist_avg_buy_g - lowest_p) / row_height)
+                    avg_buy_row_idx := math.max(0, math.min(n_rows - 1, avg_buy_row_idx))
+
+                int avg_sell_row_idx = -1
+                if not na(hist_avg_sell_g) and hist_avg_sell_g >= lowest_p and hist_avg_sell_g <= highest_p
+                    avg_sell_row_idx := math.floor((hist_avg_sell_g - lowest_p) / row_height)
+                    avg_sell_row_idx := math.max(0, math.min(n_rows - 1, avg_sell_row_idx))
+
                 // Determine display rows window
                 int display_rows = math.min(n_rows, ladder_max_rows)
                 int center_idx = current_price_row_idx != -1 ? current_price_row_idx : poc_idx
@@ -1627,7 +1638,6 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     start_r := math.max(0, end_r - display_rows + 1)
 
                 ladder_tbl := table.new(l_pos, 4, display_rows + 1, bgcolor=dark, border_width=1, border_color=Transparent_Color, frame_color=mitigated_color, frame_width=1)
-                table.clear(ladder_tbl, 0, 0)
                 table.cell(ladder_tbl, 0, 0, "Sell | Buy", bgcolor=dark, text_color=white, text_size=size.tiny)
                 table.cell(ladder_tbl, 1, 0, "Total Vol", bgcolor=dark, text_color=white, text_size=size.tiny)
                 table.cell(ladder_tbl, 2, 0, "Delta", bgcolor=dark, text_color=white, text_size=size.tiny)
@@ -1684,6 +1694,11 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
                     if r == poc_idx
                         price_str := "[POC] " + price_str
+
+                    if r == avg_buy_row_idx
+                        price_str := "[AVG BUY] " + price_str
+                    if r == avg_sell_row_idx
+                        price_str := "[AVG SELL] " + price_str
 
                     table.cell(ladder_tbl, 0, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=white, text_size=size.tiny)
                     table.cell(ladder_tbl, 1, tbl_row, f_formatNumber(level_vol, false), bgcolor=row_bgcolor, text_color=white, text_size=size.tiny)
