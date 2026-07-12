@@ -137,7 +137,7 @@ bool show_vp_labels = input.bool(true, "Show Text Labels", group=grp_vp)
 int  vp_lookback    = input.int(1000, "Main VP Lookback Length", minval=2, maxval=2000, group=grp_vp) 
 bool show_vp_short  = input.bool(true, "Show Short-Term VP", group=grp_vp)
 int  vp_lookback_s  = input.int(200, "Short VP Lookback Length", minval=2, maxval=1000, group=grp_vp)
-int  vp_rows        = input.int(50, "Profile Row Count", minval=10, maxval=100, group=grp_vp)
+int  vp_rows        = input.int(50, "Profile Row Count", minval=10, maxval=500, group=grp_vp)
 bool vp_use_grain   = input.bool(false, "Use Price Grain (Tick-based)", group=grp_vp)
 float vp_grain      = input.float(1.0, "Price Grain (Ticks)", minval=0.1, step=0.1, group=grp_vp)
 bool show_lvn       = input.bool(true, "Show LVN (Low Volume Nodes)", group=grp_vp)
@@ -216,6 +216,7 @@ bool   show_logo         = input.bool(true, "Show Logo", group = "Logo Settings"
 bool   show_volume_ladder = input.bool(true, "Show Volume Ladder Table")
 string ladder_position_input = input.string("top_right", "Volume Ladder Position", options=["top_left", "top_right", "bottom_left", "bottom_right"])
 float  vp_imbalance_threshold = input.float(3.0, "Delta Imbalance Ratio", minval=1.5, step=0.5)
+int    ladder_max_rows = input.int(30, "Volume Ladder Max Rows", minval=5, maxval=100)
 var table ladder_tbl = na
 
 // -----------------------------------------------------------------------------
@@ -238,7 +239,7 @@ f_gradientColor(base_color, current_value, max_value) =>
     int transparency = math.round(85 - (ratio * 45))
     color.new(base_color, transparency)
 
-f_formatNumber(number, add_sign = false) =>
+f_formatNumber(number, add_sign) =>
     string sign = ""
     if add_sign
         sign := number >= 0 ? "+" : ""
@@ -533,7 +534,7 @@ if show_hpoc and (barstate.isconfirmed or barstate.islast)
         float l_p = math.min(array.min(hist_low), low)
         
         int n_rows = vp_use_grain ? math.round((h_p - l_p) / (syminfo.mintick * vp_grain)) : hpoc_rows
-        n_rows := math.min(150, math.max(10, n_rows))
+        n_rows := math.min(500, math.max(10, n_rows))
         float r_h = (h_p - l_p) / n_rows
         if r_h > 0
             float inv_rh = 1.0 / r_h
@@ -1022,7 +1023,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         float highest_p = math.max(array.max(hist_high), high)
         float lowest_p = math.min(array.min(hist_low), low)
         int n_rows = vp_use_grain ? math.round((highest_p - lowest_p) / (syminfo.mintick * vp_grain)) : vp_rows
-        n_rows := math.min(150, math.max(10, n_rows))
+        n_rows := math.min(500, math.max(10, n_rows))
         float row_height = (highest_p - lowest_p) / n_rows
         
         if row_height > 0
@@ -1607,21 +1608,33 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         float b_delta = b_buy - b_sell
                         max_abs_delta := math.max(max_abs_delta, math.abs(b_delta))
 
-                ladder_tbl := table.new(l_pos, 4, n_rows + 1, bgcolor=dark, border_width=1, border_color=Transparent_Color, frame_color=mitigated_color, frame_width=1)
-                table.clear(ladder_tbl, 0, 0)
-                table.cell(ladder_tbl, 0, 0, "Sell | Buy", bgcolor=dark, text_color=white, text_size=size.tiny)
-                table.cell(ladder_tbl, 1, 0, "Total Vol", bgcolor=dark, text_color=white, text_size=size.tiny)
-                table.cell(ladder_tbl, 2, 0, "Delta", bgcolor=dark, text_color=white, text_size=size.tiny)
-                table.cell(ladder_tbl, 3, 0, "Price", bgcolor=dark, text_color=white, text_size=size.tiny)
-
                 // Current price index identification
                 int current_price_row_idx = -1
                 if close >= lowest_p and close <= highest_p
                     current_price_row_idx := math.floor((close - lowest_p) / row_height)
                     current_price_row_idx := math.max(0, math.min(n_rows - 1, current_price_row_idx))
 
-                for r = 0 to n_rows - 1
-                    int tbl_row = n_rows - r
+                // Determine display rows window
+                int display_rows = math.min(n_rows, ladder_max_rows)
+                int center_idx = current_price_row_idx != -1 ? current_price_row_idx : poc_idx
+                int start_r = center_idx - math.floor(display_rows / 2)
+                int end_r = start_r + display_rows - 1
+                if start_r < 0
+                    start_r := 0
+                    end_r := display_rows - 1
+                if end_r >= n_rows
+                    end_r := n_rows - 1
+                    start_r := math.max(0, end_r - display_rows + 1)
+
+                ladder_tbl := table.new(l_pos, 4, display_rows + 1, bgcolor=dark, border_width=1, border_color=Transparent_Color, frame_color=mitigated_color, frame_width=1)
+                table.clear(ladder_tbl, 0, 0)
+                table.cell(ladder_tbl, 0, 0, "Sell | Buy", bgcolor=dark, text_color=white, text_size=size.tiny)
+                table.cell(ladder_tbl, 1, 0, "Total Vol", bgcolor=dark, text_color=white, text_size=size.tiny)
+                table.cell(ladder_tbl, 2, 0, "Delta", bgcolor=dark, text_color=white, text_size=size.tiny)
+                table.cell(ladder_tbl, 3, 0, "Price", bgcolor=dark, text_color=white, text_size=size.tiny)
+
+                for r = start_r to end_r
+                    int tbl_row = end_r - r + 1
                     float level_price = lowest_p + r * row_height
                     float level_vol = array.get(bucket_vol_total, r)
                     float level_buy_vol = array.get(bucket_vol_buy, r)
@@ -1654,7 +1667,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     if r == current_price_row_idx
                         row_bgcolor := color_theme == "Gear Protocol" ? color.new(white, 20) : color.new(yellow, 30)
 
-                    string sell_buy_str = f_formatNumber(level_sell_vol) + " | " + f_formatNumber(level_buy_vol)
+                    string sell_buy_str = f_formatNumber(level_sell_vol, false) + " | " + f_formatNumber(level_buy_vol, false)
                     string price_str = str.tostring(level_price, format.mintick)
 
                     if r == current_price_row_idx
@@ -1673,7 +1686,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         price_str := "[POC] " + price_str
 
                     table.cell(ladder_tbl, 0, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=white, text_size=size.tiny)
-                    table.cell(ladder_tbl, 1, tbl_row, f_formatNumber(level_vol), bgcolor=row_bgcolor, text_color=white, text_size=size.tiny)
+                    table.cell(ladder_tbl, 1, tbl_row, f_formatNumber(level_vol, false), bgcolor=row_bgcolor, text_color=white, text_size=size.tiny)
 
                     color base_delta_color = level_delta >= 0 ? col_bull : col_bear
                     color delta_bgcolor = f_gradientColor(base_delta_color, level_delta, max_abs_delta)
