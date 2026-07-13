@@ -132,6 +132,35 @@ get_table_bg(int c, int r, int total_c, int total_r) =>
     int t_alpha = math.round(50 + ratio * 40)
     color.new(base, t_alpha)
 
+f_tf_to_ms(tf) =>
+    if tf == "D" or tf == "1D"
+        86400000
+    else if tf == "W" or tf == "1W"
+        604800000
+    else if tf == "M" or tf == "1M"
+        2592000000
+    else
+        len = str.length(tf)
+        last_char = len > 0 ? str.substring(tf, len - 1) : ""
+        if last_char == "S" or last_char == "s"
+            val = str.tonumber(str.substring(tf, 0, len - 1))
+            val * 1000
+        else if last_char == "D" or last_char == "d"
+            val = str.tonumber(str.substring(tf, 0, len - 1))
+            val * 86400000
+        else if last_char == "W" or last_char == "w"
+            val = str.tonumber(str.substring(tf, 0, len - 1))
+            val * 604800000
+        else if last_char == "M" or last_char == "m"
+            val = str.tonumber(str.substring(tf, 0, len - 1))
+            val * 2592000000
+        else
+            val = str.tonumber(tf)
+            if na(val)
+                timeframe.isseconds ? timeframe.multiplier * 1000 : timeframe.multiplier * 60000
+            else
+                val * 60000
+
 //════════════════════════════════════════════════════════════════════════
 // DRAWING FUNCTION
 //════════════════════════════════════════════════════════════════════════
@@ -373,7 +402,7 @@ if barstate.islast
     // Countdown Calculation
     int htf_end = time_close(htf_timeframe)
     if na(htf_end)
-        int htf_duration_ms = timeframe.to_seconds(htf_timeframe) * 1000
+        int htf_duration_ms = f_tf_to_ms(htf_timeframe)
         htf_end := time(htf_timeframe) + htf_duration_ms
     int remaining_ms = math.max(0, htf_end - timenow)
     int total_seconds = math.ceil(remaining_ms / 1000)
