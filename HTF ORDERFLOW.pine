@@ -143,19 +143,19 @@ f_tf_to_ms(tf) =>
         len = str.length(tf)
         last_char = len > 0 ? str.substring(tf, len - 1) : ""
         if last_char == "S" or last_char == "s"
-            val = str.tonumber(str.substring(tf, 0, len - 1))
+            val = int(str.tonumber(str.substring(tf, 0, len - 1)))
             val * 1000
         else if last_char == "D" or last_char == "d"
-            val = str.tonumber(str.substring(tf, 0, len - 1))
+            val = int(str.tonumber(str.substring(tf, 0, len - 1)))
             val * 86400000
         else if last_char == "W" or last_char == "w"
-            val = str.tonumber(str.substring(tf, 0, len - 1))
+            val = int(str.tonumber(str.substring(tf, 0, len - 1)))
             val * 604800000
         else if last_char == "M" or last_char == "m"
-            val = str.tonumber(str.substring(tf, 0, len - 1))
+            val = int(str.tonumber(str.substring(tf, 0, len - 1)))
             val * 2592000000
         else
-            val = str.tonumber(tf)
+            val = int(str.tonumber(tf))
             if na(val)
                 timeframe.isseconds ? timeframe.multiplier * 1000 : timeframe.multiplier * 60000
             else
