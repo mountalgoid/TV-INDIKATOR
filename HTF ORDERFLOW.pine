@@ -40,6 +40,10 @@ levels_count = input.int(20, title="Volume Profile Levels", minval=5, maxval=100
 value_area_pct = 70 // input.int(70, title="Value Area %", minval=10, maxval=100)
 show_lvn = input.bool(true, title="Show LVN (Low Volume Nodes)", group=GlobalGroup)
 lvn_threshold = input.int(15, title="LVN Threshold (%)", minval=1, maxval=50, group=GlobalGroup)
+show_hvn = input.bool(true, title="Show HVN (High Volume Nodes)", group=GlobalGroup)
+hvn_threshold = input.int(70, title="HVN Threshold (%)", minval=1, maxval=100, group=GlobalGroup)
+show_logo = input.bool(true, title="Show Brand Logo", group=GlobalGroup)
+l_off = input.int(85, title="Logo Offset (Bars)", group=GlobalGroup)
 
 // Colors Assignment
 col_bull = switch color_theme
@@ -233,31 +237,28 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 line.delete(ln)
             array.clear(future_lines)
 
-    // 1. Draw HTF Background Candle (MODIFIED TRANSPARENCY)
-    // Body: Transparansi 90 (Professional Glass Effect)
-    color box_bg = s_close >= s_open ? color.new(col_bull, 90) : color.new(col_bear, 90) 
-    color box_border = s_close >= s_open ? color.new(col_bull, 80) : color.new(col_bear, 80)
-    
-    // Wick/Full Range: Transparansi 90 (Professional Glass Effect)
-    color box_wick_bg = color.new(mitigated_color, 90) 
-    
+    int axis_x = start_idx
+
     if show_htf_plot_candle
+        color htf_candle_color = s_close >= s_open ? col_bull : col_bear
+        color body_color = htf_candle_color
+        color wick_color = htf_candle_color
+
         if is_future
-            // Background Body (Wick Range)
-            bx_bg = box.new(start_idx, s_high, end_idx, s_low, border_color=na, bgcolor=box_wick_bg)
-            array.push(future_boxes, bx_bg)
-            // Candle Body (Open-Close)
-            bx_body = box.new(start_idx, math.max(s_open, s_close), end_idx, math.min(s_open, s_close), border_color=box_border, bgcolor=box_bg)
-            array.push(future_boxes, bx_body)
+            ln_up = line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
+            ln_dn = line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
+            ln_body = line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=20)
+            array.push(future_lines, ln_up)
+            array.push(future_lines, ln_dn)
+            array.push(future_lines, ln_body)
         else
-            // History
-            box.new(start_idx, s_high, end_idx, s_low, border_color=na, bgcolor=box_wick_bg)
-            box.new(start_idx, math.max(s_open, s_close), end_idx, math.min(s_open, s_close), border_color=box_border, bgcolor=box_bg)
+            line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
+            line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
+            line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=20)
 
     // 2. Draw Volume Profile Boxes
     if show_volume_profile
-        int axis_x = is_future ? bar_index + rt_offset : start_idx
-        int total_width = is_future ? 15 : (end_idx - start_idx) 
+        int total_width = math.max(1, end_idx - start_idx)
         int profile_max_width = math.round(total_width * box_width)
         
         color axis_col = color.new(gray, 70)
@@ -308,15 +309,28 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     if vol_val < v_prev and vol_val < v_next and vol_val < max_vol * (lvn_threshold / 100.0)
                         is_lvn := true
 
+                // HVN Identification (Local maxima & above threshold, excluding POC)
+                bool is_hvn = false
+                if show_hvn and i > 0 and i < levels_count - 1 and i != poc_idx
+                    v_prev = array.get(vol_dist, i - 1)
+                    v_next = array.get(vol_dist, i + 1)
+                    if vol_val > v_prev and vol_val > v_next and vol_val > max_vol * (hvn_threshold / 100.0)
+                        is_hvn := true
+
                 if is_future
                     if is_lvn
-                        bx_lvn = box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, bgcolor=color.new(col_poc, 95))
+                        bx_lvn = box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_valign=text.align_center)
                         array.push(future_boxes, bx_lvn)
+                    if is_hvn
+                        bx_hvn = box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_valign=text.align_center)
+                        array.push(future_boxes, bx_hvn)
                     bx_vol = box.new(x1, level_high, x2, level_low, border_color=na, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                     array.push(future_boxes, bx_vol)
                 else
                     if is_lvn
-                        box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, bgcolor=color.new(col_poc, 95))
+                        box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_valign=text.align_center)
+                    if is_hvn
+                        box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_valign=text.align_center)
                     box.new(x1, level_high, x2, level_low, border_color=na, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
 
         // 3. Draw Extended POC & VAH/VAL Boxes
@@ -325,21 +339,13 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         float val_price = s_low + (step * va_down)
         
         if is_future
-            int end_x = axis_x + 35
-            // Zoned Background Boxes
-            bx_va_up = box.new(axis_x, s_high, end_x, vah_price, bgcolor=color.new(color_vah, 80), border_color=na)
-            bx_va_mid = box.new(axis_x, vah_price, end_x, val_price, bgcolor=color.new(color_poc, 96), border_color=na)
-            bx_va_dn = box.new(axis_x, val_price, end_x, s_low, bgcolor=color.new(color_val, 80), border_color=na)
-            array.push(future_boxes, bx_va_up)
-            array.push(future_boxes, bx_va_mid)
-            array.push(future_boxes, bx_va_dn)
-
-            bx_p = box.new(axis_x - 2, poc_price + step/2, axis_x + 40, poc_price - step/2, border_color=na, bgcolor=color.new(color_poc, 80), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            int end_x = end_idx
+            bx_p = box.new(axis_x, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_p)
             
-            bx_vh = box.new(axis_x, vah_price + step/4, axis_x + 35, vah_price - step/4, border_color=na, bgcolor=color.new(color_vah, 80), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vh = box.new(axis_x, vah_price + step/16, end_x, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 50), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vh)
-            bx_vl = box.new(axis_x, val_price + step/4, axis_x + 35, val_price - step/4, border_color=na, bgcolor=color.new(color_val, 80), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vl = box.new(axis_x, val_price + step/16, end_x, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 50), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vl)
         else
             box.new(start_idx, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
@@ -364,20 +370,39 @@ if is_new_htf
 if barstate.islast
     [c_h, c_l, c_o, c_c, c_v, c_bv, c_sv, c_poc, c_mv] = draw_htf_profile(htf_start_bar_index, bar_index, true)
     
+    // Countdown Calculation
+    int htf_end = time_close(htf_timeframe)
+    if na(htf_end)
+        int htf_duration_ms = timeframe.to_seconds(htf_timeframe) * 1000
+        htf_end := time(htf_timeframe) + htf_duration_ms
+    int remaining_ms = math.max(0, htf_end - timenow)
+    int total_seconds = math.ceil(remaining_ms / 1000)
+    int hours = math.floor(total_seconds / 3600)
+    int minutes = math.floor((total_seconds % 3600) / 60)
+    int seconds = total_seconds % 60
+
+    string countdown_str = ""
+    if hours > 0
+        countdown_str := str.tostring(hours, "00") + ":" + str.tostring(minutes, "00") + ":" + str.tostring(seconds, "00")
+    else
+        countdown_str := str.tostring(minutes, "00") + ":" + str.tostring(seconds, "00")
+
     // Info Table
     if show_buy_sell_volume
-        var table info_table = table.new(position.top_right, 2, 5, bgcolor=color.new(dark, 100), border_width=1)
+        var table info_table = table.new(position.top_right, 2, 6, bgcolor=color.new(dark, 100), border_width=1)
         c_delta = c_bv - c_sv
         table.cell(info_table, 0, 0, "HTF Flow (Realtime)", text_color=white, bgcolor=color.new(col_poc, 90))
         table.cell(info_table, 1, 0, htf_timeframe, text_color=white, bgcolor=color.new(col_poc, 90))
-        table.cell(info_table, 0, 1, "Buy Vol", text_color=color_text, bgcolor=get_table_bg(0, 1, 2, 5))
-        table.cell(info_table, 1, 1, str.tostring(math.round(c_bv)), text_color=col_bull, bgcolor=get_table_bg(1, 1, 2, 5))
-        table.cell(info_table, 0, 2, "Sell Vol", text_color=color_text, bgcolor=get_table_bg(0, 2, 2, 5))
-        table.cell(info_table, 1, 2, str.tostring(math.round(c_sv)), text_color=col_bear, bgcolor=get_table_bg(1, 2, 2, 5))
-        table.cell(info_table, 0, 3, "Delta", text_color=color_text, bgcolor=get_table_bg(0, 3, 2, 5))
-        table.cell(info_table, 1, 3, str.tostring(math.round(c_delta)), text_color=c_delta > 0 ? col_bull : col_bear, bgcolor=get_table_bg(1, 3, 2, 5))
-        table.cell(info_table, 0, 4, "Total Vol", text_color=color_text, bgcolor=get_table_bg(0, 4, 2, 5))
-        table.cell(info_table, 1, 4, str.tostring(math.round(c_v)), text_color=white, bgcolor=get_table_bg(1, 4, 2, 5))
+        table.cell(info_table, 0, 1, "Next HTF Bar", text_color=color_text, bgcolor=get_table_bg(0, 1, 2, 6))
+        table.cell(info_table, 1, 1, countdown_str, text_color=white, bgcolor=get_table_bg(1, 1, 2, 6))
+        table.cell(info_table, 0, 2, "Buy Vol", text_color=color_text, bgcolor=get_table_bg(0, 2, 2, 6))
+        table.cell(info_table, 1, 2, str.tostring(math.round(c_bv)), text_color=col_bull, bgcolor=get_table_bg(1, 2, 2, 6))
+        table.cell(info_table, 0, 3, "Sell Vol", text_color=color_text, bgcolor=get_table_bg(0, 3, 2, 6))
+        table.cell(info_table, 1, 3, str.tostring(math.round(c_sv)), text_color=col_bear, bgcolor=get_table_bg(1, 3, 2, 6))
+        table.cell(info_table, 0, 4, "Delta", text_color=color_text, bgcolor=get_table_bg(0, 4, 2, 6))
+        table.cell(info_table, 1, 4, str.tostring(math.round(c_delta)), text_color=c_delta > 0 ? col_bull : col_bear, bgcolor=get_table_bg(1, 4, 2, 6))
+        table.cell(info_table, 0, 5, "Total Vol", text_color=color_text, bgcolor=get_table_bg(0, 5, 2, 6))
+        table.cell(info_table, 1, 5, str.tostring(math.round(c_v)), text_color=white, bgcolor=get_table_bg(1, 5, 2, 6))
 
 // LTF CANDLES
 [b_vol, s_vol] = get_buy_sell_vol(volume, open, high, low, close)
@@ -414,3 +439,155 @@ if show_candle_plot
     col_body_final := type_ltf_color_candle == 'Based Stochastic RSI' ? trans_col_candle_s_rsi : type_ltf_color_candle == 'Based Delta' ? trans_col_candle_delta : type_ltf_color_candle == 'Based EMA' ? trans_col_candle_ema : trans_col_candle_regular
 
 plotcandle(open, high, low, close, color = col_body_final, wickcolor = col_wick_final, bordercolor = col_wick_final, title = 'Plot Candle')
+
+//═══════════════════════════════════════════════════════════════════════════════
+// LOGO GRADIENT ENHANCED - TOTAL SYNC (LINES & FILL)
+//═══════════════════════════════════════════════════════════════════════════════
+
+color bull_c1 = col_bull
+color bull_c2 = col_bear
+color bear_c1 = col_bull
+color bear_c2 = col_bear
+
+// --- 2. LOGIKA ANIMASI & TREND ---
+bool  trend_check = ta.ema(close, 2) > ta.ema(open, 2)
+color c_start     = trend_check ? bull_c1 : bear_c1
+color c_end       = trend_check ? bull_c2 : bear_c2
+
+// Animasi "Breathing"
+float time_cycle = timenow / 1000
+float breathe    = (math.sin(time_cycle * 3) + 1) / 2
+
+int LG_Line_Widthb = 1
+int periodb        = 200
+
+// --- 3. PERHITUNGAN TITIK STABIL (VOLATILITY & RANGE SYNC) ---
+float logo_base_raw = ta.lowest(low, periodb)
+float logo_range    = ta.highest(high, periodb) - logo_base_raw
+var float h_unit    = na
+
+// Calculate a stable height unit based on a mix of ATR and recent range
+float target_h = math.max(ta.atr(periodb) * 1.5, logo_range * 0.22)
+h_unit := na(h_unit) ? target_h : h_unit * 0.98 + target_h * 0.02
+
+// Offset the logo slightly below the lowest low to prevent price overlap
+float logo_base = logo_base_raw - h_unit * 0.2
+
+// Normalized points to ensure the logo never "squishes" or "stretches" disproportionately
+float point1b  = logo_base + h_unit * 0.71
+float point2b  = logo_base + h_unit * 0.43
+float point3b  = logo_base + h_unit * 0.61
+float point4b  = logo_base + h_unit * 0.32
+float point5b  = logo_base + h_unit * 1.00 // Peak
+float point6b  = logo_base + h_unit * 0.71
+float point7b  = logo_base + h_unit * 0.18 // Base Top
+float point8b  = logo_base + h_unit * 0.21
+float point9b  = logo_base + h_unit * 0.71
+float point1b0 = logo_base + h_unit * 0.86
+
+// Logo Visual Objects
+var line Line1b  = na
+var line Line2b  = na
+var line Line3b  = na
+var line Line4b  = na
+var line Line5b  = na
+var line Line6b  = na
+var line Line7b  = na
+var line Line8b  = na
+var line Line9b  = na
+var line Line1b0 = na
+var line Line1b1 = na
+var line Line1b2 = na
+var line Line1b3 = na
+var line Line1b4 = na
+var line Line1b5 = na
+var line Line1b6 = na
+var line Line1b7 = na
+var line Line1b8 = na
+var label[] brand_labels = array.new<label>()
+
+// Hapus Garis Sebelumnya
+if not na(Line1b)
+    line.delete(Line1b)
+    line.delete(Line2b)
+    line.delete(Line3b)
+    line.delete(Line4b)
+    line.delete(Line5b)
+    line.delete(Line6b)
+    line.delete(Line7b)
+    line.delete(Line8b)
+    line.delete(Line9b)
+    line.delete(Line1b0)
+    line.delete(Line1b1)
+    line.delete(Line1b2)
+    line.delete(Line1b3)
+    line.delete(Line1b4)
+    line.delete(Line1b5)
+    line.delete(Line1b6)
+    line.delete(Line1b7)
+    line.delete(Line1b8)
+    while array.size(brand_labels) > 0
+        label.delete(array.pop(brand_labels))
+
+// --- FUNGSI WARNA ---
+get_adv_color(step) =>
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15)
+    if dynamic_ratio > 1
+        dynamic_ratio := 1
+    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+
+get_fade_alpha(float x_rel) =>
+    float dist = math.abs(x_rel - 32)
+    float ratio = dist / 32.0
+    math.round(80 * (1 - ratio))
+
+// --- PEMBUATAN GARIS (HANYA JIKA SHOW_LOGO AKTIF) ---
+if show_logo and barstate.islast
+    color c_head_sync = get_adv_color(1)
+
+    Line1b := line.new(x1 = bar_index + l_off + 4, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line2b := line.new(x1 = bar_index + l_off + 8, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, get_fade_alpha(7.5)))
+
+    Line3b := line.new(x1 = bar_index + l_off + 11, y1 = point1b, x2 = bar_index + l_off + 13, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line4b := line.new(x1 = bar_index + l_off + 11, y1 = point2b, x2 = bar_index + l_off + 13, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), get_fade_alpha(12.0)))
+
+    Line5b := line.new(x1 = bar_index + l_off + 13, y1 = point3b, x2 = bar_index + l_off + 19, y2 = point5b, color = col_poc, width = LG_Line_Widthb)
+    Line6b := line.new(x1 = bar_index + l_off + 13, y1 = point4b, x2 = bar_index + l_off + 19, y2 = point6b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), get_fade_alpha(16.0)))
+
+    Line7b := line.new(x1 = bar_index + l_off + 19, y1 = point5b, x2 = bar_index + l_off + 24, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line8b := line.new(x1 = bar_index + l_off + 19, y1 = point6b, x2 = bar_index + l_off + 24, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), get_fade_alpha(21.5)))
+
+    Line9b := line.new(x1 = bar_index + l_off + 24, y1 = point3b, x2 = bar_index + l_off + 26, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line1b0 := line.new(x1 = bar_index + l_off + 24, y1 = point4b, x2 = bar_index + l_off + 26, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), get_fade_alpha(25.0)))
+
+    Line1b1 := line.new(x1 = bar_index + l_off + 26, y1 = point1b, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b2 := line.new(x1 = bar_index + l_off + 26, y1 = point2b, x2 = bar_index + l_off + 32, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), get_fade_alpha(31.0)))
+
+    // --- BAGIAN BASE HORIZONTAL (TOTAL SYNC) ---
+    Line1b3 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 26, y2 = point7b, color = col_poc, width = LG_Line_Widthb)
+    Line1b4 := line.new(x1 = bar_index + l_off + 0, y1 = logo_base, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, get_fade_alpha(13.0)))
+
+    // Tutup Depan & Belakang Base
+    Line1b5 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 0, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b6 := line.new(x1 = bar_index + l_off + 26, y1 = point7b, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    // Ekor Tambahan & Label (Extended for wider text)
+    Line1b7 := line.new(x1 = bar_index + l_off + 32, y1 = logo_base, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    label l = label.new(bar_index + l_off + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤" + "\nORDERFLOW PRO V.6.0", text_formatting = text.format_bold, style=label.style_none, textcolor=col_poc, size=size.normal, textalign = text.align_left)
+    array.push(brand_labels, l)
+
+    // --- LOGO GLOW ---
+    label glow1 = label.new(bar_index + l_off + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
+    label glow2 = label.new(bar_index + l_off + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc, size=size.huge)
+    array.push(brand_labels, glow1)
+    array.push(brand_labels, glow2)
