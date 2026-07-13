@@ -370,20 +370,39 @@ if is_new_htf
 if barstate.islast
     [c_h, c_l, c_o, c_c, c_v, c_bv, c_sv, c_poc, c_mv] = draw_htf_profile(htf_start_bar_index, bar_index, true)
     
+    // Countdown Calculation
+    int htf_end = time_close(htf_timeframe)
+    if na(htf_end)
+        int htf_duration_ms = timeframe.to_seconds(htf_timeframe) * 1000
+        htf_end := time(htf_timeframe) + htf_duration_ms
+    int remaining_ms = math.max(0, htf_end - timenow)
+    int total_seconds = math.ceil(remaining_ms / 1000)
+    int hours = math.floor(total_seconds / 3600)
+    int minutes = math.floor((total_seconds % 3600) / 60)
+    int seconds = total_seconds % 60
+
+    string countdown_str = ""
+    if hours > 0
+        countdown_str := str.tostring(hours, "00") + ":" + str.tostring(minutes, "00") + ":" + str.tostring(seconds, "00")
+    else
+        countdown_str := str.tostring(minutes, "00") + ":" + str.tostring(seconds, "00")
+
     // Info Table
     if show_buy_sell_volume
-        var table info_table = table.new(position.top_right, 2, 5, bgcolor=color.new(dark, 100), border_width=1)
+        var table info_table = table.new(position.top_right, 2, 6, bgcolor=color.new(dark, 100), border_width=1)
         c_delta = c_bv - c_sv
         table.cell(info_table, 0, 0, "HTF Flow (Realtime)", text_color=white, bgcolor=color.new(col_poc, 90))
         table.cell(info_table, 1, 0, htf_timeframe, text_color=white, bgcolor=color.new(col_poc, 90))
-        table.cell(info_table, 0, 1, "Buy Vol", text_color=color_text, bgcolor=get_table_bg(0, 1, 2, 5))
-        table.cell(info_table, 1, 1, str.tostring(math.round(c_bv)), text_color=col_bull, bgcolor=get_table_bg(1, 1, 2, 5))
-        table.cell(info_table, 0, 2, "Sell Vol", text_color=color_text, bgcolor=get_table_bg(0, 2, 2, 5))
-        table.cell(info_table, 1, 2, str.tostring(math.round(c_sv)), text_color=col_bear, bgcolor=get_table_bg(1, 2, 2, 5))
-        table.cell(info_table, 0, 3, "Delta", text_color=color_text, bgcolor=get_table_bg(0, 3, 2, 5))
-        table.cell(info_table, 1, 3, str.tostring(math.round(c_delta)), text_color=c_delta > 0 ? col_bull : col_bear, bgcolor=get_table_bg(1, 3, 2, 5))
-        table.cell(info_table, 0, 4, "Total Vol", text_color=color_text, bgcolor=get_table_bg(0, 4, 2, 5))
-        table.cell(info_table, 1, 4, str.tostring(math.round(c_v)), text_color=white, bgcolor=get_table_bg(1, 4, 2, 5))
+        table.cell(info_table, 0, 1, "Next HTF Bar", text_color=color_text, bgcolor=get_table_bg(0, 1, 2, 6))
+        table.cell(info_table, 1, 1, countdown_str, text_color=white, bgcolor=get_table_bg(1, 1, 2, 6))
+        table.cell(info_table, 0, 2, "Buy Vol", text_color=color_text, bgcolor=get_table_bg(0, 2, 2, 6))
+        table.cell(info_table, 1, 2, str.tostring(math.round(c_bv)), text_color=col_bull, bgcolor=get_table_bg(1, 2, 2, 6))
+        table.cell(info_table, 0, 3, "Sell Vol", text_color=color_text, bgcolor=get_table_bg(0, 3, 2, 6))
+        table.cell(info_table, 1, 3, str.tostring(math.round(c_sv)), text_color=col_bear, bgcolor=get_table_bg(1, 3, 2, 6))
+        table.cell(info_table, 0, 4, "Delta", text_color=color_text, bgcolor=get_table_bg(0, 4, 2, 6))
+        table.cell(info_table, 1, 4, str.tostring(math.round(c_delta)), text_color=c_delta > 0 ? col_bull : col_bear, bgcolor=get_table_bg(1, 4, 2, 6))
+        table.cell(info_table, 0, 5, "Total Vol", text_color=color_text, bgcolor=get_table_bg(0, 5, 2, 6))
+        table.cell(info_table, 1, 5, str.tostring(math.round(c_v)), text_color=white, bgcolor=get_table_bg(1, 5, 2, 6))
 
 // LTF CANDLES
 [b_vol, s_vol] = get_buy_sell_vol(volume, open, high, low, close)
