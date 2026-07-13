@@ -233,30 +233,27 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 line.delete(ln)
             array.clear(future_lines)
 
-    // 1. Draw HTF Background Candle (MODIFIED TRANSPARENCY)
-    // Body: Transparansi 90 (Professional Glass Effect)
-    color box_bg = s_close >= s_open ? color.new(col_bull, 90) : color.new(col_bear, 90) 
-    color box_border = s_close >= s_open ? color.new(col_bull, 80) : color.new(col_bear, 80)
-    
-    // Wick/Full Range: Transparansi 90 (Professional Glass Effect)
-    color box_wick_bg = color.new(mitigated_color, 90) 
-    
+    int axis_x = is_future ? bar_index + rt_offset : start_idx
+
     if show_htf_plot_candle
+        color htf_candle_color = s_close >= s_open ? col_bull : col_bear
+        color body_color = color.new(htf_candle_color, 50)
+        color wick_color = color.new(htf_candle_color, 30)
+
         if is_future
-            // Background Body (Wick Range)
-            bx_bg = box.new(start_idx, s_high, end_idx, s_low, border_color=na, bgcolor=box_wick_bg)
-            array.push(future_boxes, bx_bg)
-            // Candle Body (Open-Close)
-            bx_body = box.new(start_idx, math.max(s_open, s_close), end_idx, math.min(s_open, s_close), border_color=box_border, bgcolor=box_bg)
-            array.push(future_boxes, bx_body)
+            ln_up = line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
+            ln_dn = line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
+            ln_body = line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=20)
+            array.push(future_lines, ln_up)
+            array.push(future_lines, ln_dn)
+            array.push(future_lines, ln_body)
         else
-            // History
-            box.new(start_idx, s_high, end_idx, s_low, border_color=na, bgcolor=box_wick_bg)
-            box.new(start_idx, math.max(s_open, s_close), end_idx, math.min(s_open, s_close), border_color=box_border, bgcolor=box_bg)
+            line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
+            line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
+            line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=20)
 
     // 2. Draw Volume Profile Boxes
     if show_volume_profile
-        int axis_x = is_future ? bar_index + rt_offset : start_idx
         int total_width = is_future ? 15 : (end_idx - start_idx) 
         int profile_max_width = math.round(total_width * box_width)
         
