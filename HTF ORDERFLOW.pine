@@ -233,12 +233,12 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 line.delete(ln)
             array.clear(future_lines)
 
-    int axis_x = is_future ? bar_index + rt_offset : start_idx
+    int axis_x = start_idx
 
     if show_htf_plot_candle
         color htf_candle_color = s_close >= s_open ? col_bull : col_bear
-        color body_color = color.new(htf_candle_color, 50)
-        color wick_color = color.new(htf_candle_color, 30)
+        color body_color = htf_candle_color
+        color wick_color = htf_candle_color
 
         if is_future
             ln_up = line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
@@ -254,7 +254,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
     // 2. Draw Volume Profile Boxes
     if show_volume_profile
-        int total_width = is_future ? 15 : (end_idx - start_idx) 
+        int total_width = math.max(1, end_idx - start_idx)
         int profile_max_width = math.round(total_width * box_width)
         
         color axis_col = color.new(gray, 70)
@@ -322,21 +322,13 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         float val_price = s_low + (step * va_down)
         
         if is_future
-            int end_x = axis_x + 35
-            // Zoned Background Boxes
-            bx_va_up = box.new(axis_x, s_high, end_x, vah_price, bgcolor=color.new(color_vah, 80), border_color=na)
-            bx_va_mid = box.new(axis_x, vah_price, end_x, val_price, bgcolor=color.new(color_poc, 96), border_color=na)
-            bx_va_dn = box.new(axis_x, val_price, end_x, s_low, bgcolor=color.new(color_val, 80), border_color=na)
-            array.push(future_boxes, bx_va_up)
-            array.push(future_boxes, bx_va_mid)
-            array.push(future_boxes, bx_va_dn)
-
-            bx_p = box.new(axis_x - 2, poc_price + step/2, axis_x + 40, poc_price - step/2, border_color=na, bgcolor=color.new(color_poc, 80), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            int end_x = end_idx
+            bx_p = box.new(axis_x, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_p)
             
-            bx_vh = box.new(axis_x, vah_price + step/4, axis_x + 35, vah_price - step/4, border_color=na, bgcolor=color.new(color_vah, 80), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vh = box.new(axis_x, vah_price + step/16, end_x, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 50), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vh)
-            bx_vl = box.new(axis_x, val_price + step/4, axis_x + 35, val_price - step/4, border_color=na, bgcolor=color.new(color_val, 80), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vl = box.new(axis_x, val_price + step/16, end_x, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 50), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vl)
         else
             box.new(start_idx, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
