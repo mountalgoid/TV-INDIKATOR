@@ -406,14 +406,55 @@ if barstate.islast
         htf_end := time(htf_timeframe) + htf_duration_ms
     int remaining_ms = math.max(0, htf_end - timenow)
     int total_minutes = math.ceil(remaining_ms / 60000)
-    int hours = math.floor(total_minutes / 60)
-    int minutes = total_minutes % 60
+
+    // Time conversion constants in minutes
+    int min_per_hour  = 60
+    int min_per_day   = 1440
+    int min_per_week  = 10080
+    int min_per_month = 43200     // 30 days
+    int min_per_year  = 525600    // 365 days
+
+    int years   = math.floor(total_minutes / min_per_year)
+    int temp_yr = total_minutes % min_per_year
+
+    int months  = math.floor(temp_yr / min_per_month)
+    int temp_mo = temp_yr % min_per_month
+
+    int weeks   = math.floor(temp_mo / min_per_week)
+    int temp_wk = temp_mo % min_per_week
+
+    int days    = math.floor(temp_wk / min_per_day)
+    int temp_dy = temp_wk % min_per_day
+
+    int hours   = math.floor(temp_dy / min_per_hour)
+    int minutes = temp_dy % min_per_hour
 
     string countdown_str = ""
-    if hours > 0
-        countdown_str := str.tostring(hours) + " H " + str.tostring(minutes) + " minute"
+    int units_added = 0
+
+    if years > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(years) + " year "
+        units_added := units_added + 1
+    if months > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(months) + " month "
+        units_added := units_added + 1
+    if weeks > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(weeks) + " week "
+        units_added := units_added + 1
+    if days > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(days) + " day "
+        units_added := units_added + 1
+    if hours > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(hours) + " H "
+        units_added := units_added + 1
+    if minutes > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(minutes) + " minute "
+        units_added := units_added + 1
+
+    if countdown_str == ""
+        countdown_str := "0 minute"
     else
-        countdown_str := str.tostring(minutes) + " minute"
+        countdown_str := str.trim(countdown_str)
 
     // Info Table
     if show_buy_sell_volume
