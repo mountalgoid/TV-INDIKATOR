@@ -405,16 +405,15 @@ if barstate.islast
         int htf_duration_ms = f_tf_to_ms(htf_timeframe)
         htf_end := time(htf_timeframe) + htf_duration_ms
     int remaining_ms = math.max(0, htf_end - timenow)
-    int total_seconds = math.ceil(remaining_ms / 1000)
-    int hours = math.floor(total_seconds / 3600)
-    int minutes = math.floor((total_seconds % 3600) / 60)
-    int seconds = total_seconds % 60
+    int total_minutes = math.ceil(remaining_ms / 60000)
+    int hours = math.floor(total_minutes / 60)
+    int minutes = total_minutes % 60
 
     string countdown_str = ""
     if hours > 0
-        countdown_str := str.tostring(hours, "00") + ":" + str.tostring(minutes, "00") + ":" + str.tostring(seconds, "00")
+        countdown_str := str.tostring(hours) + " H " + str.tostring(minutes) + " minute"
     else
-        countdown_str := str.tostring(minutes, "00") + ":" + str.tostring(seconds, "00")
+        countdown_str := str.tostring(minutes) + " minute"
 
     // Info Table
     if show_buy_sell_volume
