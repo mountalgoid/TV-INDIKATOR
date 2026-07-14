@@ -2,7 +2,7 @@
 // © MountAlgo
 
 //@version=6
-indicator("Liquidation Heatmap 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="Liq Heatmap", overlay=true, max_lines_count=500, max_boxes_count=500, max_bars_back=2000)
+indicator("Liquidation Heatmap 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο", shorttitle="Liq Heatmap", overlay=true, max_lines_count=500, max_boxes_count=500, max_bars_back=2000)
 
 // -----------------------------------------------------------------------------
 // 0. USER DEFINED TYPES
@@ -86,7 +86,6 @@ color transparent_col = color.new(dark, 100)
 // Liquidation Heatmap Settings
 bool   auto_mode        = input.bool(true, "Auto Mode (Dynamic Settings)", group=grp_liq)
 bool   show_liq_heatmap = input.bool(true, "Show Liquidation Heatmap", group=grp_liq)
-string liq_style        = input.string("Precise (Boxes)", "Heatmap Style", options=["Precise (Boxes)", "Smooth (Plots)"], group=grp_liq)
 string liq_method       = input.string("Volume Profile", "Liquidation Method", options=["Pivots", "Accumulation Base", "Volume Profile"], group=grp_liq)
 int    liq_length       = input.int(2, "Pivot Lookback", minval=0, group=grp_liq)
 float  heatmap_sens     = input.float(1, "Heatmap Price Step (%)", minval=0.01, step=0.01, group=grp_liq)
@@ -110,10 +109,9 @@ var array<LiqZone> liq_zones = array.new<LiqZone>()
 var array<line> liq_lines_hist = array.new_line()
 var array<linefill> liq_fills_hist = array.new<linefill>()
 
-// Persistent heat grid for "Smooth" mode
-var float[] heat_grid = array.new_float(100, 0.0) // 50 above, 50 below
-var float[] confirmed_heat_grid = array.new_float(100, 0.0) // Confirmed baseline for real-time rollback
-var float   heat_base_p = na
+// Persistent arrays to track drawing objects for the Volume Profile liquidation system
+var array<line> vp_liq_lines = array.new_line()
+var array<linefill> vp_liq_fills = array.new<linefill>()
 
 // Precision detection: Multi-bar pivot
 float ph = ta.pivothigh(high, liq_length, liq_length)
@@ -138,7 +136,7 @@ for i = 0 to liq_length - 1
 float base_vwap = base_sum_v > 0 ? base_sum_pv / base_sum_v : (range_high + range_low) / 2
 
 // -----------------------------------------------------------------------------
-// Volume Profile Engine
+// Volume Profile Engine Setup
 // -----------------------------------------------------------------------------
 get_ltf_v() =>
     [open, high, low, close, volume]
@@ -218,18 +216,7 @@ float liq_step = (close * final_sens / 100)
 float inv_liq_step = 1.0 / liq_step
 float inv_fade_range_liq = 1.0 / (80 * liq_step)
 
-// Initialize or shift heat grid base
-if na(heat_base_p) or math.abs(close - heat_base_p) > liq_step * 20
-    heat_base_p := math.round(close * inv_liq_step) * liq_step
-    array.fill(heat_grid, 0.0)
-    array.fill(confirmed_heat_grid, 0.0)
-
-update_heat(float target_p, float amount) =>
-    int idx = math.round((target_p - heat_base_p) * inv_liq_step) + 50
-    if idx >= 0 and idx < 100
-        array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
-
-// Register Heat
+// Register Heat Color Function
 get_heatmap_color(float s, bool is_long, float level) =>
     float val = math.min(s, 20.0)
     color c_low  = is_long ? color.new(col_bull, 85) : color.new(col_bear, 85)
@@ -250,7 +237,6 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
         for i = 0 to sz_liq - 1
             LiqZone z = array.get(liq_zones, i)
             if z.active and z.is_long_liq == is_long and math.abs(z.level - grid_price) < (z.step * 0.75)
-                // Real-time tick throttling: Only increment strength on a new bar close/confirm
                 if z.last_update_bar != bar_index
                     z.strength += 1
                     z.last_update_bar := bar_index
@@ -276,120 +262,145 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
         f = linefill.new(l_t, l_b, color=c)
         array.push(liq_zones, LiqZone.new(l_t, l_b, f, grid_price, liq_step, 1, is_long, true, bar_index))
 
-// Rollback previous real-time additions to avoid heat accumulation on active bar
-if barstate.isconfirmed
-    confirmed_heat_grid := array.copy(heat_grid)
-else if barstate.isrealtime
-    heat_grid := array.copy(confirmed_heat_grid)
+draw_vp_liq(float raw_price, bool is_long, float strength_ratio) =>
+    float grid_price = math.round(raw_price * inv_liq_step) * liq_step
+    float strength = 1.0 + strength_ratio * 19.0
+    color c = get_heatmap_color(strength, is_long, grid_price)
+
+    int start_bar = bar_index - vp_period + 1
+    int end_bar = bar_index + 10
+
+    // Sweep Detection logic scans forward within the lookback window
+    bool swept = false
+    int sweep_bar = na
+    for k = 1 to vp_period - 1
+        float l_val = low[k]
+        float h_val = high[k]
+        bool is_swept = is_long ? l_val <= (grid_price + liq_step * 0.1) : h_val >= (grid_price - liq_step * 0.1)
+        if is_swept
+            swept := true
+            sweep_bar := bar_index - k
+            break
+
+    if not swept
+        bool is_swept = is_long ? low <= (grid_price + liq_step * 0.1) : high >= (grid_price - liq_step * 0.1)
+        if is_swept
+            swept := true
+            sweep_bar := bar_index
+
+    int actual_end = swept ? sweep_bar : end_bar
+
+    line t_ln = line.new(start_bar, grid_price + liq_step/2, actual_end, grid_price + liq_step/2, color=na, width=1)
+    line b_ln = line.new(start_bar, grid_price - liq_step/2, actual_end, grid_price - liq_step/2, color=na, width=1)
+    linefill f_id = linefill.new(t_ln, b_ln, color=c)
+
+    array.push(vp_liq_lines, t_ln)
+    array.push(vp_liq_lines, b_ln)
+    array.push(vp_liq_fills, f_id)
 
 // -----------------------------------------------------------------------------
-// Volume Profile Setup (Optimized: Accumulated Bar-By-Bar)
+// MAIN RENDERING ENGINE
 // -----------------------------------------------------------------------------
-var float vp_high = high
-var float vp_low = low
-if barstate.isconfirmed
-    vp_high := ta.highest(high, vp_period)
-    vp_low := ta.lowest(low, vp_period)
-else if barstate.isrealtime
-    vp_high := math.max(ta.highest(high, vp_period), high)
-    vp_low := math.min(ta.lowest(low, vp_period), low)
-
-float price_range = vp_high - vp_low
-float price_step = price_range > 0 ? price_range / vp_resolution : 0
-float inv_price_step = price_range > 0 ? 1.0 / price_step : 0
-
-// Persistent historical profiles
-var float[] hist_buy = array.new_float(vp_resolution, 0.0)
-var float[] hist_sell = array.new_float(vp_resolution, 0.0)
-var float[] hist_total = array.new_float(vp_resolution, 0.0)
-
-// Accumulate historical profiles bar-by-bar to prevent execution timeout / nested loops
-if barstate.isconfirmed
-    // Reset/re-calculate profile occasionally or base on timeframe triggers if needed.
-    // For general robustness, we recalculate on historical/active bars efficiently.
-    array.fill(hist_buy, 0.0)
-    array.fill(hist_sell, 0.0)
-    array.fill(hist_total, 0.0)
-
-    // We only process recent vp_period bars, but we do it incrementally using a lightweight lookback
-    for i = 1 to vp_period - 1
-        distribute_vol(vp_resolution, vp_low, inv_price_step, open[i], high[i], low[i], close[i], volume[i], hist_total, hist_buy, hist_sell)
-
-// Active Bar/Real-Time Profile (combining lightweight baseline history + active bar LTF data)
-float[] buy_at_price = array.copy(hist_buy)
-float[] sell_at_price = array.copy(hist_sell)
-float[] volume_at_price = array.copy(hist_total)
-
-if price_range > 0
-    float ltf_v_total = 0.0
-    int ltf_count = not na(ltf_v) ? array.size(ltf_v) : 0
-    if ltf_count > 0
-        for i = 0 to ltf_count - 1
-            float o_val = array.get(ltf_o, i)
-            float h_val = array.get(ltf_h, i)
-            float l_val = array.get(ltf_l, i)
-            float c_val = array.get(ltf_c, i)
-            float v_val = array.get(ltf_v, i)
-            ltf_v_total += v_val
-
-            float b_val = c_val >= o_val ? v_val : 0.0
-            float s_val = c_val < o_val ? v_val : 0.0
-
-            int idx_l = math.min(vp_resolution - 1, math.max(0, math.floor((l_val - vp_low) * inv_price_step)))
-            int idx_h = math.min(vp_resolution - 1, math.max(0, math.floor((h_val - vp_low) * inv_price_step)))
-            int bins_covered = math.max(1, idx_h - idx_l + 1)
-            float vol_per_bin = v_val / bins_covered
-            float buy_per_bin = b_val / bins_covered
-            float sell_per_bin = s_val / bins_covered
-            for j = idx_l to idx_h
-                array.set(volume_at_price, j, array.get(volume_at_price, j) + vol_per_bin)
-                array.set(buy_at_price, j, array.get(buy_at_price, j) + buy_per_bin)
-                array.set(sell_at_price, j, array.get(sell_at_price, j) + sell_per_bin)
-
-    float missing_v = math.max(0.0, volume - ltf_v_total)
-    if missing_v > 0
-        distribute_vol(vp_resolution, vp_low, inv_price_step, open, high, low, close, missing_v, volume_at_price, buy_at_price, sell_at_price)
-
 if show_liq_heatmap
-    if liq_style == "Precise (Boxes)"
-        if liq_method == "Volume Profile"
-            if price_range > 0
+    if liq_method == "Volume Profile"
+        // Under Volume Profile Mode, run CPU-intensive processing strictly on the last bar
+        if barstate.islast
+            // Clean up previous real-time drawing objects
+            if array.size(vp_liq_lines) > 0
+                for i = 0 to array.size(vp_liq_lines) - 1
+                    line.delete(array.get(vp_liq_lines, i))
+                array.clear(vp_liq_lines)
+            if array.size(vp_liq_fills) > 0
+                for i = 0 to array.size(vp_liq_fills) - 1
+                    linefill.delete(array.get(vp_liq_fills, i))
+                array.clear(vp_liq_fills)
+
+            float vp_high = ta.highest(high, vp_period)
+            float vp_low = ta.lowest(low, vp_period)
+            float price_range = vp_high - vp_low
+            float price_step = price_range > 0 ? price_range / vp_resolution : 0
+            float inv_price_step = price_range > 0 ? 1.0 / price_step : 0
+
+            if price_range > 0 and not na(vp_low)
+                float[] buy_at_price = array.new_float(vp_resolution, 0.0)
+                float[] sell_at_price = array.new_float(vp_resolution, 0.0)
+                float[] volume_at_price = array.new_float(vp_resolution, 0.0)
+
+                // Loop through recent historical bars
+                for i = 1 to vp_period - 1
+                    distribute_vol(vp_resolution, vp_low, inv_price_step, open[i], high[i], low[i], close[i], volume[i], volume_at_price, buy_at_price, sell_at_price)
+
+                // Distribute current bar (index 0)
+                float ltf_v_total = 0.0
+                int ltf_count = not na(ltf_v) ? array.size(ltf_v) : 0
+                if ltf_count > 0
+                    for i = 0 to ltf_count - 1
+                        float o_val = array.get(ltf_o, i)
+                        float h_val = array.get(ltf_h, i)
+                        float l_val = array.get(ltf_l, i)
+                        float c_val = array.get(ltf_c, i)
+                        float v_val = array.get(ltf_v, i)
+                        ltf_v_total += v_val
+
+                        float b_val = c_val >= o_val ? v_val : 0.0
+                        float s_val = c_val < o_val ? v_val : 0.0
+
+                        int idx_l = math.min(vp_resolution - 1, math.max(0, math.floor((l_val - vp_low) * inv_price_step)))
+                        int idx_h = math.min(vp_resolution - 1, math.max(0, math.floor((h_val - vp_low) * inv_price_step)))
+                        int bins_covered = math.max(1, idx_h - idx_l + 1)
+                        float vol_per_bin = v_val / bins_covered
+                        float buy_per_bin = b_val / bins_covered
+                        float sell_per_bin = s_val / bins_covered
+                        for j = idx_l to idx_h
+                            array.set(volume_at_price, j, array.get(volume_at_price, j) + vol_per_bin)
+                            array.set(buy_at_price, j, array.get(buy_at_price, j) + buy_per_bin)
+                            array.set(sell_at_price, j, array.get(sell_at_price, j) + sell_per_bin)
+                float missing_v = math.max(0.0, volume - ltf_v_total)
+                if missing_v > 0
+                    distribute_vol(vp_resolution, vp_low, inv_price_step, open, high, low, close, missing_v, volume_at_price, buy_at_price, sell_at_price)
+
                 float avg_vol = array.avg(volume_at_price)
                 float max_vol = array.max(volume_at_price)
                 int poc_index = array.indexof(volume_at_price, max_vol)
 
-                for i = 0 to vp_resolution - 1
-                    float bin_vol = array.get(volume_at_price, i)
-                    if bin_vol > 0
-                        bool is_hvn = false
-                        if i > 0 and i < vp_resolution - 1
-                            float v_prev = array.get(volume_at_price, i - 1)
-                            float v_next = array.get(volume_at_price, i + 1)
-                            if bin_vol > v_prev and bin_vol > v_next and bin_vol > avg_vol * 1.5
-                                is_hvn := true
+                if max_vol > 0
+                    for i = 0 to vp_resolution - 1
+                        float bin_vol = array.get(volume_at_price, i)
+                        if bin_vol > 0
+                            bool is_hvn = false
+                            if i > 0 and i < vp_resolution - 1
+                                float v_prev = array.get(volume_at_price, i - 1)
+                                float v_next = array.get(volume_at_price, i + 1)
+                                if bin_vol > v_prev and bin_vol > v_next and bin_vol > avg_vol * 1.5
+                                    is_hvn := true
 
-                        if i == poc_index or is_hvn
-                            float bin_price = vp_low + i * price_step + price_step * 0.5
-                            if array.get(buy_at_price, i) > 0
-                                add_or_update_liq(bin_price * (1.0 - 1.0/lev1 + maint_margin), true, bar_index)
-                                add_or_update_liq(bin_price * (1.0 - 1.0/lev2 + maint_margin), true, bar_index)
-                                add_or_update_liq(bin_price * (1.0 - 1.0/lev3 + maint_margin), true, bar_index)
-                            if array.get(sell_at_price, i) > 0
-                                add_or_update_liq(bin_price * (1.0 + 1.0/lev1 - maint_margin), false, bar_index)
-                                add_or_update_liq(bin_price * (1.0 + 1.0/lev2 - maint_margin), false, bar_index)
-                                add_or_update_liq(bin_price * (1.0 + 1.0/lev3 - maint_margin), false, bar_index)
-        else
-            if not na(ph)
-                add_or_update_liq(ph * (1 + 1/lev1 - maint_margin), false, bar_index[liq_length])
-                add_or_update_liq(ph * (1 + 1/lev2 - maint_margin), false, bar_index[liq_length])
-                add_or_update_liq(ph * (1 + 1/lev3 - maint_margin), false, bar_index[liq_length])
-            if not na(pl)
-                add_or_update_liq(pl * (1 - 1/lev1 + maint_margin), true, bar_index[liq_length])
-                add_or_update_liq(pl * (1 - 1/lev2 + maint_margin), true, bar_index[liq_length])
-                add_or_update_liq(pl * (1 - 1/lev3 + maint_margin), true, bar_index[liq_length])
-            if is_base and bar_index % 5 == 0
-                add_or_update_liq(base_vwap * (1 + 1/lev1 - maint_margin), false, bar_index)
-                add_or_update_liq(base_vwap * (1 - 1/lev1 + maint_margin), true, bar_index)
+                            if i == poc_index or is_hvn
+                                float bin_price = vp_low + i * price_step + price_step * 0.5
+                                float buy_vol = array.get(buy_at_price, i)
+                                float sell_vol = array.get(sell_at_price, i)
+                                float strength_ratio = bin_vol / max_vol
+
+                                if buy_vol > 0
+                                    draw_vp_liq(bin_price * (1.0 - 1.0/lev1 + maint_margin), true, strength_ratio)
+                                    draw_vp_liq(bin_price * (1.0 - 1.0/lev2 + maint_margin), true, strength_ratio)
+                                    draw_vp_liq(bin_price * (1.0 - 1.0/lev3 + maint_margin), true, strength_ratio)
+                                if sell_vol > 0
+                                    draw_vp_liq(bin_price * (1.0 + 1.0/lev1 - maint_margin), false, strength_ratio)
+                                    draw_vp_liq(bin_price * (1.0 + 1.0/lev2 - maint_margin), false, strength_ratio)
+                                    draw_vp_liq(bin_price * (1.0 + 1.0/lev3 - maint_margin), false, strength_ratio)
+    else
+        // Historical Pivots and Accumulation Base engine (runs on every bar)
+        if not na(ph)
+            add_or_update_liq(ph * (1 + 1/lev1 - maint_margin), false, bar_index[liq_length])
+            add_or_update_liq(ph * (1 + 1/lev2 - maint_margin), false, bar_index[liq_length])
+            add_or_update_liq(ph * (1 + 1/lev3 - maint_margin), false, bar_index[liq_length])
+        if not na(pl)
+            add_or_update_liq(pl * (1 - 1/lev1 + maint_margin), true, bar_index[liq_length])
+            add_or_update_liq(pl * (1 - 1/lev2 + maint_margin), true, bar_index[liq_length])
+            add_or_update_liq(pl * (1 - 1/lev3 + maint_margin), true, bar_index[liq_length])
+        if is_base and bar_index % 5 == 0
+            add_or_update_liq(base_vwap * (1 + 1/lev1 - maint_margin), false, bar_index)
+            add_or_update_liq(base_vwap * (1 - 1/lev1 + maint_margin), true, bar_index)
             
         int sz_liq_z = array.size(liq_zones)
         if sz_liq_z > 0
@@ -426,88 +437,3 @@ if show_liq_heatmap
                     array.remove(liq_lines_hist, i)
         if array.size(liq_fills_hist) > 250
             linefill.delete(array.shift(liq_fills_hist))
-    else
-        // Smooth (Plots) mode
-        if liq_method == "Volume Profile"
-            if price_range > 0
-                float max_vol = array.max(volume_at_price)
-                if max_vol > 0
-                    for i = 0 to vp_resolution - 1
-                        float bin_price = vp_low + i * price_step + price_step * 0.5
-                        float bin_buy = array.get(buy_at_price, i)
-                        float bin_sell = array.get(sell_at_price, i)
-
-                        float buy_weight = bin_buy / max_vol
-                        float sell_weight = bin_sell / max_vol
-
-                        if buy_weight > 0
-                            update_heat(bin_price * (1.0 - 1.0/lev1 + maint_margin), buy_weight * 0.5)
-                            update_heat(bin_price * (1.0 - 1.0/lev2 + maint_margin), buy_weight * 0.5)
-                            update_heat(bin_price * (1.0 - 1.0/lev3 + maint_margin), buy_weight * 0.5)
-                        if sell_weight > 0
-                            update_heat(bin_price * (1.0 + 1.0/lev1 - maint_margin), sell_weight * 0.5)
-                            update_heat(bin_price * (1.0 + 1.0/lev2 - maint_margin), sell_weight * 0.5)
-                            update_heat(bin_price * (1.0 + 1.0/lev3 - maint_margin), sell_weight * 0.5)
-        else
-            if not na(ph)
-                update_heat(ph * (1 + 1/lev1 - maint_margin), 1.0)
-                update_heat(ph * (1 + 1/lev2 - maint_margin), 1.0)
-                update_heat(ph * (1 + 1/lev3 - maint_margin), 1.0)
-            if not na(pl)
-                update_heat(pl * (1 - 1/lev1 + maint_margin), 1.0)
-                update_heat(pl * (1 - 1/lev2 + maint_margin), 1.0)
-                update_heat(pl * (1 - 1/lev3 + maint_margin), 1.0)
-            if is_base and bar_index % 5 == 0
-                update_heat(base_vwap * (1 + 1/lev1 - maint_margin), 0.5)
-                update_heat(base_vwap * (1 - 1/lev1 + maint_margin), 0.5)
-
-// Heat Decay & Sweeping
-for i = 0 to 99
-    float cur_heat = array.get(heat_grid, i)
-    if cur_heat > 0
-        float p_level = heat_base_p + (i - 50) * liq_step
-        bool swept = (i >= 50 and high >= p_level) or (i < 50 and low <= p_level)
-        if swept
-            array.set(heat_grid, i, cur_heat * 0.3)
-        else
-            array.set(heat_grid, i, cur_heat * 0.998)
-
-// Institutional Smooth Gradient Mapping
-get_smooth_heat_color(float heat, bool is_above, float level) =>
-    float val = math.min(heat, 15.0)
-    color c_base = is_above ? color.new(col_bear, 90) : color.new(col_bull, 90)
-    color c_mid  = is_above ? col_bear : col_bull
-    color c_hot  = col_poc
-    
-    color res = c_base
-    if val > 0
-        if val <= 7.0
-            res := color.from_gradient(val, 0, 7.0, c_base, c_mid)
-        else
-            res := color.from_gradient(val, 7.0, 15.0, c_mid, c_hot)
-    
-    float q_weight = math.pow(math.max(0, val * 0.0666666667), 0.7)
-    int base_alpha = math.round((1.0 - q_weight) * 80)
-    float smooth_f = math.pow(math.min(1.0, math.abs(level - close) * inv_fade_range_liq), 2.0)
-    color.new(res, math.round(base_alpha + smooth_f * (80 - base_alpha)))
-
-// Plotting the Grid
-show_plots_liq = show_liq_heatmap and liq_style == "Smooth (Plots)"
-
-p_up00 = plot(show_plots_liq ? heat_base_p + 0 * liq_step : na, "H+0", color=transparent_col, style=plot.style_linebr)
-p_up08 = plot(show_plots_liq ? heat_base_p + 8 * liq_step : na, "H+8", color=transparent_col, style=plot.style_linebr)
-p_up16 = plot(show_plots_liq ? heat_base_p + 16 * liq_step : na, "H+16", color=transparent_col, style=plot.style_linebr)
-p_up32 = plot(show_plots_liq ? heat_base_p + 32 * liq_step : na, "H+32", color=transparent_col, style=plot.style_linebr)
-
-fill(p_up00, p_up08, color=get_smooth_heat_color(array.get(heat_grid, 54), true, heat_base_p + 4 * liq_step))
-fill(p_up08, p_up16, color=get_smooth_heat_color(array.get(heat_grid, 62), true, heat_base_p + 12 * liq_step))
-fill(p_up16, p_up32, color=get_smooth_heat_color(array.get(heat_grid, 74), true, heat_base_p + 24 * liq_step))
-
-p_dn00 = plot(show_plots_liq ? heat_base_p - 0 * liq_step : na, "H-0", color=transparent_col, style=plot.style_linebr)
-p_dn08 = plot(show_plots_liq ? heat_base_p - 8 * liq_step : na, "H-8", color=transparent_col, style=plot.style_linebr)
-p_dn16 = plot(show_plots_liq ? heat_base_p - 16 * liq_step : na, "H-16", color=transparent_col, style=plot.style_linebr)
-p_dn32 = plot(show_plots_liq ? heat_base_p - 32 * liq_step : na, "H-32", color=transparent_col, style=plot.style_linebr)
-
-fill(p_dn00, p_dn08, color=get_smooth_heat_color(array.get(heat_grid, 46), false, heat_base_p - 4 * liq_step))
-fill(p_dn08, p_dn16, color=get_smooth_heat_color(array.get(heat_grid, 38), false, heat_base_p - 12 * liq_step))
-fill(p_dn16, p_dn32, color=get_smooth_heat_color(array.get(heat_grid, 26), false, heat_base_p - 24 * liq_step))
