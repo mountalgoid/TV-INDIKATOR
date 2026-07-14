@@ -645,6 +645,7 @@ type LargeVolBox
     bool is_buy
     int bounces
     bool active
+    float zone_size
 
 var array<LargeVolBox> lv_boxes = array.new<LargeVolBox>()
 
@@ -661,23 +662,23 @@ if barstate.isconfirmed
         array.push(imbalance_boxes, ImbalanceBox.new(b, low + (range_p * 0.2), false, true))
 
     if show_mitigation_boxes
-        float zone_size = syminfo.mintick * 10
+        float zone_size = not na(mkt_atr_cur) and mkt_atr_cur > 0 ? mkt_atr_cur * 0.15 : syminfo.mintick * 10
         if vol_intensity_buy >= large_vol_threshold
             int dyn_alpha = math.round(100 - vol_intensity_buy * 70)
             b = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, 
                  border_color=color.new(col_bull, 60), border_width=1, bgcolor=color.new(col_bull, 100),
-                 text="LARGE BUY VOL", text_size=size.tiny,text_formatting = text.format_bold, text_color=col_poc)
+                 text="LARGE BUY VOL", text_size=size.auto,text_formatting = text.format_bold, text_color=col_poc)
             bvb = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
             svb = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
-            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, buy_loc, buy_volume, sell_volume, true, 0, true))
+            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, buy_loc, buy_volume, sell_volume, true, 0, true, zone_size))
         if vol_intensity_sell >= large_vol_threshold
             int dyn_alpha = math.round(100 - vol_intensity_sell * 70)
             b = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, 
                  border_color=color.new(col_bear, 60), border_width=1, bgcolor=color.new(col_bear, 100),
-                 text="LARGE SELL VOL", text_size=size.tiny,text_formatting = text.format_bold, text_color=col_poc)
+                 text="LARGE SELL VOL", text_size=size.auto,text_formatting = text.format_bold, text_color=col_poc)
             bvb = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
             svb = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
-            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, sell_loc, buy_volume, sell_volume, false, 0, true))
+            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, sell_loc, buy_volume, sell_volume, false, 0, true, zone_size))
 
 // Mitigation Logic for Imbalance Boxes (Only check for bars AFTER the creation bar)
 if array.size(imbalance_boxes) > 0
@@ -719,7 +720,7 @@ if array.size(lv_boxes) > 0
             box.set_left(lvb.s_vol_box, split_x)
             box.set_right(lvb.s_vol_box, target_r)
 
-            float zone_size = syminfo.mintick * 10
+            float zone_size = lvb.zone_size
             float zone_top = lvb.level + zone_size/2
             float zone_bot = lvb.level - zone_size/2
             
