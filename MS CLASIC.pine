@@ -398,6 +398,18 @@ var box[] htf_hvn_boxes = array.new_box()
 var label[] htf_vp_labels = array.new<label>()
 var box[] htf_stats_boxes = array.new_box()
 
+// Global Volume Profile Levels tracking arrays for HUD Table
+var float[] ltf_vp_levels_g = array.new_float(3, na)  // 0: POC, 1: VAH, 2: VAL
+var float[] htf_vp_levels_g = array.new_float(3, na)  // 0: POC, 1: VAH, 2: VAL
+var float[] ltf_hvn_levels_g = array.new_float(0)
+var float[] ltf_lvn_levels_g = array.new_float(0)
+var float[] htf_hvn_levels_g = array.new_float(0)
+var float[] htf_lvn_levels_g = array.new_float(0)
+var float[] ltf_step_g = array.new_float(1, 0.0)
+var float[] htf_step_g = array.new_float(1, 0.0)
+var float[] ltf_vp_delta_g = array.new_float(3, 0.0) // 0: Buy, 1: Sell, 2: Delta
+var float[] htf_vp_delta_g = array.new_float(3, 0.0) // 0: Buy, 1: Sell, 2: Delta
+
 // Arrays to store active EQ lines
 var array<line> eq_lines = array.new_line()
 var array<label> eq_labels = array.new_label()
@@ -758,7 +770,7 @@ if isNewHtfBar
 //═══════════════════════════════════════════════════════════════════════════════
 
 // A. Universal PD Array (Premium/Discount) Updater
-f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_start, int _draw_end, line _mid_line, box _prem_box, box _disc_box, box[] _vp_boxes, line _poc_l, line _vah_l, line _val_l, box[] _lvn_boxes, box[] _hvn_boxes, label[] _vp_labels, box[] _stats_boxes, string _tf_txt) =>
+f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_start, int _draw_end, line _mid_line, box _prem_box, box _disc_box, box[] _vp_boxes, line _poc_l, line _vah_l, line _val_l, box[] _lvn_boxes, box[] _hvn_boxes, label[] _vp_labels, box[] _stats_boxes, float[] _vp_levels, float[] _hvn_levels, float[] _lvn_levels, float[] _step_arr, float[] _vp_delta, string _tf_txt) =>
     if _show and not na(_h) and not na(_l)
         float _eq = (_h + _l) / 2
         int _end = _draw_end
@@ -800,6 +812,15 @@ f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_sta
                 label.delete(array.pop(_vp_labels))
             while array.size(_stats_boxes) > 0
                 box.delete(array.pop(_stats_boxes))
+            array.clear(_hvn_levels)
+            array.clear(_lvn_levels)
+            array.set(_vp_levels, 0, na)
+            array.set(_vp_levels, 1, na)
+            array.set(_vp_levels, 2, na)
+            array.set(_step_arr, 0, 0.0)
+            array.set(_vp_delta, 0, 0.0)
+            array.set(_vp_delta, 1, 0.0)
+            array.set(_vp_delta, 2, 0.0)
             
             int _bars_back = bar_index - _calc_start
             if _bars_back > 0
@@ -893,6 +914,11 @@ f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_sta
                 float _val_vol = array.get(_total_bin_vols, _dn_ptr)
                 array.push(_vp_labels, label.new(_end + 2, _val, "VAL\n" + str.tostring(_val, format.mintick) + "\n(" + format_vol(_val_vol) + ")", color=col_bear, textcolor=dark, style=label.style_label_left, size=size.tiny))
 
+                array.set(_vp_levels, 0, _poc_price)
+                array.set(_vp_levels, 1, _vah)
+                array.set(_vp_levels, 2, _val)
+                array.set(_step_arr, 0, _bin_size)
+
                 float _lvn_threshold = _max_bin_vol * 0.2
                 float _hvn_threshold = _max_bin_vol * (hvn_threshold_perc / 100.0)
                 float _sum_buy = 0.0
@@ -930,14 +956,20 @@ f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_sta
                     if show_vp_lvn and _v_total < _lvn_threshold and j > 0 and j < vp_bins_in - 1
                         if _v_total < array.get(_total_bin_vols, j-1) and _v_total < array.get(_total_bin_vols, j+1)
                             array.push(_lvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(col_bear, 90), border_color=color.new(col_bear, 20), text = "LVN", text_size = size.tiny, text_halign = text.align_center, text_valign = text.align_center, text_color = white, border_width = 1, border_style = line.style_dashed, text_formatting = text.format_bold))
+                            array.push(_lvn_levels, _y_bot + _bin_size * 0.5)
                     
                     if show_vp_hvn and _v_total > _hvn_threshold and j > 0 and j < vp_bins_in - 1 and j != _poc_idx
                         if _v_total > array.get(_total_bin_vols, j-1) and _v_total > array.get(_total_bin_vols, j+1)
                             array.push(_hvn_boxes, box.new(_start, _y_top, _end, _y_bot, bgcolor=color.new(col_bull, 90), border_color=color.new(col_bull, 20), text = "HVN", text_size = size.tiny, text_halign = text.align_center, text_valign = text.align_center, text_color = white, border_width = 1, border_style = line.style_solid, text_formatting = text.format_bold))
+                            array.push(_hvn_levels, _y_bot + _bin_size * 0.5)
 
                 // Create split adjacent stats boxes at the bottom of the Premium/Discount zone
                 float _tot_v = _sum_buy + _sum_sell
                 float _delta_v = _sum_buy - _sum_sell
+
+                array.set(_vp_delta, 0, _sum_buy)
+                array.set(_vp_delta, 1, _sum_sell)
+                array.set(_vp_delta, 2, _delta_v)
 
                 float _pd_range = _h - _l
                 float _stats_top = _l
@@ -1191,7 +1223,7 @@ if na(htf_poc_line)
     htf_val_line := line.new(na, na, na, na, color=color.new(col_poc, 50), style=line.style_dashed, width=1)
 
 ltf_calc_start = math.min(nz(ltf_last_sh_idx, bar_index), nz(ltf_last_sl_idx, bar_index))
-f_update_pd_zones(show_pd_ltf, ltf_last_sh, ltf_last_sl, ltf_calc_start, last_bar_index + OFF_LTF_PD_S, last_bar_index + OFF_LTF_PD_E, ltf_mid_line, ltf_premium_box, ltf_discount_box, ltf_vp_boxes, ltf_poc_line, ltf_vah_line, ltf_val_line, ltf_lvn_boxes, ltf_hvn_boxes, ltf_vp_labels, ltf_stats_boxes, "LTF")
+f_update_pd_zones(show_pd_ltf, ltf_last_sh, ltf_last_sl, ltf_calc_start, last_bar_index + OFF_LTF_PD_S, last_bar_index + OFF_LTF_PD_E, ltf_mid_line, ltf_premium_box, ltf_discount_box, ltf_vp_boxes, ltf_poc_line, ltf_vah_line, ltf_val_line, ltf_lvn_boxes, ltf_hvn_boxes, ltf_vp_labels, ltf_stats_boxes, ltf_vp_levels_g, ltf_hvn_levels_g, ltf_lvn_levels_g, ltf_step_g, ltf_vp_delta_g, "LTF")
 
 htf_calc_start = bar_index
 if barstate.islast
@@ -1204,7 +1236,7 @@ if barstate.islast
             if time[i] <= long_ago
                 htf_calc_start := bar_index - i
                 break
-f_update_pd_zones(show_pd_htf, htf_sh, htf_sl, htf_calc_start, last_bar_index + OFF_HTF_PD_S, last_bar_index + OFF_HTF_PD_E, htf_mid_line, htf_premium_box, htf_discount_box, htf_vp_boxes, htf_poc_line, htf_vah_line, htf_val_line, htf_lvn_boxes, htf_hvn_boxes, htf_vp_labels, htf_stats_boxes, "HTF")
+f_update_pd_zones(show_pd_htf, htf_sh, htf_sl, htf_calc_start, last_bar_index + OFF_HTF_PD_S, last_bar_index + OFF_HTF_PD_E, htf_mid_line, htf_premium_box, htf_discount_box, htf_vp_boxes, htf_poc_line, htf_vah_line, htf_val_line, htf_lvn_boxes, htf_hvn_boxes, htf_vp_labels, htf_stats_boxes, htf_vp_levels_g, htf_hvn_levels_g, htf_lvn_levels_g, htf_step_g, htf_vp_delta_g, "HTF")
 
 // ==========================================
 // 1. DETECT LOGIC (GLOBAL SCOPE)
@@ -1896,6 +1928,19 @@ f_get_session_countdown(string _sess_str, string _tz) =>
 f_is_inside(float p, float _h, float _l) =>
     p <= math.max(_h, _l) and p >= math.min(_h, _l)
 
+_f_check_level_prox(float _price, float _level, float _step) =>
+    not na(_level) and _step > 0 and math.abs(_price - _level) <= (_step * 0.5)
+
+_f_check_arr_prox(float _price, float[] _levels, float _step) =>
+    bool _found = false
+    if array.size(_levels) > 0 and _step > 0
+        for i = 0 to array.size(_levels) - 1
+            float _lvl = array.get(_levels, i)
+            if math.abs(_price - _lvl) <= (_step * 0.5)
+                _found := true
+                break
+    _found
+
 // Fungsi Deteksi Cepat
 f_get_fast_zone_status(float p, float[] _sup_h, float[] _sup_l, float[] _dem_h, float[] _dem_l, float[] _ifvg_h, float[] _ifvg_l, bool[] _is_ifvg) =>
     string _s = "FREE SPACE"
@@ -1969,6 +2014,41 @@ if show_table and barstate.islast
     [stat_txt_ltf, stat_col_ltf] = f_get_fast_zone_status(close, ltf_supply_high, ltf_supply_low, ltf_demand_high, ltf_demand_low, down_fvg_highsLtf, down_fvg_lowsLtf, down_fvg_is_ifvgLtf)
     [stat_txt_htf, stat_col_htf] = f_get_fast_zone_status(close, htf_supply_high, htf_supply_low, htf_demand_high, htf_demand_low, down_fvg_highsHtf, down_fvg_lowsHtf, down_fvg_is_ifvgHtf)
 
+    // Check LTF and HTF Volume Profile Level Proximities (Current Zone)
+    string ltf_vol_zone = ""
+    float ltf_p_poc = array.get(ltf_vp_levels_g, 0)
+    float ltf_p_vah = array.get(ltf_vp_levels_g, 1)
+    float ltf_p_val = array.get(ltf_vp_levels_g, 2)
+    float l_step = array.get(ltf_step_g, 0)
+
+    if _f_check_level_prox(close, ltf_p_poc, l_step)
+        ltf_vol_zone := "POC"
+    else if _f_check_level_prox(close, ltf_p_vah, l_step)
+        ltf_vol_zone := "VAH"
+    else if _f_check_level_prox(close, ltf_p_val, l_step)
+        ltf_vol_zone := "VAL"
+    else if _f_check_arr_prox(close, ltf_hvn_levels_g, l_step)
+        ltf_vol_zone := "HVN"
+    else if _f_check_arr_prox(close, ltf_lvn_levels_g, l_step)
+        ltf_vol_zone := "LVN"
+
+    string htf_vol_zone = ""
+    float htf_p_poc = array.get(htf_vp_levels_g, 0)
+    float htf_p_vah = array.get(htf_vp_levels_g, 1)
+    float htf_p_val = array.get(htf_vp_levels_g, 2)
+    float h_step = array.get(htf_step_g, 0)
+
+    if _f_check_level_prox(close, htf_p_poc, h_step)
+        htf_vol_zone := "POC"
+    else if _f_check_level_prox(close, htf_p_vah, h_step)
+        htf_vol_zone := "VAH"
+    else if _f_check_level_prox(close, htf_p_val, h_step)
+        htf_vol_zone := "VAL"
+    else if _f_check_arr_prox(close, htf_hvn_levels_g, h_step)
+        htf_vol_zone := "HVN"
+    else if _f_check_arr_prox(close, htf_lvn_levels_g, h_step)
+        htf_vol_zone := "LVN"
+
     string final_zone_txt = "FREE SPACE"
     color final_zone_col = color.new(mitigated_color, 50)
 
@@ -1985,6 +2065,22 @@ if show_table and barstate.islast
     else if stat_txt_htf != "FREE SPACE"
         final_zone_txt := stat_txt_htf + " (HTF)"
         final_zone_col := stat_col_htf
+
+    // Append volume level proximity status to Current Zone details
+    if ltf_vol_zone != "" or htf_vol_zone != ""
+        string vp_det = ""
+        if ltf_vol_zone != "" and htf_vol_zone != ""
+            vp_det := "LTF " + ltf_vol_zone + " | HTF " + htf_vol_zone
+        else if ltf_vol_zone != ""
+            vp_det := "LTF " + ltf_vol_zone
+        else
+            vp_det := "HTF " + htf_vol_zone
+
+        if final_zone_txt == "FREE SPACE"
+            final_zone_txt := vp_det
+            final_zone_col := col_poc
+        else
+            final_zone_txt := final_zone_txt + " (" + vp_det + ")"
 
     // 3. COMPLETE LIQUIDITY STATUS
     int eq_cnt = array.size(eq_types)
@@ -2111,19 +2207,38 @@ if show_table and barstate.islast
     table.cell(hud, 0, 14, "HTF P/D & EQ", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 14, 2, 22, col_bull, col_bear))
     table.cell(hud, 1, 14, str.tostring(htf_sh, format.mintick) + " | " + str.tostring(htf_sl, format.mintick) + " (" + htf_pd_state + ")", text_color=htf_pd_color, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 14, 2, 22, col_bull, col_bear))
 
-    // ROW 15: TIME & SESSION SECTION
-    table.merge_cells(hud, 0, 15, 1, 15)
-    table.cell(hud, 0, 15, "● MARKET TIME & SESSION", text_color=white, text_halign=text.align_left, text_size=size.tiny,  bgcolor=box_col_bear)
+    // LTF and HTF Volume Profile total statistics and net deltas
+    float l_buy_v = array.get(ltf_vp_delta_g, 0)
+    float l_sell_v = array.get(ltf_vp_delta_g, 1)
+    float l_delta_v = array.get(ltf_vp_delta_g, 2)
+    color l_delta_c = l_delta_v >= 0 ? col_bull : col_bear
+    string l_delta_str = "B:" + format_vol(l_buy_v) + " | S:" + format_vol(l_sell_v) + " (Δ:" + (l_delta_v >= 0 ? "+" : "") + format_vol(l_delta_v) + ")"
 
-    table.cell(hud, 0, 16, "Market Session", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 16, 2, 22, col_bull, col_bear))
-    table.cell(hud, 1, 16, sess_stat, text_color=white, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 16, 2, 22, col_bull, col_bear))
+    table.cell(hud, 0, 15, "LTF Profile Delta", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 15, 2, 22, col_bull, col_bear))
+    table.cell(hud, 1, 15, l_delta_str, text_color=l_delta_c, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 15, 2, 22, col_bull, col_bear))
 
-    table.cell(hud, 0, 17, "Local Time", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 17, 2, 22, col_bull, col_bear))
-    table.cell(hud, 1, 17, time_now_str, text_color=white, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 17, 2, 22, col_bull, col_bear))
+    float h_buy_v = array.get(htf_vp_delta_g, 0)
+    float h_sell_v = array.get(htf_vp_delta_g, 1)
+    float h_delta_v = array.get(htf_vp_delta_g, 2)
+    color h_delta_c = h_delta_v >= 0 ? col_bull : col_bear
+    string h_delta_str = "B:" + format_vol(h_buy_v) + " | S:" + format_vol(h_sell_v) + " (Δ:" + (h_delta_v >= 0 ? "+" : "") + format_vol(h_delta_v) + ")"
 
-    // ROW 18: FOOTER
-    table.merge_cells(hud, 0, 18, 1, 18)
-    table.cell(hud, 0, 18, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤 | MTFS CLASIC V.1.002 PRO", text_color=white, text_size=size.tiny, text_formatting = text.format_bold, text_halign=text.align_center, bgcolor=color.new(col_poc, 90))
+    table.cell(hud, 0, 16, "HTF Profile Delta", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 16, 2, 22, col_bull, col_bear))
+    table.cell(hud, 1, 16, h_delta_str, text_color=h_delta_c, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 16, 2, 22, col_bull, col_bear))
+
+    // ROW 17: TIME & SESSION SECTION
+    table.merge_cells(hud, 0, 17, 1, 17)
+    table.cell(hud, 0, 17, "● MARKET TIME & SESSION", text_color=white, text_halign=text.align_left, text_size=size.tiny,  bgcolor=box_col_bear)
+
+    table.cell(hud, 0, 18, "Market Session", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 18, 2, 22, col_bull, col_bear))
+    table.cell(hud, 1, 18, sess_stat, text_color=white, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 18, 2, 22, col_bull, col_bear))
+
+    table.cell(hud, 0, 19, "Local Time", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 19, 2, 22, col_bull, col_bear))
+    table.cell(hud, 1, 19, time_now_str, text_color=white, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 19, 2, 22, col_bull, col_bear))
+
+    // ROW 20: FOOTER
+    table.merge_cells(hud, 0, 20, 1, 20)
+    table.cell(hud, 0, 20, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤 | MTFS CLASIC V.1.002 PRO", text_color=white, text_size=size.tiny, text_formatting = text.format_bold, text_halign=text.align_center, bgcolor=color.new(col_poc, 90))
     table.set_border_width(hud, 1)
     table.set_frame_width(hud, 1)
 //═══════════════════════════════════════════════════════════════════════════════
