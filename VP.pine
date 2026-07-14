@@ -1,159 +1,129 @@
 //@version=5
-indicator("Real-Time Heatmap VP - MLTFX", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+indicator("Real-Time Heatmap VP (Single Plot) - MLTFX", overlay=true)
 
 // ===== INPUTS =====
-length      = input.int(200, "Window Length", minval=20)
-rows        = input.int(50, "Smoothness (Rows)", minval=10) 
-width_pct   = input.float(0.25, "Width %", step=0.01)
-va_pct      = input.float(0.70, "Value Area %", step=0.05)
+length      = input.int(200, "Window Length (Bars)", minval=20, tooltip="The number of bars per volume profile session.")
+rows        = input.int(50, "Smoothness (Rows)", minval=10, maxval=100, tooltip="The vertical resolution of the volume profile.")
+va_pct      = input.float(0.70, "Value Area %", step=0.05, minval=0.10, maxval=1.00)
 
 // ----- COLORS -----
 grp_col     = "Gradient & Heatmap Settings"
 col_bot     = input.color(#673ab7, "Bottom Color", inline="g", group=grp_col)
 col_top     = input.color(#00bcd4, "Top Color", inline="g", group=grp_col)
-spine_col   = input.color(color.new(color.gray, 50), "Spine Color", group=grp_col)
-
-// ----- LEVELS -----
-c_poc       = input.color(#ffeb3b, "POC Color")
-c_va        = input.color(color.white, "VAH/VAL Color")
+c_poc       = input.color(#ffeb3b, "POC Color", group=grp_col)
 
 // ===== WINDOW LOGIC =====
 windowStart = int(bar_index / length) * length
-isWindowEnd = bar_index == windowStart + length - 1
 
 // ===== STORAGE =====
-// Kita butuh storage untuk data volume
-var float[] volBins = array.new_float(rows, 0.0)
+var int[] bar_to_bin = array.new_int(length, 0)
+var float[] prevVolBins = array.new_float(rows, 0.0)
+var float prevLo = na
+var float prevHi = na
+var int prevPocIdx = 0
+var int prevValIdx = 0
+var int prevVahIdx = 0
 
-// Storage khusus untuk objek "Live" (agar bisa dihapus-gambar ulang)
-var box[] liveBoxes   = array.new_box(0)
-var line[] liveLines  = array.new_line(0)
-var label[] liveLabels = array.new_label(0)
-
-// Reset bins jika masuk window baru
+// ===== CALCULATION & RESCALING =====
 if bar_index == windowStart
-    array.fill(volBins, 0.0)
-
-// ===== CALCULATION =====
-// Akumulasi Volume Realtime
-hi = ta.highest(high, length) // Highest selama window berjalan
-lo = ta.lowest(low, length)   // Lowest selama window berjalan
-// Jika High = Low (awal window), beri step minimum agar tidak error
-rng = math.max(hi - lo, syminfo.mintick * 10) 
-step = rng / rows
-
-row_idx = int((close - lo) / step)
-row_idx := math.min(rows - 1, math.max(0, row_idx))
-array.set(volBins, row_idx, array.get(volBins, row_idx) + volume)
-
-// ===== FUNGSI GAMBAR (DRAWING FUNCTION) =====
-// Kita bungkus jadi fungsi agar bisa dipanggil untuk Historical DAN Realtime
-draw_profile(is_live) =>
-    // Jika Live, hapus dulu gambar detik sebelumnya agar tidak numpuk
-    if is_live
-        while array.size(liveBoxes) > 0
-            box.delete(array.pop(liveBoxes))
-        while array.size(liveLines) > 0
-            line.delete(array.pop(liveLines))
-        while array.size(liveLabels) > 0
-            label.delete(array.pop(liveLabels))
-
-    maxVol   = array.max(volBins)
-    totalVol = array.sum(volBins)
-    // Lebar dinamis
-    currentLen = bar_index - windowStart + 1
-    // Agar proporsional, width dihitung dari length total target
-    maxWidth = int(length * width_pct) 
-    
-    // 1. Vertical Spine
-    l_spine = line.new(windowStart, lo, windowStart, hi, color=spine_col, width=4 )
-    if is_live
-        array.push(liveLines, l_spine)
-    
-    prevX = windowStart
-    prevY = lo
-
-    // 2. Loop Rows
-    for r = 0 to rows - 1
-        v = array.get(volBins, r)
-        pct = maxVol == 0 ? 0 : v / maxVol
+    if bar_index >= length
+        // Extract high/low of previous window exactly
+        float prev_hi = high[1]
+        float prev_lo = low[1]
+        for i = 1 to length
+            prev_hi := math.max(prev_hi, high[i])
+            prev_lo := math.min(prev_lo, low[i])
         
-        // --- Heatmap Logic ---
-        c_base = color.from_gradient(r, 0, rows - 1, col_bot, col_top)
-        dynamic_transp = 95 - (pct * 75) 
-        c_fill_heatmap = color.new(c_base, dynamic_transp)
+        float prev_rng = math.max(prev_hi - prev_lo, syminfo.mintick * 10)
+        float prev_step = prev_rng / rows
         
-        // Coord
-        currX = windowStart + int(pct * maxWidth)
-        y_bot = lo + (r * step)
-        y_top = lo + ((r + 1) * step)
-        currY_center = lo + (r * step) + (step * 0.5)
+        // Calculate exact volume profile bins
+        array.fill(prevVolBins, 0.0)
+        for i = 1 to length
+            float price_val = (high[i] + low[i] + close[i]) / 3.0
+            float v_val = nz(volume[i])
+            int bin_idx = int((price_val - prev_lo) / prev_step)
+            bin_idx := math.min(rows - 1, math.max(0, bin_idx))
+            array.set(prevVolBins, bin_idx, array.get(prevVolBins, bin_idx) + v_val)
 
-        // Draw Fill
-        if currX > windowStart
-            b = box.new(left=windowStart, bottom=y_bot, right=currX, top=y_top, 
-                     bgcolor=c_fill_heatmap, border_color=na)
-            if is_live
-                array.push(liveBoxes, b)
-
-        // Draw Outline
-        l = line.new(prevX, prevY, currX, currY_center, color=c_base, width=2)
-        if is_live
-            array.push(liveLines, l)
+        float maxVol = array.max(prevVolBins)
+        float totalVol = array.sum(prevVolBins)
+        prevPocIdx := array.indexof(prevVolBins, maxVol)
         
-        prevX := currX
-        prevY := currY_center
+        // Calculate Value Area (VAH / VAL)
+        prevVahIdx := prevPocIdx
+        prevValIdx := prevPocIdx
+        float targetVA = totalVol * va_pct
+        float currentVA = maxVol
 
-    // Tutup Atap
-    l_top = line.new(prevX, prevY, windowStart, hi, color=col_top, width=2)
-    if is_live
-        array.push(liveLines, l_top)
+        int loopC = 0
+        while currentVA < targetVA and loopC < rows
+            float vUp = (prevVahIdx < rows - 1) ? array.get(prevVolBins, prevVahIdx + 1) : 0.0
+            float vDn = (prevValIdx > 0) ? array.get(prevVolBins, prevValIdx - 1) : 0.0
+            if vUp == 0.0 and vDn == 0.0
+                break
+            if vUp >= vDn
+                currentVA += vUp
+                prevVahIdx := math.min(rows - 1, prevVahIdx + 1)
+            else
+                currentVA += vDn
+                prevValIdx := math.max(0, prevValIdx - 1)
+            loopC += 1
 
-    // ===== POC & VA LOGIC =====
-    pocIdx = array.indexof(volBins, maxVol)
-    targetVA = totalVol * va_pct
-    currentVA = maxVol
-    hIdx = pocIdx
-    lIdx = pocIdx
-    
-    loopC = 0
-    while currentVA < targetVA and loopC < rows
-        vUp = (hIdx < rows - 1) ? array.get(volBins, hIdx + 1) : 0
-        vDn = (lIdx > 0) ? array.get(volBins, lIdx - 1) : 0
-        if vUp >= vDn
-            currentVA += vUp
-            hIdx := math.min(rows - 1, hIdx + 1)
+        prevLo := prev_lo
+        prevHi := prev_hi
+
+        // Safety guard: if rows >= length, fallback to simple linear mapping
+        if rows >= length
+            for b = 0 to length - 1
+                array.set(bar_to_bin, b, int((b / length) * rows))
         else
-            currentVA += vDn
-            lIdx := math.max(0, lIdx - 1)
-        loopC += 1
+            // Build bar_to_bin mapping:
+            // 1. Give each bin 1 base bar to guarantee range coverage
+            // 2. Distribute remaining bars proportionally to volume
+            int remaining_bars = length - rows
+            int[] num_bars_array = array.new_int(rows, 1)
 
-    pocPrice = lo + (pocIdx * step) + (step * 0.5)
-    vahPrice = lo + ((hIdx + 1) * step)
-    valPrice = lo + (lIdx * step)
+            if remaining_bars > 0 and totalVol > 0
+                int allocated_extra = 0
+                for r = 0 to rows - 1
+                    float vol = array.get(prevVolBins, r)
+                    int extra = int(math.round((vol / totalVol) * remaining_bars))
+                    array.set(num_bars_array, r, 1 + extra)
+                    allocated_extra += extra
 
-    // Draw Levels
-    l_poc = line.new(windowStart, pocPrice, windowStart + length, pocPrice, color=c_poc, width=2)
-    l_vah = line.new(windowStart, vahPrice, windowStart + length, vahPrice, color=c_va, style=line.style_dashed)
-    l_val = line.new(windowStart, valPrice, windowStart + length, valPrice, color=c_va, style=line.style_dashed)
+                int diff = remaining_bars - allocated_extra
+                if diff != 0
+                    array.set(num_bars_array, prevPocIdx, array.get(num_bars_array, prevPocIdx) + diff)
+
+            // Build mapping array
+            int current_bar_idx = 0
+            for r = 0 to rows - 1
+                int num_bars = array.get(num_bars_array, r)
+                for b = 0 to num_bars - 1
+                    if current_bar_idx < length
+                        array.set(bar_to_bin, current_bar_idx, r)
+                        current_bar_idx += 1
+
+// ===== PLOT RETRIEVAL =====
+bar_offset = bar_index - windowStart
+float plot_price = na
+color plot_color = na
+
+if not na(prevLo) and bar_offset >= 0 and bar_offset < length
+    int r = array.get(bar_to_bin, bar_offset)
+    float prev_rng = prevHi - prevLo
+    float prev_step = prev_rng / rows
+    plot_price := prevLo + (r * prev_step) + (prev_step * 0.5)
     
-    lbl_poc = label.new(windowStart + length, pocPrice, "POC", style=label.style_none, textcolor=c_poc, size=size.small)
-    lbl_vah = label.new(windowStart + length, vahPrice, "VAH", style=label.style_none, textcolor=c_va, size=size.tiny)
-    lbl_val = label.new(windowStart + length, valPrice, "VAL", style=label.style_none, textcolor=c_va, size=size.tiny)
+    // Gradient coloring with Value Area and POC highlighting
+    color base_color = color.from_gradient(r, 0, rows - 1, col_bot, col_top)
+    if r == prevPocIdx
+        plot_color := c_poc
+    else if r >= prevValIdx and r <= prevVahIdx
+        plot_color := base_color
+    else
+        plot_color := color.new(base_color, 75) // Transparansi 75% untuk area non-VA (faded)
 
-    if is_live
-        array.push(liveLines, l_poc)
-        array.push(liveLines, l_vah)
-        array.push(liveLines, l_val)
-        array.push(liveLabels, lbl_poc)
-        array.push(liveLabels, lbl_vah)
-        array.push(liveLabels, lbl_val)
-
-// ===== EXECUTION LOGIC =====
-// 1. Jika Window Berakhir (Historical): Gambar permanen (false)
-if isWindowEnd
-    draw_profile(false)
-
-// 2. Jika Bar Terakhir (Realtime): Gambar sementara (true)
-if barstate.islast and not isWindowEnd
-    draw_profile(true)
+// ===== PLOTTING =====
+plot(plot_price, "Volume Profile Staircase", color=plot_color, linewidth=2, style=plot.style_stepline, editable=true)
