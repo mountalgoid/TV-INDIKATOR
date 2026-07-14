@@ -950,18 +950,18 @@ f_update_pd_zones(bool _show, float _h, float _l, int _calc_start, int _draw_sta
                 // Left Box: Total Buy Volume (Gradient from Dark to Bullish Color based on Buy Ratio)
                 float _buy_ratio = _tot_v > 0 ? (_sum_buy / _tot_v) : 0.5
                 color _buy_bg = color.new(color.from_gradient(_buy_ratio, 0, 1, dark, col_bull), 60)
-                string _buy_txt = "⧼ BUY [" + _tf_txt + "] ⧽\n" + format_vol(_sum_buy)
+                string _buy_txt = "BUY [" + _tf_txt + "]\n" + format_vol(_sum_buy)
                 array.push(_stats_boxes, box.new(_start, _stats_top, _left_end, _stats_bot, bgcolor=_buy_bg, border_color=color.new(col_poc, 50), text=_buy_txt, text_size=size.auto, text_color=white, text_valign=text.align_center, text_halign=text.align_center, text_formatting=text.format_bold, border_width=1))
 
                 // Center Box: Total Delta (Directional BG based on Net Delta)
                 color _delta_bg = _delta_v >= 0 ? color.new(col_bull, 60) : color.new(col_bear, 60)
-                string _delta_txt = "⧼ DELTA ⧽\n" + (_delta_v >= 0 ? "+" : "") + format_vol(_delta_v)
+                string _delta_txt = "DELTA\n" + (_delta_v >= 0 ? "+" : "") + format_vol(_delta_v)
                 array.push(_stats_boxes, box.new(_left_end, _stats_top, _center_end, _stats_bot, bgcolor=_delta_bg, border_color=color.new(col_poc, 50), text=_delta_txt, text_size=size.auto, text_color=white, text_valign=text.align_center, text_halign=text.align_center, text_formatting=text.format_bold, border_width=1))
 
                 // Right Box: Total Sell Volume (Gradient from Dark to Bearish Color based on Sell Ratio)
                 float _sell_ratio = _tot_v > 0 ? (_sum_sell / _tot_v) : 0.5
                 color _sell_bg = color.new(color.from_gradient(_sell_ratio, 0, 1, dark, col_bear), 60)
-                string _sell_txt = "⧼ SELL [" + _tf_txt + "] ⧽\n" + format_vol(_sum_sell)
+                string _sell_txt = "SELL [" + _tf_txt + "]\n" + format_vol(_sum_sell)
                 array.push(_stats_boxes, box.new(_center_end, _stats_top, _end, _stats_bot, bgcolor=_sell_bg, border_color=color.new(col_poc, 50), text=_sell_txt, text_size=size.auto, text_color=white, text_valign=text.align_center, text_halign=text.align_center, text_formatting=text.format_bold, border_width=1))
 
 // B. Universal SND Mitigation
@@ -2076,6 +2076,16 @@ if show_table and barstate.islast
     table.merge_cells(hud, 0, 6, 1, 6)
     table.cell(hud, 0, 6, "● CORE POWER", text_color=white, text_halign=text.align_left, text_size=size.tiny,  bgcolor=box_col_bear)
 
+    // Premium / Discount Zone details for LTF
+    float ltf_eq = (nz(ltf_last_sh) + nz(ltf_last_sl)) / 2
+    string ltf_pd_state = close > ltf_eq ? "PREMIUM" : (close < ltf_eq ? "DISCOUNT" : "EQUILIBRIUM")
+    color ltf_pd_color = close > ltf_eq ? col_bear : (close < ltf_eq ? col_bull : col_poc)
+
+    table.cell(hud, 0, 7, "LTF P/D Zone", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 7, 2, 22, col_bull, col_bear))
+    table.cell(hud, 1, 7, str.tostring(ltf_last_sh, format.mintick) + " | " + str.tostring(ltf_last_sl, format.mintick), text_color=white, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 7, 2, 22, col_bull, col_bear))
+
+    table.cell(hud, 0, 8, "LTF EQ & State", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 8, 2, 22, col_bull, col_bear))
+    table.cell(hud, 1, 8, str.tostring(ltf_eq, format.mintick) + " (" + ltf_pd_state + ")", text_color=ltf_pd_color, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 8, 2, 22, col_bull, col_bear))
 
     table.cell(hud, 0, 9, "Stoch RSI (K)", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 9, 2, 22, col_bull, col_bear))
     table.cell(hud, 1, 9, stoch_txt, text_color=stoch_col, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 9, 2, 22, col_bull, col_bear))
@@ -2092,6 +2102,14 @@ if show_table and barstate.islast
 
     table.cell(hud, 0, 13, "Liquidity", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 13, 2, 22, col_bull, col_bear))
     table.cell(hud, 1, 13, liq_warn, text_color=liq_col, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 13, 2, 22, col_bull, col_bear))
+
+    // Premium / Discount Zone details for HTF
+    float htf_eq_val = (nz(htf_sh) + nz(htf_sl)) / 2
+    string htf_pd_state = close > htf_eq_val ? "PREMIUM" : (close < htf_eq_val ? "DISCOUNT" : "EQUILIBRIUM")
+    color htf_pd_color = close > htf_eq_val ? col_bear : (close < htf_eq_val ? col_bull : col_poc)
+
+    table.cell(hud, 0, 14, "HTF P/D & EQ", text_color=white, text_halign=text.align_left, text_size=size.tiny, bgcolor=get_table_bg(0, 14, 2, 22, col_bull, col_bear))
+    table.cell(hud, 1, 14, str.tostring(htf_sh, format.mintick) + " | " + str.tostring(htf_sl, format.mintick) + " (" + htf_pd_state + ")", text_color=htf_pd_color, text_halign=text.align_right, text_size=size.tiny, bgcolor=get_table_bg(1, 14, 2, 22, col_bull, col_bear))
 
     // ROW 15: TIME & SESSION SECTION
     table.merge_cells(hud, 0, 15, 1, 15)
