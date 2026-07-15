@@ -32,7 +32,6 @@ type PredictHist
 var line[] predict_lines = array.new_line()
 var label[] predict_labels = array.new_label()
 var box[] predict_boxes = array.new_box()
-var box[] dom_boxes = array.new_box()
 var array<PredictHist> predict_history = array.new<PredictHist>()
 var int total_predictions = 0
 var int hits_count = 0
@@ -48,7 +47,6 @@ string grp_gen    = "General Settings"
 string grp_vis    = "Visuals (Bubbles)"
 string grp_vp     = "Volume Profile Settings"
 string grp_grad   = "Super Gradient Colors"
-string grp_dom    = "Deep Order Market (DOM)"
 string grp_ema    = "EMA Settings"
 string grp_candle = "Candle Settings"
 string grp_hpoc   = "Historical POC Plot"
@@ -182,10 +180,6 @@ int    predict_hist_len    = input.int(10, "History Depth", minval=1, maxval=50,
 bool   show_candles      = input.bool(false, "Use Candles", group=grp_candle)
 string candle_color_mode = input.string("Bubble Map", "Candle Color Mode", options=["Normal", "Delta Bubble", "Bubble Map"], group=grp_candle)
 bool   show_plotline     = input.bool(true, "Use Plot line", group=grp_candle)
-
-// DOM Settings
-bool show_dom  = input.bool(true, "Show DOM Profile", group=grp_dom)
-int  dom_width = vp_width //input.int(6, "DOM Width (%)", minval=5, maxval=30, group=grp_dom)
 
 // Visuals (Bubbles)
 bool   show_plots            = input.bool(true, "Show Volume Bubbles", group=grp_vis)
@@ -965,10 +959,6 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         for i = 0 to array.size(total_fills) - 1
             linefill.delete(array.get(total_fills, i))
         array.clear(total_fills)
-    if array.size(dom_boxes) > 0
-        for i = 0 to array.size(dom_boxes) - 1
-            box.delete(array.get(dom_boxes, i))
-        array.clear(dom_boxes)
     if array.size(vp_lines) > 0
         for i = 0 to array.size(vp_lines) - 1
             line.delete(array.get(vp_lines, i))
@@ -1381,8 +1371,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                                             text_formatting=text.format_bold, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(hvn_s_boxes, b_hvn)
             int end_line = x_vp_start + width_scaler_vp + vp_gap
-            int width_scaler_dom_calc = math.round(30 * (vp_width / 10.0))
-            int final_end_line = end_line + (show_dom ? vp_gap * 5 + width_scaler_dom_calc : 0)
+            int final_end_line = end_line
 
             if show_vp
                 // Profile Boundaries Backgrounds
@@ -1446,39 +1435,8 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 line l_vlh2 = line.new(x_vp_start - 1, vah_price, x_vp_start - 1, highest_p, color=color.new(col_bear , 0), width=6, style=line.style_solid)
                 array.push(vp_lines, l_vlh2)
 
-            // --- DEEP ORDER MARKET (DOM) - SYNCED INTEGRATION ---
-            if show_dom
-                // Re-use buckets or re-calculate for DOM specificity if needed, 
-                // but user wants same length/rows as VP.
-                float max_dom_vol = max_split_vol
-                float inv_max_dom_vol = inv_max_split_vol
-                int x_dom_start = end_line + vp_gap * 5
-
-                for i = 0 to n_rows - 1
-                    float b_buy = array.get(bucket_vol_buy, i)
-                    float b_sell = array.get(bucket_vol_sell, i)
-                    float level_bottom = lowest_p + (i * row_height)
-                    float level_top = level_bottom + row_height
-
-                    if level_bottom >= close
-                        if b_sell > 0
-                            float pct_dom_s = b_sell * inv_max_dom_vol
-                            int t_dom_s = get_profile_alpha(pct_dom_s, level_bottom, close, inv_fade_range)
-                            color grad_dom_sell = color.new(color.from_gradient(b_sell, 0, max_dom_vol, c_sell, col_poc), t_dom_s)
-                            int len_sell = math.round(width_scaler_dom_calc * pct_dom_s)
-                            box bs = box.new(x_dom_start, level_top, x_dom_start + len_sell, level_bottom, border_width=1, border_color=transparent_col, bgcolor=grad_dom_sell)
-                            array.push(dom_boxes, bs)
-                    else
-                        if b_buy > 0
-                            float pct_dom_b = b_buy * inv_max_dom_vol
-                            int t_dom_b = get_profile_alpha(pct_dom_b, level_bottom, close, inv_fade_range)
-                            color grad_dom_buy = color.new(color.from_gradient(b_buy, 0, max_dom_vol, c_buy, col_poc), t_dom_b)
-                            int len_buy = math.round(width_scaler_dom_calc * pct_dom_b)
-                            box bb = box.new(x_dom_start, level_top, x_dom_start + len_buy, level_bottom, border_width=1, border_color=transparent_col, bgcolor=grad_dom_buy)
-                            array.push(dom_boxes, bb)
-                
-                // Update Logo Offset based on final technical stack width
-                l_off := (final_end_line - bar_index) + 10
+            // Update Logo Offset based on final technical stack width
+            l_off := (final_end_line - bar_index) + 10
 
             // --- BUY/SELL AVERAGE LINES (SYNCED WITH HISTORICAL PLOTS) ---
             if not na(hist_avg_buy_g) and show_vp
