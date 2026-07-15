@@ -1145,34 +1145,61 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             // --- HVTs IDENTIFICATION FOR PREDICTION ---
             array.clear(targets_all)
-            // --- HVTs IDENTIFICATION FOR PREDICTION (Optimized collection) ---
+            // --- HVTs IDENTIFICATION FOR PREDICTION (Structured 4-Step Collection) ---
             if show_predict
                 array<HVT> raw_targets = array.new<HVT>()
                 
-                // 0. Collect from User EMA - PRIORITY 1 (Highest Precision)
-                if show_ema_long
-                    array.push(raw_targets, HVT.new(price=ema_long_val, strength=150.0, is_above=ema_long_val > close, priority=1, description="institutional ema s/r"))
+                // STEP 1: Trend Focus (Average Delta +/- Trends & EMA)
+                if show_ema_long and not na(ema_long_val)
+                    array.push(raw_targets, HVT.new(price=ema_long_val, strength=150.0, is_above=ema_long_val > close, priority=1, description="institutional ema trend"))
+                if not na(hist_avg_buy_g)
+                    array.push(raw_targets, HVT.new(price=hist_avg_buy_g, strength=100.0, is_above=hist_avg_buy_g > close, priority=1, description="trend average buy price"))
+                if not na(hist_avg_sell_g)
+                    array.push(raw_targets, HVT.new(price=hist_avg_sell_g, strength=100.0, is_above=hist_avg_sell_g > close, priority=1, description="trend average sell price"))
 
-                // 1. Collect from Bubble Volume (Large Vol Zones) - PRIORITY 1
-                // Real-time (Current Bar)
-                if vol_intensity_buy >= large_vol_threshold
-                    array.push(raw_targets, HVT.new(price=buy_loc, strength=120.0, is_above=buy_loc > close, priority=1, description="real-time buy volume surge"))
-                if vol_intensity_sell >= large_vol_threshold
-                    array.push(raw_targets, HVT.new(price=sell_loc, strength=120.0, is_above=sell_loc > close, priority=1, description="real-time sell volume surge"))
-                // Historical (Unmitigated)
+                // STEP 2: Total Delta Main Volume Profile (VAL, VAH, POC, HVN, LVN)
+                if not na(val_price)
+                    array.push(raw_targets, HVT.new(price=val_price, strength=120.0, is_above=val_price > close, priority=2, description="main profile val"))
+                if not na(vah_price)
+                    array.push(raw_targets, HVT.new(price=vah_price, strength=120.0, is_above=vah_price > close, priority=2, description="main profile vah"))
+                if not na(poc_price)
+                    array.push(raw_targets, HVT.new(price=poc_price, strength=140.0, is_above=poc_price > close, priority=2, description="main profile poc"))
+                if array.size(hvn_indices) > 0
+                    for hvn_idx in hvn_indices
+                        float p_hvn = lowest_p + (hvn_idx * row_height) + (row_height/2)
+                        array.push(raw_targets, HVT.new(price=p_hvn, strength=110.0, is_above=p_hvn > close, priority=2, description="main profile hvn"))
+                if array.size(lvn_indices) > 0
+                    for lvn_idx in lvn_indices
+                        float p_lvn = lowest_p + (lvn_idx * row_height) + (row_height/2)
+                        array.push(raw_targets, HVT.new(price=p_lvn, strength=80.0, is_above=p_lvn > close, priority=2, description="main profile lvn"))
+
+                // STEP 3: Short Volume Profile (VAL, VAH, POC, LVN, HVN)
+                if show_vp_short
+                    if not na(val_s_price)
+                        array.push(raw_targets, HVT.new(price=val_s_price, strength=90.0, is_above=val_s_price > close, priority=3, description="short profile val"))
+                    if not na(vah_s_price)
+                        array.push(raw_targets, HVT.new(price=vah_s_price, strength=90.0, is_above=vah_s_price > close, priority=3, description="short profile vah"))
+                    float poc_s_p = lowest_p + (poc_s_idx * row_height) + (row_height/2)
+                    if not na(poc_s_p)
+                        array.push(raw_targets, HVT.new(price=poc_s_p, strength=100.0, is_above=poc_s_p > close, priority=3, description="short profile poc"))
+                    if array.size(lvn_s_indices) > 0
+                        for l_idx in lvn_s_indices
+                            float lp = lowest_p + (l_idx * row_height) + (row_height/2)
+                            array.push(raw_targets, HVT.new(price=lp, strength=70.0, is_above=lp > close, priority=3, description="short profile lvn"))
+                    if array.size(hvn_s_indices) > 0
+                        for h_idx in hvn_s_indices
+                            float hp = lowest_p + (h_idx * row_height) + (row_height/2)
+                            array.push(raw_targets, HVT.new(price=hp, strength=95.0, is_above=hp > close, priority=3, description="short profile hvn"))
+
+                // STEP 4: Large Bubble Volume (Bubble Volume & Delta Bubble Volume)
+                if vol_intensity_buy >= large_vol_threshold and not na(buy_loc)
+                    array.push(raw_targets, HVT.new(price=buy_loc, strength=130.0, is_above=buy_loc > close, priority=4, description="large buy bubble volume"))
+                if vol_intensity_sell >= large_vol_threshold and not na(sell_loc)
+                    array.push(raw_targets, HVT.new(price=sell_loc, strength=130.0, is_above=sell_loc > close, priority=4, description="large sell bubble volume"))
                 if array.size(lv_boxes) > 0
                     for lvb in lv_boxes
-                        if lvb.active
-                            array.push(raw_targets, HVT.new(price=lvb.level, strength=100.0, is_above=lvb.level > close, priority=1, description="unmitigated large volume zone"))
-
-                // 3. Collect from Volume Profile (Significant Nodes) - PRIORITY 3
-                int bucket_size = array.size(bucket_vol_total)
-                float avg_vp_vol = bucket_size > 0 ? array.sum(bucket_vol_total) / bucket_size : 0
-                for i = 0 to bucket_size - 1
-                    float v = array.get(bucket_vol_total, i)
-                    if v > avg_vp_vol * 1.5
-                        float p = lowest_p + (i * row_height) + (row_height/2)
-                        array.push(raw_targets, HVT.new(price=p, strength=v * inv_max_total_vol * 100, is_above=p > close, priority=3, description="high volume profile node"))
+                        if lvb.active and not na(lvb.level)
+                            array.push(raw_targets, HVT.new(price=lvb.level, strength=110.0, is_above=lvb.level > close, priority=4, description=lvb.is_buy ? "unmitigated large buy volume bubble" : "unmitigated large sell volume bubble"))
 
                 // --- SMART CONFLUENCE MERGING ---
                 float merge_threshold = row_height * 1.2
