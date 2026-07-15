@@ -1120,6 +1120,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             float vah_price = lowest_p + (va_top * row_height) + row_height
             float val_price = lowest_p + (va_bot * row_height)
+            float poc_price = lowest_p + (poc_idx * row_height) + (row_height/2)
             
             // --- LVN IDENTIFICATION ---
             array<int> lvn_indices = array.new_int(0)
@@ -1354,8 +1355,6 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         string vp_txt = show_vp_labels ? (format_vol(b_vol) + (vp_type == "Delta" ? " | " + txt_delta : "")) : ""
                         box b = box.new(x_vp_start, level_top, x_vp_start + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt, text_formatting = text.format_bold,text_size=size.auto, text_color=dark)
                         array.push(vp_boxes, b)
-
-            float poc_price = lowest_p + (poc_idx * row_height) + (row_height/2)
             
             if show_vp_short
                 float poc_s_p = lowest_p + (poc_s_idx * row_height) + (row_height/2)
