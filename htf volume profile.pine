@@ -477,7 +477,7 @@ if barstate.islast
                 if vp_type == "Delta"
                     box_text := format_vol(level_vol) + " (Δ " + (level_delta >= 0 ? "+" : "") + format_vol(level_delta) + ")"
 
-                box bv1 = box.new(axis_x, next_level_price, axis_x + box_width, level_price, bgcolor=gradient_color, border_color=na, text=box_text, text_color=dark, text_size=size.auto, text_valign=text.valign_middle)
+                box bv1 = box.new(axis_x, next_level_price, axis_x + box_width, level_price, bgcolor=gradient_color, border_color=na, text=box_text, text_color=dark, text_size=size.auto, text_valign=text.align_center)
                 array.push(vp_boxes, bv1)
 
         // Draw POC / VAH / VAL Lines & Labels
@@ -526,14 +526,14 @@ if barstate.islast
                 if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= threshold_hvn and i != poc_index
                     box bhvn = box.new(axis_x, level_price_top, axis_x + profile_max_width, level_price_bottom,
                          border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
-                         bgcolor=color.new(col_bull, 90), text="HVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.valign_middle)
+                         bgcolor=color.new(col_bull, 90), text="HVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                     array.push(vp_boxes, bhvn)
 
                 // LVN detection - Dashed border area box with strict "LVN" text
                 if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < threshold_lvn
                     box blvn = box.new(axis_x, level_price_top, axis_x + profile_max_width, level_price_bottom,
                          border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
-                         bgcolor=color.new(col_bear, 90), text="LVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_middle)
+                         bgcolor=color.new(col_bear, 90), text="LVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                     array.push(vp_boxes, blvn)
 
 // =============================================================================
