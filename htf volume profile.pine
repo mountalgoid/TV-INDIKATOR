@@ -232,6 +232,10 @@ var line htf_body_line = na
 var line htf_u_wick_line = na
 var line htf_l_wick_line = na
 
+// Storage for persistent borders
+var box htf_candle_border = na
+var box htf_profile_border = na
+
 // Distribution Heuristic
 distribute_vol_to_bins(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float _b_total, float _s_total, float[] _bucket_total, float[] _bucket_buy, float[] _bucket_sell) =>
     float b_high = math.max(_o, _c)
@@ -325,22 +329,8 @@ else
         rt_htf_highest := math.max(rt_htf_highest, high)
         rt_htf_lowest := math.min(rt_htf_lowest, low)
 
-// Dynamic HTF Candle drawing logic (2 thin wicks + 1 thick body line)
+// Dynamic HTF Candle drawing logic (Only draw ONE latest candle and delete/clear previous lines/borders on transition)
 if show_htf_candle
-    // Complete previous historical candles on transition (3 lines: wicks thickness 2, body thickness 20)
-    if is_new_htf and bar_index > 0
-        float htf_c = close[1]
-        color b_color = htf_c >= prev_htf_o ? color.new(col_bull, 20) : color.new(col_bear, 20)
-        color w_color = htf_c >= prev_htf_o ? color.new(col_bull, 10) : color.new(col_bear, 10)
-
-        int htf_x = prev_htf_start_bar_index
-        // Upper Wick
-        line.new(htf_x, prev_htf_h, htf_x, math.max(prev_htf_o, htf_c), color=w_color, width=2)
-        // Lower Wick
-        line.new(htf_x, math.min(prev_htf_o, htf_c), htf_x, prev_htf_l, color=w_color, width=2)
-        // Body Line
-        line.new(htf_x, prev_htf_o, htf_x, htf_c, color=b_color, width=20)
-
     // Handle real-time/last session with persistent setters instead of deletion to prevent flicker
     if barstate.islast
         color rt_b_color = close >= rt_htf_open ? color.new(col_bull, 20) : color.new(col_bear, 20)
@@ -368,6 +358,16 @@ if show_htf_candle
             line.set_xy1(htf_body_line, axis_x, rt_htf_open)
             line.set_xy2(htf_body_line, axis_x, close)
             line.set_color(htf_body_line, rt_b_color)
+
+        // Draw visual border boundaries around the HTF candle (using box)
+        if na(htf_candle_border)
+            htf_candle_border := box.new(axis_x - 3, rt_htf_highest, axis_x + 3, rt_htf_lowest, border_color=col_poc, border_style=line.style_dashed, border_width=1, bgcolor=Transparent_Color)
+        else
+            box.set_left(htf_candle_border, axis_x - 3)
+            box.set_right(htf_candle_border, axis_x + 3)
+            box.set_top(htf_candle_border, rt_htf_highest)
+            box.set_bottom(htf_candle_border, rt_htf_lowest)
+            box.set_border_color(htf_candle_border, col_poc)
 
 // =============================================================================
 // 5. DRAWING & RENDERING ENGINE
@@ -455,6 +455,16 @@ if barstate.islast
         int total_width = bar_index - htf_start_bar_index + 1
         int profile_max_width = math.round(total_width * box_width_ratio)
 
+        // Draw premium, high-contrast visual border boundary box around the Volume Profile histogram
+        if na(htf_profile_border)
+            htf_profile_border := box.new(axis_x, vp_high, axis_x + profile_max_width, vp_low, border_color=col_poc, border_style=line.style_dashed, border_width=1, bgcolor=Transparent_Color)
+        else
+            box.set_left(htf_profile_border, axis_x)
+            box.set_right(htf_profile_border, axis_x + profile_max_width)
+            box.set_top(htf_profile_border, vp_high)
+            box.set_bottom(htf_profile_border, vp_low)
+            box.set_border_color(htf_profile_border, col_poc)
+
         for i = 0 to vp_resolution - 1
             float level_price = vp_low + i * p_step
             float next_level_price = level_price + p_step
@@ -477,7 +487,7 @@ if barstate.islast
                 if vp_type == "Delta"
                     box_text := format_vol(level_vol) + " (Δ " + (level_delta >= 0 ? "+" : "") + format_vol(level_delta) + ")"
 
-                box bv1 = box.new(axis_x, next_level_price, axis_x + box_width, level_price, bgcolor=gradient_color, border_color=na, text=box_text, text_color=dark, text_size=size.auto, text_valign=text.align_center)
+                box bv1 = box.new(axis_x, next_level_price, axis_x + box_width, level_price, bgcolor=gradient_color, border_color=na, text=box_text, text_color=dark, text_size=size.auto, text_valign=text.valign_center)
                 array.push(vp_boxes, bv1)
 
         // Draw POC / VAH / VAL Lines & Labels
@@ -526,7 +536,7 @@ if barstate.islast
                 if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= threshold_hvn and i != poc_index
                     box bhvn = box.new(axis_x, level_price_top, axis_x + profile_max_width, level_price_bottom,
                          border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
-                         bgcolor=color.new(col_bull, 90), text="HVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                         bgcolor=color.new(col_bull, 90), text="HVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.valign_center)
                     array.push(vp_boxes, bhvn)
 
                 // LVN detection - Dashed border area box with strict "LVN" text
