@@ -1272,6 +1272,11 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             int width_scaler_vp = math.round(30 * (vp_width / 10.0))
             int width_scaler_s = math.round(width_scaler_vp * 0.6)
             int x_s_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
+
+            // Safe Coordinate Capping to prevent RE10020 runtime error
+            int max_x_s_start = bar_index + 416 - (show_vp_short ? width_scaler_s + vp_gap + 20 : 0) - width_scaler_vp - vp_gap
+            x_s_start := math.max(bar_index + 10, math.min(x_s_start, max_x_s_start))
+
             int x_vp_start = x_s_start + (show_vp_short ? width_scaler_s + vp_gap + 20 : 0) // Extra space for short VP labels
             float inv_fade_range = 1.0 / (40 * row_height)
 
@@ -1508,29 +1513,29 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 
                 for i = 0 to count - 1
                     HVT t = array.get(targets_all, i)
-                    int x_start = cur_x
+                    int x_start = math.min(bar_index + 450, cur_x)
                     float y_start = cur_y
-                    int x_end = cur_x + predict_bars
+                    int x_end = math.min(bar_index + 450, cur_x + predict_bars)
                     float y_end = t.price
                     color h_col = t.is_above ? col_bull : col_bear
                     
                     // Intensity based on confluence
                     int path_width = math.min(2, t.confluence)
                     
-                    if predict_style != "Bubbles Only"
+                    if predict_style != "Bubbles Only" and x_start < x_end
                         array.push(predict_lines, line.new(x_start, y_start, x_end, y_end, color=color.new(h_col, 0), width=path_width, style=line.style_dotted))
                     
-                    if predict_style != "Path Only"
+                    if predict_style != "Path Only" and x_end <= bar_index + 450
                         string lbl_txt = show_predict_labels ? str.tostring(t.price, format.mintick) : ""
                         if show_priority
                             string p_marker = t.priority == 1 ? (math.abs(t.price - ema_long_val) < row_height * 2 ? "[E]" : "[B]") : (t.priority == 2 ? "[L]" : "[V]")
                             lbl_txt += " | " + p_marker + " #" + str.tostring(i + 1)
                         // Shift labels slightly to the right of the bubble
-                        array.push(predict_labels, label.new(x_end + 3, y_end, lbl_txt, color=color.new(h_col, 80), textcolor=white, style=label.style_label_left, size=size.tiny, text_formatting=text.format_bold))
+                        array.push(predict_labels, label.new(math.min(bar_index + 480, x_end + 3), y_end, lbl_txt, color=color.new(h_col, 80), textcolor=white, style=label.style_label_left, size=size.tiny, text_formatting=text.format_bold))
                         array.push(predict_labels, label.new(x_end, y_end, "●", color=color.new(h_col, 100), textcolor=white, style=label.style_label_center, size=size.small))
                         array.push(predict_labels, label.new(x_end, y_end, "○", color=color.new(h_col, 100), textcolor=white, style=label.style_label_center, size=size.large))
                         float box_h = row_height * (0.5 + 0.5 * t.confluence)
-                        array.push(predict_boxes, box.new(x_end - 5, y_end + box_h, x_end + 5, y_end - box_h, border_color=color.new(h_col, 60), bgcolor=color.new(h_col, 95), border_style=line.style_dotted, border_width=1))
+                        array.push(predict_boxes, box.new(math.min(bar_index + 450, x_end - 5), y_end + box_h, math.min(bar_index + 450, x_end + 5), y_end - box_h, border_color=color.new(h_col, 60), bgcolor=color.new(h_col, 95), border_style=line.style_dotted, border_width=1))
                         
                         if barstate.isconfirmed and i == 0
                             array.push(predict_history, PredictHist.new(start_idx=bar_index, end_idx=bar_index + predict_bars, y_start=close, target_p=y_end, is_above=t.is_above, is_hit=false, hit_idx=na, is_settled=false, ln_path=na, lbl_target=na, lbl_price=na))
