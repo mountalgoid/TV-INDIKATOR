@@ -31,7 +31,6 @@ type PredictHist
 
 var line[] predict_lines = array.new_line()
 var label[] predict_labels = array.new_label()
-var box[] predict_boxes = array.new_box()
 var array<PredictHist> predict_history = array.new<PredictHist>()
 var int total_predictions = 0
 var int hits_count = 0
@@ -170,7 +169,6 @@ int   avg_plots_len  = input.int(1000, "Avg Plots Length", minval=1, group=grp_a
 bool   show_predict        = input.bool(false, "Show Prediction Analysis", group=grp_predict)
 int    predict_bars        = input.int(60, "Prediction Lookahead (Bars)", minval=5, maxval=1000, group=grp_predict)
 int    predict_targets     = input.int(2, "Max Prediction Targets (Global)", minval=1, maxval=10, group=grp_predict)
-string predict_style       = input.string("Aesthetic Bubbles", "Visual Style", options=["Aesthetic Bubbles", "Path Only", "Bubbles Only"], group=grp_predict)
 bool   show_predict_labels = input.bool(true, "Show Target Values", group=grp_predict)
 bool   show_priority       = input.bool(true, "Show Priority Rank", group=grp_predict)
 bool   show_predict_hist   = input.bool(true, "Show Hit History", group=grp_predict)
@@ -991,10 +989,6 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         for i = 0 to array.size(predict_labels) - 1
             label.delete(array.get(predict_labels, i))
         array.clear(predict_labels)
-    if array.size(predict_boxes) > 0
-        for i = 0 to array.size(predict_boxes) - 1
-            box.delete(array.get(predict_boxes, i))
-        array.clear(predict_boxes)
     if array.size(vp_s_lines) > 0
         for i = 0 to array.size(vp_s_lines) - 1
             line.delete(array.get(vp_s_lines, i))
@@ -1548,10 +1542,10 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     // Intensity based on confluence
                     int path_width = math.min(2, t.confluence)
                     
-                    if predict_style != "Bubbles Only" and x_start < x_end
+                    if x_start < x_end
                         array.push(predict_lines, line.new(x_start, y_start, x_end, y_end, color=color.new(h_col, 0), width=path_width, style=line.style_dotted))
                     
-                    if predict_style != "Path Only" and x_end <= bar_index + 450
+                    if x_end <= bar_index + 450
                         string lbl_txt = show_predict_labels ? str.tostring(t.price, format.mintick) : ""
                         if show_priority
                             string p_marker = t.priority == 1 ? (math.abs(t.price - ema_long_val) < row_height * 2 ? "[E]" : "[B]") : (t.priority == 2 ? "[L]" : "[V]")
@@ -1560,8 +1554,6 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         array.push(predict_labels, label.new(math.min(bar_index + 480, x_end + 3), y_end, lbl_txt, color=color.new(h_col, 80), textcolor=white, style=label.style_label_left, size=size.tiny, text_formatting=text.format_bold))
                         array.push(predict_labels, label.new(x_end, y_end, "●", color=color.new(h_col, 100), textcolor=white, style=label.style_label_center, size=size.small))
                         array.push(predict_labels, label.new(x_end, y_end, "○", color=color.new(h_col, 100), textcolor=white, style=label.style_label_center, size=size.large))
-                        float box_h = row_height * (0.5 + 0.5 * t.confluence)
-                        array.push(predict_boxes, box.new(math.min(bar_index + 450, x_end - 5), y_end + box_h, math.min(bar_index + 450, x_end + 5), y_end - box_h, border_color=color.new(h_col, 60), bgcolor=color.new(h_col, 95), border_style=line.style_dotted, border_width=1))
                         
                         if barstate.isconfirmed and i == 0
                             array.push(predict_history, PredictHist.new(start_idx=bar_index, end_idx=bar_index + predict_bars, y_start=close, target_p=y_end, is_above=t.is_above, is_hit=false, hit_idx=na, is_settled=false, ln_path=na, lbl_target=na, lbl_price=na))
