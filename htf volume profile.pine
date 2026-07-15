@@ -85,6 +85,11 @@ vp_resolution = input.int(50, "Profile Resolution (Rows)", minval=10, maxval=200
 vp_val_percent = input.int(70, "Value Area Volume %", minval=10, maxval=100, group=g_vp)
 vp_type = input.string("Delta", "Profile View Type", options=["Normal", "Delta"], group=g_vp)
 
+// HTF Settings
+var string g_htf = "Higher Timeframe Candle settings"
+show_htf_candle = input.bool(true, "Show HTF Candles", group=g_htf)
+htf_timeframe = input.timeframe("60", "HTF Timeframe", group=g_htf)
+
 // Fixed Range Dates
 vp_startTime = input.time(timestamp("2025-01-01T00:00:00"), "Fixed Range Start Time", group=g_vp)
 vp_endTime = input.time(timestamp("2030-01-01T23:59:59"), "Fixed Range End Time", group=g_vp)
@@ -221,6 +226,18 @@ float vp_low = na
 // Calculate global indicator series outside condition blocks
 bars_since_start = ta.barssince(time >= vp_startTime)
 
+// Detect HTF Session transitions
+htf_start_time = time(htf_timeframe)
+is_new_htf = ta.change(htf_start_time) != 0
+var int htf_start_bar_index = 0
+if bar_index == 0
+    htf_start_bar_index := 0
+if is_new_htf
+    htf_start_bar_index := bar_index
+
+// Storage for HTF candles (persistent to prevent real-time deletion)
+var box[] htf_candle_boxes = array.new_box()
+
 // Distribution Heuristic
 distribute_vol_to_bins(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float _b_total, float _s_total, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
     float b_high = math.max(_o, _c)
@@ -281,6 +298,51 @@ distribute_vol_to_bins(int _rows, float _lowest_p, float _inv_row_h, float _o, f
                         array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+
+// Dynamic HTF Candle drawing logic that doesn't delete real-time candles
+var box rt_htf_body = na
+var box rt_htf_wick = na
+
+if show_htf_candle
+    // Complete previous historical candles on transition (corrected length bounds)
+    if is_new_htf and bar_index > 0
+        int hist_len = bar_index - htf_start_bar_index[1]
+        float htf_h = ta.highest(high, hist_len)[1]
+        float htf_l = ta.lowest(low, hist_len)[1]
+        float htf_o = open[hist_len]
+        float htf_c = close[1]
+        color b_color = htf_c >= htf_o ? color.new(col_bull, 85) : color.new(col_bear, 85)
+        color brd_color = htf_c >= htf_o ? color.new(col_bull, 70) : color.new(col_bear, 70)
+
+        box.new(htf_start_bar_index[1], htf_h, bar_index - 1, htf_l, border_color=na, bgcolor=color.new(mitigated_color, 90))
+        box.new(htf_start_bar_index[1], math.max(htf_o, htf_c), bar_index - 1, math.min(htf_o, htf_c), border_color=brd_color, bgcolor=b_color)
+
+    // Handle real-time/last session with persistent setters instead of deletion to prevent flicker
+    if barstate.islast
+        float rt_h = ta.highest(high, bar_index - htf_start_bar_index + 1)
+        float rt_l = ta.lowest(low, bar_index - htf_start_bar_index + 1)
+        float rt_o = open[bar_index - htf_start_bar_index]
+        float rt_c = close
+        color rt_b_color = rt_c >= rt_o ? color.new(col_bull, 85) : color.new(col_bear, 85)
+        color rt_brd_color = rt_c >= rt_o ? color.new(col_bull, 70) : color.new(col_bear, 70)
+
+        if na(rt_htf_wick)
+            rt_htf_wick := box.new(htf_start_bar_index, rt_h, bar_index, rt_l, border_color=na, bgcolor=color.new(mitigated_color, 90))
+        else
+            box.set_left(rt_htf_wick, htf_start_bar_index)
+            box.set_right(rt_htf_wick, bar_index)
+            box.set_top(rt_htf_wick, rt_h)
+            box.set_bottom(rt_htf_wick, rt_l)
+
+        if na(rt_htf_body)
+            rt_htf_body := box.new(htf_start_bar_index, math.max(rt_o, rt_c), bar_index, math.min(rt_o, rt_c), border_color=rt_brd_color, bgcolor=rt_b_color)
+        else
+            box.set_left(rt_htf_body, htf_start_bar_index)
+            box.set_right(rt_htf_body, bar_index)
+            box.set_top(rt_htf_body, math.max(rt_o, rt_c))
+            box.set_bottom(rt_htf_body, math.min(rt_o, rt_c))
+            box.set_bgcolor(rt_htf_body, rt_b_color)
+            box.set_border_color(rt_htf_body, rt_brd_color)
 
 // =============================================================================
 // 5. DRAWING & RENDERING ENGINE
@@ -446,7 +508,12 @@ if barstate.islast
                 if i < va_low_idx or i > va_high_idx
                     gradient_color := color.new(gradient_color, 65) // Glass-effect fade out non-VA
 
-                box bv1 = box.new(profile_start_x, next_level_price, profile_start_x + box_width, level_price, bgcolor=gradient_color, border_color=na)
+                // Create text for volume bins displaying total volume (and delta in Delta mode)
+                string box_text = format_vol(level_vol)
+                if vp_type == "Delta"
+                    box_text := format_vol(level_vol) + " (Δ " + (level_delta >= 0 ? "+" : "") + format_vol(level_delta) + ")"
+
+                box bv1 = box.new(profile_start_x, next_level_price, profile_start_x + box_width, level_price, bgcolor=gradient_color, border_color=na, text=box_text, text_color=dark, text_size=size.auto, text_valign=text.align_center)
                 array.push(vp_boxes, bv1)
 
         // Draw POC / VAH / VAL Lines & Labels
