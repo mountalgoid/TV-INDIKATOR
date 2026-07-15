@@ -168,7 +168,7 @@ int   avg_plots_len  = input.int(1000, "Avg Plots Length", minval=1, group=grp_a
 
 // Prediction Settings
 bool   show_predict        = input.bool(false, "Show Prediction Analysis", group=grp_predict)
-int    predict_bars        = input.int(200, "Prediction Lookahead (Bars)", minval=5, maxval=1000, group=grp_predict)
+int    predict_bars        = input.int(60, "Prediction Lookahead (Bars)", minval=5, maxval=1000, group=grp_predict)
 int    predict_targets     = input.int(2, "Max Prediction Targets (Global)", minval=1, maxval=10, group=grp_predict)
 string predict_style       = input.string("Aesthetic Bubbles", "Visual Style", options=["Aesthetic Bubbles", "Path Only", "Bubbles Only"], group=grp_predict)
 bool   show_predict_labels = input.bool(true, "Show Target Values", group=grp_predict)
@@ -1268,7 +1268,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             // --- DYNAMIC OFFSET CALCULATION ---
             int predict_count = math.min(predict_targets, array.size(targets_all))
-            predict_reach := predict_count * predict_bars
+            predict_reach := show_predict ? predict_count * predict_bars : 0
             int width_scaler_vp = math.round(30 * (vp_width / 10.0))
             int width_scaler_s = math.round(width_scaler_vp * 0.6)
             int x_s_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
