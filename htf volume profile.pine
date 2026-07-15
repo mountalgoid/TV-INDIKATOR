@@ -1,0 +1,129 @@
+//@version=5
+indicator("Real-Time Heatmap VP (Single Plot) - MLTFX", overlay=true)
+
+// ===== INPUTS =====
+length      = input.int(200, "Window Length (Bars)", minval=20, tooltip="The number of bars per volume profile session.")
+rows        = input.int(50, "Smoothness (Rows)", minval=10, maxval=100, tooltip="The vertical resolution of the volume profile.") 
+va_pct      = input.float(0.70, "Value Area %", step=0.05, minval=0.10, maxval=1.00)
+
+// ----- COLORS -----
+grp_col     = "Gradient & Heatmap Settings"
+col_bot     = input.color(#673ab7, "Bottom Color", inline="g", group=grp_col)
+col_top     = input.color(#00bcd4, "Top Color", inline="g", group=grp_col)
+c_poc       = input.color(#ffeb3b, "POC Color", group=grp_col)
+
+// ===== WINDOW LOGIC =====
+windowStart = int(bar_index / length) * length
+
+// ===== STORAGE =====
+var int[] bar_to_bin = array.new_int(length, 0)
+var float[] prevVolBins = array.new_float(rows, 0.0)
+var float prevLo = na
+var float prevHi = na
+var int prevPocIdx = 0
+var int prevValIdx = 0
+var int prevVahIdx = 0
+
+// ===== CALCULATION & RESCALING =====
+if bar_index == windowStart
+    if bar_index >= length
+        // Extract high/low of previous window exactly
+        float prev_hi = high[1]
+        float prev_lo = low[1]
+        for i = 1 to length
+            prev_hi := math.max(prev_hi, high[i])
+            prev_lo := math.min(prev_lo, low[i])
+        
+        float prev_rng = math.max(prev_hi - prev_lo, syminfo.mintick * 10)
+        float prev_step = prev_rng / rows
+        
+        // Calculate exact volume profile bins
+        array.fill(prevVolBins, 0.0)
+        for i = 1 to length
+            float price_val = (high[i] + low[i] + close[i]) / 3.0
+            float v_val = nz(volume[i])
+            int bin_idx = int((price_val - prev_lo) / prev_step)
+            bin_idx := math.min(rows - 1, math.max(0, bin_idx))
+            array.set(prevVolBins, bin_idx, array.get(prevVolBins, bin_idx) + v_val)
+            
+        float maxVol = array.max(prevVolBins)
+        float totalVol = array.sum(prevVolBins)
+        prevPocIdx := array.indexof(prevVolBins, maxVol)
+        
+        // Calculate Value Area (VAH / VAL)
+        prevVahIdx := prevPocIdx
+        prevValIdx := prevPocIdx
+        float targetVA = totalVol * va_pct
+        float currentVA = maxVol
+        
+        int loopC = 0
+        while currentVA < targetVA and loopC < rows
+            float vUp = (prevVahIdx < rows - 1) ? array.get(prevVolBins, prevVahIdx + 1) : 0.0
+            float vDn = (prevValIdx > 0) ? array.get(prevVolBins, prevValIdx - 1) : 0.0
+            if vUp == 0.0 and vDn == 0.0
+                break
+            if vUp >= vDn
+                currentVA += vUp
+                prevVahIdx := math.min(rows - 1, prevVahIdx + 1)
+            else
+                currentVA += vDn
+                prevValIdx := math.max(0, prevValIdx - 1)
+            loopC += 1
+            
+        prevLo := prev_lo
+        prevHi := prev_hi
+        
+        // Safety guard: if rows >= length, fallback to simple linear mapping
+        if rows >= length
+            for b = 0 to length - 1
+                array.set(bar_to_bin, b, int((b / length) * rows))
+        else
+            // Build bar_to_bin mapping: 
+            // 1. Give each bin 1 base bar to guarantee range coverage
+            // 2. Distribute remaining bars proportionally to volume
+            int remaining_bars = length - rows
+            int[] num_bars_array = array.new_int(rows, 1)
+            
+            if remaining_bars > 0 and totalVol > 0
+                int allocated_extra = 0
+                for r = 0 to rows - 1
+                    float vol = array.get(prevVolBins, r)
+                    int extra = int(math.round((vol / totalVol) * remaining_bars))
+                    array.set(num_bars_array, r, 1 + extra)
+                    allocated_extra += extra
+                    
+                int diff = remaining_bars - allocated_extra
+                if diff != 0
+                    array.set(num_bars_array, prevPocIdx, array.get(num_bars_array, prevPocIdx) + diff)
+                    
+            // Build mapping array
+            int current_bar_idx = 0
+            for r = 0 to rows - 1
+                int num_bars = array.get(num_bars_array, r)
+                for b = 0 to num_bars - 1
+                    if current_bar_idx < length
+                        array.set(bar_to_bin, current_bar_idx, r)
+                        current_bar_idx += 1
+
+// ===== PLOT RETRIEVAL =====
+bar_offset = bar_index - windowStart
+float plot_price = na
+color plot_color = na
+
+if not na(prevLo) and bar_offset >= 0 and bar_offset < length
+    int r = array.get(bar_to_bin, bar_offset)
+    float prev_rng = prevHi - prevLo
+    float prev_step = prev_rng / rows
+    plot_price := prevLo + (r * prev_step) + (prev_step * 0.5)
+    
+    // Gradient coloring with Value Area and POC highlighting
+    color base_color = color.from_gradient(r, 0, rows - 1, col_bot, col_top)
+    if r == prevPocIdx
+        plot_color := c_poc
+    else if r >= prevValIdx and r <= prevVahIdx
+        plot_color := base_color
+    else
+        plot_color := color.new(base_color, 75) // Transparansi 75% untuk area non-VA (faded)
+
+// ===== PLOTTING =====
+plot(plot_price, "Volume Profile Staircase", color=plot_color, linewidth=2, style=plot.style_stepline, editable=true)
