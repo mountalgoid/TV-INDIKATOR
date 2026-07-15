@@ -79,20 +79,15 @@ mitigated_box_color        = color.new(brown, 80)
 
 // Volume Profile Settings
 var string g_vp = "Volume Profile Settings"
-vp_mode = input.string("Recent Bars", "Profile Mode", options=["Recent Bars", "Fixed Range"], group=g_vp)
-vp_period = input.int(200, "Lookback Period (Recent Bars)", minval=10, maxval=1000, group=g_vp)
 vp_resolution = input.int(50, "Profile Resolution (Rows)", minval=10, maxval=200, group=g_vp)
 vp_val_percent = input.int(70, "Value Area Volume %", minval=10, maxval=100, group=g_vp)
 vp_type = input.string("Delta", "Profile View Type", options=["Normal", "Delta"], group=g_vp)
+box_width_ratio = input.float(1.5, "Profile Width Ratio", minval=0.1, maxval=10.0, step=0.1, group=g_vp)
 
 // HTF Settings
 var string g_htf = "Higher Timeframe Candle settings"
 show_htf_candle = input.bool(true, "Show HTF Candles", group=g_htf)
 htf_timeframe = input.timeframe("60", "HTF Timeframe", group=g_htf)
-
-// Fixed Range Dates
-vp_startTime = input.time(timestamp("2025-01-01T00:00:00"), "Fixed Range Start Time", group=g_vp)
-vp_endTime = input.time(timestamp("2030-01-01T23:59:59"), "Fixed Range End Time", group=g_vp)
 
 // HVN / LVN Config
 show_lvn       = input.bool(true, "Show LVN (Low Volume Nodes)", group=g_vp)
@@ -192,9 +187,9 @@ float current_sell_vol = ltf_sell_sum + miss_s
 // =============================================================================
 // 4. DATA AGGREGATION & STORAGE
 // =============================================================================
-var array<float> volume_at_price = array.new_float(vp_resolution, 0.0)
-var array<float> buy_at_price = array.new_float(vp_resolution, 0.0)
-var array<float> sell_at_price = array.new_float(vp_resolution, 0.0)
+var float[] volume_at_price = array.new_float(vp_resolution, 0.0)
+var float[] buy_at_price = array.new_float(vp_resolution, 0.0)
+var float[] sell_at_price = array.new_float(vp_resolution, 0.0)
 
 // Store historical values to recalculate precisely on barstate.islast
 var float[] hist_open  = array.new_float(0)
@@ -223,9 +218,6 @@ if barstate.isconfirmed
 float vp_high = na
 float vp_low = na
 
-// Calculate global indicator series outside condition blocks
-bars_since_start = ta.barssince(time >= vp_startTime)
-
 // Detect HTF Session transitions
 htf_start_time = time(htf_timeframe)
 is_new_htf = ta.change(htf_start_time) != 0
@@ -235,11 +227,13 @@ if bar_index == 0
 if is_new_htf
     htf_start_bar_index := bar_index
 
-// Storage for HTF candles (persistent to prevent real-time deletion)
-var box[] htf_candle_boxes = array.new_box()
+// Storage for HTF Candle Lines (2 thin wicks + 1 thick body line)
+var line htf_body_line = na
+var line htf_u_wick_line = na
+var line htf_l_wick_line = na
 
 // Distribution Heuristic
-distribute_vol_to_bins(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float _b_total, float _s_total, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
+distribute_vol_to_bins(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float _b_total, float _s_total, float[] _bucket_total, float[] _bucket_buy, float[] _bucket_sell) =>
     float b_high = math.max(_o, _c)
     float b_low  = math.min(_o, _c)
     float _range_val = _h - _l
@@ -299,50 +293,81 @@ distribute_vol_to_bins(int _rows, float _lowest_p, float _inv_row_h, float _o, f
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
 
-// Dynamic HTF Candle drawing logic that doesn't delete real-time candles
-var box rt_htf_body = na
-var box rt_htf_wick = na
+// Pre-calculate session bounds globally
+var int prev_htf_start_bar_index = 0
+var float prev_htf_h = na
+var float prev_htf_l = na
+var float prev_htf_o = na
+var float rt_htf_highest = na
+var float rt_htf_lowest = na
+var float rt_htf_open = na
 
+if bar_index == 0
+    prev_htf_start_bar_index := 0
+    prev_htf_h := high
+    prev_htf_l := low
+    prev_htf_o := open
+    rt_htf_highest := high
+    rt_htf_lowest := low
+    rt_htf_open := open
+else
+    if is_new_htf
+        prev_htf_start_bar_index := htf_start_bar_index[1]
+        int current_hist_len = bar_index - htf_start_bar_index[1]
+        prev_htf_h := ta.highest(high, current_hist_len)[1]
+        prev_htf_l := ta.lowest(low, current_hist_len)[1]
+        prev_htf_o := open[current_hist_len]
+
+        rt_htf_highest := high
+        rt_htf_lowest := low
+        rt_htf_open := open
+    else
+        rt_htf_highest := math.max(rt_htf_highest, high)
+        rt_htf_lowest := math.min(rt_htf_lowest, low)
+
+// Dynamic HTF Candle drawing logic (2 thin wicks + 1 thick body line)
 if show_htf_candle
-    // Complete previous historical candles on transition (corrected length bounds)
+    // Complete previous historical candles on transition (3 lines: wicks thickness 2, body thickness 20)
     if is_new_htf and bar_index > 0
-        int hist_len = bar_index - htf_start_bar_index[1]
-        float htf_h = ta.highest(high, hist_len)[1]
-        float htf_l = ta.lowest(low, hist_len)[1]
-        float htf_o = open[hist_len]
         float htf_c = close[1]
-        color b_color = htf_c >= htf_o ? color.new(col_bull, 85) : color.new(col_bear, 85)
-        color brd_color = htf_c >= htf_o ? color.new(col_bull, 70) : color.new(col_bear, 70)
+        color b_color = htf_c >= prev_htf_o ? color.new(col_bull, 20) : color.new(col_bear, 20)
+        color w_color = htf_c >= prev_htf_o ? color.new(col_bull, 10) : color.new(col_bear, 10)
 
-        box.new(htf_start_bar_index[1], htf_h, bar_index - 1, htf_l, border_color=na, bgcolor=color.new(mitigated_color, 90))
-        box.new(htf_start_bar_index[1], math.max(htf_o, htf_c), bar_index - 1, math.min(htf_o, htf_c), border_color=brd_color, bgcolor=b_color)
+        int htf_x = prev_htf_start_bar_index
+        // Upper Wick
+        line.new(htf_x, prev_htf_h, htf_x, math.max(prev_htf_o, htf_c), color=w_color, width=2)
+        // Lower Wick
+        line.new(htf_x, math.min(prev_htf_o, htf_c), htf_x, prev_htf_l, color=w_color, width=2)
+        // Body Line
+        line.new(htf_x, prev_htf_o, htf_x, htf_c, color=b_color, width=20)
 
     // Handle real-time/last session with persistent setters instead of deletion to prevent flicker
     if barstate.islast
-        float rt_h = ta.highest(high, bar_index - htf_start_bar_index + 1)
-        float rt_l = ta.lowest(low, bar_index - htf_start_bar_index + 1)
-        float rt_o = open[bar_index - htf_start_bar_index]
-        float rt_c = close
-        color rt_b_color = rt_c >= rt_o ? color.new(col_bull, 85) : color.new(col_bear, 85)
-        color rt_brd_color = rt_c >= rt_o ? color.new(col_bull, 70) : color.new(col_bear, 70)
+        color rt_b_color = close >= rt_htf_open ? color.new(col_bull, 20) : color.new(col_bear, 20)
+        color rt_w_color = close >= rt_htf_open ? color.new(col_bull, 10) : color.new(col_bear, 10)
 
-        if na(rt_htf_wick)
-            rt_htf_wick := box.new(htf_start_bar_index, rt_h, bar_index, rt_l, border_color=na, bgcolor=color.new(mitigated_color, 90))
-        else
-            box.set_left(rt_htf_wick, htf_start_bar_index)
-            box.set_right(rt_htf_wick, bar_index)
-            box.set_top(rt_htf_wick, rt_h)
-            box.set_bottom(rt_htf_wick, rt_l)
+        int axis_x = htf_start_bar_index
 
-        if na(rt_htf_body)
-            rt_htf_body := box.new(htf_start_bar_index, math.max(rt_o, rt_c), bar_index, math.min(rt_o, rt_c), border_color=rt_brd_color, bgcolor=rt_b_color)
+        if na(htf_u_wick_line)
+            htf_u_wick_line := line.new(axis_x, rt_htf_highest, axis_x, math.max(rt_htf_open, close), color=rt_w_color, width=2)
         else
-            box.set_left(rt_htf_body, htf_start_bar_index)
-            box.set_right(rt_htf_body, bar_index)
-            box.set_top(rt_htf_body, math.max(rt_o, rt_c))
-            box.set_bottom(rt_htf_body, math.min(rt_o, rt_c))
-            box.set_bgcolor(rt_htf_body, rt_b_color)
-            box.set_border_color(rt_htf_body, rt_brd_color)
+            line.set_xy1(htf_u_wick_line, axis_x, rt_htf_highest)
+            line.set_xy2(htf_u_wick_line, axis_x, math.max(rt_htf_open, close))
+            line.set_color(htf_u_wick_line, rt_w_color)
+
+        if na(htf_l_wick_line)
+            htf_l_wick_line := line.new(axis_x, math.min(rt_htf_open, close), axis_x, rt_htf_lowest, color=rt_w_color, width=2)
+        else
+            line.set_xy1(htf_l_wick_line, axis_x, math.min(rt_htf_open, close))
+            line.set_xy2(htf_l_wick_line, axis_x, rt_htf_lowest)
+            line.set_color(htf_l_wick_line, rt_w_color)
+
+        if na(htf_body_line)
+            htf_body_line := line.new(axis_x, rt_htf_open, axis_x, close, color=rt_b_color, width=20)
+        else
+            line.set_xy1(htf_body_line, axis_x, rt_htf_open)
+            line.set_xy2(htf_body_line, axis_x, close)
+            line.set_color(htf_body_line, rt_b_color)
 
 // =============================================================================
 // 5. DRAWING & RENDERING ENGINE
@@ -371,79 +396,27 @@ if barstate.islast
     array.fill(buy_at_price, 0.0)
     array.fill(sell_at_price, 0.0)
 
-    // Collect historical and real-time data within window constraints
-    int data_size = array.size(hist_close)
-    if data_size > 0
-        if vp_mode == "Recent Bars"
-            int start_hist_idx = math.max(0, data_size - (vp_period - 1))
-            // Find absolute low/high bounds of historical bars
-            vp_high := array.get(hist_high, start_hist_idx)
-            vp_low  := array.get(hist_low, start_hist_idx)
-            for k = start_hist_idx to data_size - 1
-                vp_high := math.max(vp_high, array.get(hist_high, k))
-                vp_low  := math.min(vp_low, array.get(hist_low, k))
-            
-            // Also include current real-time bar in range calculation
-            vp_high := math.max(vp_high, high)
-            vp_low  := math.min(vp_low, low)
-            
-            float p_range = vp_high - vp_low
-            float p_step = p_range > 0 ? p_range / vp_resolution : 0
-            if p_range > 0
-                float inv_p_step = 1.0 / p_step
-                // Distribute historical window bars
-                for k = start_hist_idx to data_size - 1
-                    float o_v = array.get(hist_open, k)
-                    float h_v = array.get(hist_high, k)
-                    float l_v = array.get(hist_low, k)
-                    float c_v = array.get(hist_close, k)
-                    float v_v = array.get(hist_vol, k)
-                    [b_h, s_h] = calc_vol_partition(v_v, o_v, h_v, l_v, c_v)
-                    distribute_vol_to_bins(vp_resolution, vp_low, inv_p_step, o_v, h_v, l_v, c_v, v_v, b_h, s_h, volume_at_price, buy_at_price, sell_at_price)
-                // Distribute current bar
-                distribute_vol_to_bins(vp_resolution, vp_low, inv_p_step, open, high, low, close, volume, current_buy_vol, current_sell_vol, volume_at_price, buy_at_price, sell_at_price)
-        
-        else // Fixed Range Recalculation
-            float actual_endTime = math.min(vp_endTime, time)
-            // Calculate absolute high and low first over the fixed range
-            bool has_valid_bars = false
-            for k = 0 to data_size - 1
-                int t_val = array.get(hist_time, k)
-                if t_val >= vp_startTime and t_val <= actual_endTime
-                    if not has_valid_bars
-                        vp_high := array.get(hist_high, k)
-                        vp_low  := array.get(hist_low, k)
-                        has_valid_bars := true
-                    else
-                        vp_high := math.max(vp_high, array.get(hist_high, k))
-                        vp_low  := math.min(vp_low, array.get(hist_low, k))
-            
-            if time >= vp_startTime and time <= actual_endTime
-                if not has_valid_bars
-                    vp_high := high
-                    vp_low  := low
-                    has_valid_bars := true
-                else
-                    vp_high := math.max(vp_high, high)
-                    vp_low  := math.min(vp_low, low)
+    // Find HTF session start / boundaries
+    int start_hist_idx = htf_start_bar_index
+    // Find absolute low/high bounds of historical bars in current HTF session
+    vp_high := rt_htf_highest
+    vp_low  := rt_htf_lowest
 
-            float p_range = vp_high - vp_low
-            float p_step = p_range > 0 ? p_range / vp_resolution : 0
-            if p_range > 0 and has_valid_bars
-                float inv_p_step = 1.0 / p_step
-                // Safely distribute fixed range bars
-                for k = 0 to data_size - 1
-                    int t_val = array.get(hist_time, k)
-                    if t_val >= vp_startTime and t_val <= actual_endTime
-                        float o_v = array.get(hist_open, k)
-                        float h_v = array.get(hist_high, k)
-                        float l_v = array.get(hist_low, k)
-                        float c_v = array.get(hist_close, k)
-                        float v_v = array.get(hist_vol, k)
-                        [b_h, s_h] = calc_vol_partition(v_v, o_v, h_v, l_v, c_v)
-                        distribute_vol_to_bins(vp_resolution, vp_low, inv_p_step, o_v, h_v, l_v, c_v, v_v, b_h, s_h, volume_at_price, buy_at_price, sell_at_price)
-                if time >= vp_startTime and time <= actual_endTime
-                    distribute_vol_to_bins(vp_resolution, vp_low, inv_p_step, open, high, low, close, volume, current_buy_vol, current_sell_vol, volume_at_price, buy_at_price, sell_at_price)
+    float p_range = vp_high - vp_low
+    float p_step = p_range > 0 ? p_range / vp_resolution : 0
+    if p_range > 0
+        float inv_p_step = 1.0 / p_step
+        // Distribute historical window bars within current HTF session
+        for k = start_hist_idx to bar_index - 1
+            float o_v = open[bar_index - k]
+            float h_v = high[bar_index - k]
+            float l_v = low[bar_index - k]
+            float c_v = close[bar_index - k]
+            float v_v = volume[bar_index - k]
+            [b_h, s_h] = calc_vol_partition(v_v, o_v, h_v, l_v, c_v)
+            distribute_vol_to_bins(vp_resolution, vp_low, inv_p_step, o_v, h_v, l_v, c_v, v_v, b_h, s_h, volume_at_price, buy_at_price, sell_at_price)
+        // Distribute current bar
+        distribute_vol_to_bins(vp_resolution, vp_low, inv_p_step, open, high, low, close, volume, current_buy_vol, current_sell_vol, volume_at_price, buy_at_price, sell_at_price)
 
     float total_profile_volume = array.sum(volume_at_price)
     float max_profile_vol = 0.0
@@ -473,23 +446,14 @@ if barstate.islast
             current_va_vol += down_vol
             va_low_idx -= 1
 
-    float p_range = vp_high - vp_low
-    float p_step = p_range > 0 ? p_range / vp_resolution : 0
-
     float poc_price = vp_low + (poc_index + 0.5) * p_step
     float vah_price = vp_low + (va_high_idx + 1) * p_step
     float val_price = vp_low + va_low_idx * p_step
 
     if show_vp_histogram and p_range > 0
-        int profile_start_x = bar_index + 22
-        int max_profile_width = 58
-        int start_bar_for_drawing = vp_mode == "Recent Bars" ? bar_index - vp_period + 1 : bar_index - bars_since_start
-
-        // Base frame box
-        box bvp = box.new(start_bar_for_drawing, vp_high, bar_index + 20, vp_low,
-             border_color=mitigated_color, border_style=line.style_dashed, border_width=2,
-             bgcolor=Transparent_Color, extend=extend.none)
-        array.push(vp_boxes, bvp)
+        int axis_x = htf_start_bar_index
+        int total_width = bar_index - htf_start_bar_index + 1
+        int profile_max_width = math.round(total_width * box_width_ratio)
 
         for i = 0 to vp_resolution - 1
             float level_price = vp_low + i * p_step
@@ -503,7 +467,7 @@ if barstate.islast
                 // Color mapping: Delta view or Normal view
                 color base_color = vp_type == "Delta" ? (level_delta >= 0 ? col_bull : col_bear) : col_poc
                 color gradient_color = f_gradientColor(base_color, level_vol, max_profile_vol)
-                int box_width = math.round(level_vol / max_profile_vol * max_profile_width)
+                int box_width = math.round(level_vol / max_profile_vol * profile_max_width)
 
                 if i < va_low_idx or i > va_high_idx
                     gradient_color := color.new(gradient_color, 65) // Glass-effect fade out non-VA
@@ -513,35 +477,36 @@ if barstate.islast
                 if vp_type == "Delta"
                     box_text := format_vol(level_vol) + " (Δ " + (level_delta >= 0 ? "+" : "") + format_vol(level_delta) + ")"
 
-                box bv1 = box.new(profile_start_x, next_level_price, profile_start_x + box_width, level_price, bgcolor=gradient_color, border_color=na, text=box_text, text_color=dark, text_size=size.auto, text_valign=text.align_center)
+                box bv1 = box.new(axis_x, next_level_price, axis_x + box_width, level_price, bgcolor=gradient_color, border_color=na, text=box_text, text_color=dark, text_size=size.auto, text_valign=text.valign_middle)
                 array.push(vp_boxes, bv1)
 
         // Draw POC / VAH / VAL Lines & Labels
         if not na(poc_price)
+            int label_x = axis_x + profile_max_width + 5
             // POC
-            line lpoc = line.new(start_bar_for_drawing, poc_price, bar_index + 25, poc_price, color=color.new(col_poc, 0), style=line.style_solid, width=2)
+            line lpoc = line.new(axis_x, poc_price, axis_x + profile_max_width, poc_price, color=color.new(col_poc, 0), style=line.style_solid, width=2)
             array.push(vp_lines, lpoc)
             if show_vp_labels
                 string poc_lbl = "POC: " + str.tostring(poc_price, format.mintick) + " (" + format_vol(max_profile_vol) + ")"
-                label lb_poc = label.new(bar_index + 25, poc_price, poc_lbl, color=col_poc, textcolor=dark, style=label.style_label_left, size=size.tiny)
+                label lb_poc = label.new(label_x, poc_price, poc_lbl, color=col_poc, textcolor=dark, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_poc)
 
             // VAH
-            line lvah = line.new(start_bar_for_drawing, vah_price, bar_index + 25, vah_price, color=color.new(col_bull, 20), style=line.style_dashed, width=1)
+            line lvah = line.new(axis_x, vah_price, axis_x + profile_max_width, vah_price, color=color.new(col_bull, 20), style=line.style_dashed, width=1)
             array.push(vp_lines, lvah)
             if show_vp_labels
                 float vah_vol = va_high_idx < vp_resolution ? array.get(volume_at_price, va_high_idx) : 0.0
                 string vah_lbl = "VAH: " + str.tostring(vah_price, format.mintick) + " (" + format_vol(vah_vol) + ")"
-                label lb_vah = label.new(bar_index + 25, vah_price, vah_lbl, color=col_bull, textcolor=dark, style=label.style_label_left, size=size.tiny)
+                label lb_vah = label.new(label_x, vah_price, vah_lbl, color=col_bull, textcolor=dark, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_vah)
 
             // VAL
-            line lval = line.new(start_bar_for_drawing, val_price, bar_index + 25, val_price, color=color.new(col_bear, 20), style=line.style_dashed, width=1)
+            line lval = line.new(axis_x, val_price, axis_x + profile_max_width, val_price, color=color.new(col_bear, 20), style=line.style_dashed, width=1)
             array.push(vp_lines, lval)
             if show_vp_labels
                 float val_vol = va_low_idx >= 0 ? array.get(volume_at_price, va_low_idx) : 0.0
                 string val_lbl = "VAL: " + str.tostring(val_price, format.mintick) + " (" + format_vol(val_vol) + ")"
-                label lb_val = label.new(bar_index + 25, val_price, val_lbl, color=col_bear, textcolor=dark, style=label.style_label_left, size=size.tiny)
+                label lb_val = label.new(label_x, val_price, val_lbl, color=col_bear, textcolor=dark, style=label.style_label_left, size=size.tiny)
                 array.push(vp_labels, lb_val)
 
         // HVN & LVN Detection
@@ -559,16 +524,16 @@ if barstate.islast
 
                 // HVN detection (excluding POC) - Solid border area box with strict "HVN" text
                 if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= threshold_hvn and i != poc_index
-                    box bhvn = box.new(bar_index, level_price_top, bar_index + 25, level_price_bottom,
+                    box bhvn = box.new(axis_x, level_price_top, axis_x + profile_max_width, level_price_bottom,
                          border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
-                         bgcolor=color.new(col_bull, 90), text="HVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                         bgcolor=color.new(col_bull, 90), text="HVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.valign_middle)
                     array.push(vp_boxes, bhvn)
 
                 // LVN detection - Dashed border area box with strict "LVN" text
                 if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < threshold_lvn
-                    box blvn = box.new(bar_index, level_price_top, bar_index + 25, level_price_bottom,
+                    box blvn = box.new(axis_x, level_price_top, axis_x + profile_max_width, level_price_bottom,
                          border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
-                         bgcolor=color.new(col_bear, 90), text="LVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                         bgcolor=color.new(col_bear, 90), text="LVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_middle)
                     array.push(vp_boxes, blvn)
 
 // =============================================================================
@@ -627,7 +592,7 @@ var line Line1b5 = na
 var line Line1b6 = na
 var line Line1b7 = na
 var line Line1b8 = na
-var label[] brand_labels = array.new<label>()
+var label[] brand_labels = array.new_label()
 
 if not na(Line1b)
     line.delete(Line1b)
@@ -664,7 +629,7 @@ get_fade_alpha(float x_rel) =>
     math.round(80 * (1 - ratio))
 
 // Shift logo layout further right to prevent visual overlap with volume profile boxes
-int l_off = 90
+int l_off = 110
 
 if show_logo and barstate.islast
     color c_head_sync = get_adv_color(1)
