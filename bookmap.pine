@@ -245,9 +245,10 @@ f_formatNumber(number, add_sign) =>
 get_table_bg(int c, int r, int total_c, int total_r) =>
     float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
     color base = color.from_gradient(ratio, 0, 1, col_bull, col_bear)
-    // Transparency gradient from 50 (at ratio=0) to 90 (at ratio=1)
-    int t_alpha = math.round(50 + ratio * 40)
-    color.new(base, t_alpha)
+    color mixed_base = color.mix(base, #8b4513, 35)
+    // 80 transparency = 20% opacity
+    int t_alpha = 80
+    color.new(mixed_base, t_alpha)
 
 get_profile_alpha(float intensity, float level, float price_center, float inv_fade_range) =>
     float dist_ratio = math.min(1.0, math.abs(level - price_center) * inv_fade_range)
