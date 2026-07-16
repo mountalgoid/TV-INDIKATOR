@@ -1,54 +1,225 @@
-//@version=5
-indicator("Real-Time Heatmap VP - MLTFX", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+//@version=6
+indicator("Real-Time Heatmap VP - MLTFX", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=2000)
 
-// ===== INPUTS =====
-length      = input.int(200, "Window Length", minval=20)
-rows        = input.int(50, "Smoothness (Rows)", minval=10) 
-width_pct   = input.float(0.25, "Width %", step=0.01)
-va_pct      = input.float(0.70, "Value Area %", step=0.05)
+// ===== INPUTS & CONFIGURATION =====
+grp_gen      = "General Settings"
+length       = input.int(200, "Window Length", minval=20, group=grp_gen)
+rows         = input.int(50, "Smoothness (Rows)", minval=10, group=grp_gen)
+width_pct    = input.float(0.25, "Width %", step=0.01, group=grp_gen)
+va_pct       = input.float(0.70, "Value Area %", step=0.05, group=grp_gen)
+vp_type      = input.string("Normal", "Profile View Type", options=["Normal", "Delta"], group=grp_gen)
 
-// ----- COLORS -----
-grp_col     = "Gradient & Heatmap Settings"
-col_bot     = input.color(#673ab7, "Bottom Color", inline="g", group=grp_col)
-col_top     = input.color(#00bcd4, "Top Color", inline="g", group=grp_col)
-spine_col   = input.color(color.new(color.gray, 50), "Spine Color", group=grp_col)
+// ----- THEME SYSTEM -----
+grp_theme    = "Visual Themes & Colors"
+theme_mode   = input.bool(true, "Use Selected Color Theme", group=grp_theme)
+color_theme  = input.string(defval='DEX Deep', title='Select Color Theme', options=['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=grp_theme)
 
-// ----- LEVELS -----
-c_poc       = input.color(#ffeb3b, "POC Color")
-c_va        = input.color(color.white, "VAH/VAL Color")
+// Core Theme Colors
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
+
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
+
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
+
+color col_poc = switch color_theme
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+
+// Custom Manual Gradient Settings (Fallback)
+col_bot     = input.color(#673ab7, "Custom Bottom Color", inline="g", group=grp_theme)
+col_top     = input.color(#00bcd4, "Custom Top Color", inline="g", group=grp_theme)
+spine_col   = input.color(color.new(color.gray, 50), "Spine Color", group=grp_theme)
+c_poc       = input.color(#ffeb3b, "Custom POC Color", group=grp_theme)
+c_va        = input.color(color.white, "Custom VAH/VAL Color", group=grp_theme)
+
+// Effective Theme Colors
+color col_bull_eff = theme_mode ? col_bull : col_bot
+color col_bear_eff = theme_mode ? col_bear : col_top
+color col_poc_eff  = theme_mode ? col_poc : c_poc
+color col_va_eff   = theme_mode ? color.new(col_poc, 20) : c_va
+
+// ----- HVN / LVN SETTINGS -----
+grp_hl       = "HVN / LVN Settings"
+show_lvn_hvn = input.bool(true, "Show HVN and LVN", group=grp_hl)
+hvn_threshold= input.float(1.5, "HVN Volume Multiplier", minval=1.0, step=0.25, group=grp_hl)
+lvn_threshold= input.float(0.1, "LVN Volume Threshold (%)", minval=0.01, maxval=0.5, step=0.01, group=grp_hl)
 
 // ===== WINDOW LOGIC =====
 windowStart = int(bar_index / length) * length
 isWindowEnd = bar_index == windowStart + length - 1
 
-// ===== STORAGE =====
-// Kita butuh storage untuk data volume
-var float[] volBins = array.new_float(rows, 0.0)
+// Track exact highest high and lowest low of the current window segment
+var float windowHi = na
+var float windowLo = na
 
-// Storage khusus untuk objek "Live" (agar bisa dihapus-gambar ulang)
-var box[] liveBoxes   = array.new_box(0)
-var line[] liveLines  = array.new_line(0)
-var label[] liveLabels = array.new_label(0)
-
-// Reset bins jika masuk window baru
 if bar_index == windowStart
-    array.fill(volBins, 0.0)
+    windowHi := high
+    windowLo := low
+else
+    windowHi := math.max(windowHi, high)
+    windowLo := math.min(windowLo, low)
 
-// ===== CALCULATION =====
-// Akumulasi Volume Realtime
-hi = ta.highest(high, length) // Highest selama window berjalan
-lo = ta.lowest(low, length)   // Lowest selama window berjalan
-// Jika High = Low (awal window), beri step minimum agar tidak error
-rng = math.max(hi - lo, syminfo.mintick * 10) 
-step = rng / rows
+hi_val = na(windowHi) ? high : windowHi
+lo_val = na(windowLo) ? low : windowLo
 
-row_idx = int((close - lo) / step)
-row_idx := math.min(rows - 1, math.max(0, row_idx))
-array.set(volBins, row_idx, array.get(volBins, row_idx) + volume)
+// ===== STORAGE =====
+var array<float> volBins  = array.new_float(rows, 0.0)
+var array<float> buyBins  = array.new_float(rows, 0.0)
+var array<float> sellBins = array.new_float(rows, 0.0)
+
+// Storage for "Live" objects (to clean and redraw)
+var array<box> liveBoxes   = array.new_box(0)
+var array<line> liveLines  = array.new_line(0)
+var array<label> liveLabels = array.new_label(0)
+
+// Heuristic Volume Partitioning
+calc_vol_partition(float vol) =>
+    float range_size = high - low
+    float b_vol = 0.0
+    float s_vol = 0.0
+
+    if range_size > 0
+        float b_high = math.max(open, close)
+        float b_low  = math.min(open, close)
+        float body_size = b_high - b_low
+        float upper_wick = high - b_high
+        float lower_wick = b_low - low
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (open + close) / 2
+        float body_pos = (b_center - low) / range_size
+        float br_b = close > open ? math.min(0.9, 0.6 + body_pos * 0.3) : (close < open ? math.max(0.1, 0.4 - (1-body_pos) * 0.3) : 0.5)
+
+        b_vol := vol * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := vol * (w_body * (1 - br_b) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := vol * 0.5
+        s_vol := vol * 0.5
+    [b_vol, s_vol]
+
+// Distribution Heuristic for Profile Bins
+distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        if _range_val <= 0
+            int idx = math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h)))
+            array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
+            float v_half = _v_total * 0.5
+            array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + v_half)
+            array.set(_bucket_sell, idx, array.get(_bucket_sell, idx) + v_half)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h - b_high) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * w_u
+
+            float b_center = (_o + _c) * 0.5
+            float body_pos = (b_center - _l) * inv_range
+
+            float br_b = _c > _o ? math.min(0.9, 0.6 + body_pos * 0.3) : (_c < _o ? math.max(0.1, 0.4 - (1-body_pos) * 0.3) : 0.5)
+
+            if v_l > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.90
+                    float v_j_sell = v_j * 0.10
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_b > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * br_b
+                    float v_j_sell = v_j * (1.0 - br_b)
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_u > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.10
+                    float v_j_sell = v_j * 0.90
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+
+// ===== LTF PRECISION ENGINE =====
+get_ltf_v() =>
+    [b, s] = calc_vol_partition(volume)
+    [open, high, low, close, volume, b, s]
+
+[ltf_o, ltf_h, ltf_l, ltf_c, ltf_v, ltf_b, ltf_s] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_v())
 
 // ===== FUNGSI GAMBAR (DRAWING FUNCTION) =====
-// Kita bungkus jadi fungsi agar bisa dipanggil untuk Historical DAN Realtime
-draw_profile(is_live) =>
+draw_profile(bool is_live) =>
     // Jika Live, hapus dulu gambar detik sebelumnya agar tidak numpuk
     if is_live
         while array.size(liveBoxes) > 0
@@ -58,45 +229,88 @@ draw_profile(is_live) =>
         while array.size(liveLabels) > 0
             label.delete(array.pop(liveLabels))
 
+    // 1. CALCULATE HIGH-PRECISION DYNAMIC VOLUME PROFILE
+    array.fill(volBins, 0.0)
+    array.fill(buyBins, 0.0)
+    array.fill(sellBins, 0.0)
+
+    float rng = math.max(hi_val - lo_val, syminfo.mintick * 10)
+    float step = rng / rows
+    float inv_step = 1.0 / step
+    int currentLen = bar_index - windowStart + 1
+
+    if is_live
+        // Distribute historical bars of the current window segment
+        if currentLen > 1
+            for i = 1 to currentLen - 1
+                distribute_vol(rows, lo_val, inv_step, open[i], high[i], low[i], close[i], volume[i], volBins, buyBins, sellBins)
+
+        // Distribute the live bar using precise LTF 1m data
+        int ltf_count = not na(ltf_v) ? array.size(ltf_v) : 0
+        float ltf_v_total = 0.0
+        if ltf_count > 0
+            for j = 0 to ltf_count - 1
+                float _o = array.get(ltf_o, j)
+                float _h = array.get(ltf_h, j)
+                float _l = array.get(ltf_l, j)
+                float _c = array.get(ltf_c, j)
+                float _v = array.get(ltf_v, j)
+                ltf_v_total += _v
+                distribute_vol(rows, lo_val, inv_step, _o, _h, _l, _c, _v, volBins, buyBins, sellBins)
+
+        // Accumulate missing volume if real-time feeds are faster than LTF ticks
+        float missing_v = math.max(0, volume - ltf_v_total)
+        if missing_v > 0
+            distribute_vol(rows, lo_val, inv_step, open, high, low, close, missing_v, volBins, buyBins, sellBins)
+    else
+        // Historical finished window segment
+        for i = 0 to currentLen - 1
+            distribute_vol(rows, lo_val, inv_step, open[i], high[i], low[i], close[i], volume[i], volBins, buyBins, sellBins)
+
     maxVol   = array.max(volBins)
     totalVol = array.sum(volBins)
-    // Lebar dinamis
-    currentLen = bar_index - windowStart + 1
-    // Agar proporsional, width dihitung dari length total target
     maxWidth = int(length * width_pct) 
     
-    // 1. Vertical Spine
-    l_spine = line.new(windowStart, lo, windowStart, hi, color=spine_col, width=4 )
+    // 2. DRAW SPINE
+    l_spine = line.new(windowStart, lo_val, windowStart, hi_val, color=spine_col, width=4)
     if is_live
         array.push(liveLines, l_spine)
     
     prevX = windowStart
-    prevY = lo
+    prevY = lo_val
 
-    // 2. Loop Rows
+    // 3. DRAW PROFILE ROWS
     for r = 0 to rows - 1
         v = array.get(volBins, r)
         pct = maxVol == 0 ? 0 : v / maxVol
         
-        // --- Heatmap Logic ---
-        c_base = color.from_gradient(r, 0, rows - 1, col_bot, col_top)
-        dynamic_transp = 95 - (pct * 75) 
-        c_fill_heatmap = color.new(c_base, dynamic_transp)
+        // Heatmap & Theme Logic
+        color c_base = na
+        if vp_type == "Delta"
+            float r_buy = array.get(buyBins, r)
+            float r_sell = array.get(sellBins, r)
+            float r_delta = r_buy - r_sell
+            c_base := r_delta > 0 ? col_bull_eff : col_bear_eff
+        else
+            c_base := color.from_gradient(r, 0, rows - 1, col_bull_eff, col_bear_eff)
+
+        int dynamic_transp = math.round(95 - (pct * 75))
+        color c_fill_heatmap = color.new(c_base, dynamic_transp)
         
-        // Coord
+        // Coordinates
         currX = windowStart + int(pct * maxWidth)
-        y_bot = lo + (r * step)
-        y_top = lo + ((r + 1) * step)
-        currY_center = lo + (r * step) + (step * 0.5)
+        y_bot = lo_val + (r * step)
+        y_top = lo_val + ((r + 1) * step)
+        currY_center = lo_val + (r * step) + (step * 0.5)
 
         // Draw Fill
         if currX > windowStart
             b = box.new(left=windowStart, bottom=y_bot, right=currX, top=y_top, 
-                     bgcolor=c_fill_heatmap, border_color=na)
+                        bgcolor=c_fill_heatmap, border_color=na)
             if is_live
                 array.push(liveBoxes, b)
 
-        // Draw Outline
+        // Draw Outline curve
         l = line.new(prevX, prevY, currX, currY_center, color=c_base, width=2)
         if is_live
             array.push(liveLines, l)
@@ -104,8 +318,8 @@ draw_profile(is_live) =>
         prevX := currX
         prevY := currY_center
 
-    // Tutup Atap
-    l_top = line.new(prevX, prevY, windowStart, hi, color=col_top, width=2)
+    // Draw Top Cap
+    l_top = line.new(prevX, prevY, windowStart, hi_val, color=col_bear_eff, width=2)
     if is_live
         array.push(liveLines, l_top)
 
@@ -118,28 +332,31 @@ draw_profile(is_live) =>
     
     loopC = 0
     while currentVA < targetVA and loopC < rows
-        vUp = (hIdx < rows - 1) ? array.get(volBins, hIdx + 1) : 0
-        vDn = (lIdx > 0) ? array.get(volBins, lIdx - 1) : 0
-        if vUp >= vDn
+        vUp = (hIdx < rows - 1) ? array.get(volBins, hIdx + 1) : 0.0
+        vDn = (lIdx > 0) ? array.get(volBins, lIdx - 1) : 0.0
+        if vUp >= vDn and hIdx < rows - 1
             currentVA += vUp
             hIdx := math.min(rows - 1, hIdx + 1)
-        else
+        else if lIdx > 0
             currentVA += vDn
             lIdx := math.max(0, lIdx - 1)
+        else if hIdx < rows - 1
+            currentVA += vUp
+            hIdx := math.min(rows - 1, hIdx + 1)
         loopC += 1
 
-    pocPrice = lo + (pocIdx * step) + (step * 0.5)
-    vahPrice = lo + ((hIdx + 1) * step)
-    valPrice = lo + (lIdx * step)
+    pocPrice = lo_val + (pocIdx * step) + (step * 0.5)
+    vahPrice = lo_val + ((hIdx + 1) * step)
+    valPrice = lo_val + (lIdx * step)
 
     // Draw Levels
-    l_poc = line.new(windowStart, pocPrice, windowStart + length, pocPrice, color=c_poc, width=2)
-    l_vah = line.new(windowStart, vahPrice, windowStart + length, vahPrice, color=c_va, style=line.style_dashed)
-    l_val = line.new(windowStart, valPrice, windowStart + length, valPrice, color=c_va, style=line.style_dashed)
+    l_poc = line.new(windowStart, pocPrice, windowStart + length, pocPrice, color=col_poc_eff, width=2)
+    l_vah = line.new(windowStart, vahPrice, windowStart + length, vahPrice, color=col_va_eff, style=line.style_dashed, width=1)
+    l_val = line.new(windowStart, valPrice, windowStart + length, valPrice, color=col_va_eff, style=line.style_dashed, width=1)
     
-    lbl_poc = label.new(windowStart + length, pocPrice, "POC", style=label.style_none, textcolor=c_poc, size=size.small)
-    lbl_vah = label.new(windowStart + length, vahPrice, "VAH", style=label.style_none, textcolor=c_va, size=size.tiny)
-    lbl_val = label.new(windowStart + length, valPrice, "VAL", style=label.style_none, textcolor=c_va, size=size.tiny)
+    lbl_poc = label.new(windowStart + length, pocPrice, "POC\n" + str.tostring(pocPrice, format.mintick), color=col_poc_eff, textcolor=dark, size=size.tiny, style=label.style_label_left)
+    lbl_vah = label.new(windowStart + length, vahPrice, "VAH\n" + str.tostring(vahPrice, format.mintick), color=col_bull_eff, textcolor=dark, size=size.tiny, style=label.style_label_left)
+    lbl_val = label.new(windowStart + length, valPrice, "VAL\n" + str.tostring(valPrice, format.mintick), color=col_bear_eff, textcolor=dark, size=size.tiny, style=label.style_label_left)
 
     if is_live
         array.push(liveLines, l_poc)
@@ -148,6 +365,41 @@ draw_profile(is_live) =>
         array.push(liveLabels, lbl_poc)
         array.push(liveLabels, lbl_vah)
         array.push(liveLabels, lbl_val)
+
+    // ===== HVN / LVN IDENTIFICATION & DRAWING =====
+    if show_lvn_hvn and totalVol > 0
+        float avg_profile_vol = array.avg(volBins)
+        float thresh_lvn = maxVol * lvn_threshold
+
+        for r = 1 to rows - 2
+            float v_prev = array.get(volBins, r - 1)
+            float v_curr = array.get(volBins, r)
+            float v_next = array.get(volBins, r + 1)
+
+            float y_bot = lo_val + (r * step)
+            float y_top = lo_val + ((r + 1) * step)
+
+            // HVN detection (Local Maxima above threshold multiplier of average volume)
+            if v_curr > v_prev and v_curr > v_next and v_curr > avg_profile_vol * hvn_threshold and r != pocIdx
+                color hvn_border_c = color.new(col_bull_eff, 30)
+                color hvn_bg_c = color.new(col_bull_eff, 90)
+                box b_hvn = box.new(left=windowStart, top=y_top, right=windowStart + maxWidth, bottom=y_bot,
+                                    border_color=hvn_border_c, border_width=1, border_style=line.style_solid,
+                                    bgcolor=hvn_bg_c, text="HVN", text_color=color.white, text_size=size.tiny,
+                                    text_halign=text.align_center, text_valign=text.align_center)
+                if is_live
+                    array.push(liveBoxes, b_hvn)
+
+            // LVN detection (Local Minima below threshold volume)
+            if v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
+                color lvn_border_c = color.new(col_bear_eff, 30)
+                color lvn_bg_c = color.new(col_bear_eff, 90)
+                box b_lvn = box.new(left=windowStart, top=y_top, right=windowStart + maxWidth, bottom=y_bot,
+                                    border_color=lvn_border_c, border_width=1, border_style=line.style_dashed,
+                                    bgcolor=lvn_bg_c, text="LVN", text_color=color.white, text_size=size.tiny,
+                                    text_halign=text.align_center, text_valign=text.align_center)
+                if is_live
+                    array.push(liveBoxes, b_lvn)
 
 // ===== EXECUTION LOGIC =====
 // 1. Jika Window Berakhir (Historical): Gambar permanen (false)
