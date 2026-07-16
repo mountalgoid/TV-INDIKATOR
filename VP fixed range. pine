@@ -218,6 +218,20 @@ get_ltf_v() =>
 
 [ltf_o, ltf_h, ltf_l, ltf_c, ltf_v, ltf_b, ltf_s] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_v())
 
+// Volume formatting helper function
+format_vol(float v) =>
+    float abs_v = math.abs(v)
+    string res = ""
+    if abs_v >= 1000000000
+        res := str.tostring(v / 1000000000, "#.##") + "B"
+    else if abs_v >= 1000000
+        res := str.tostring(v / 1000000, "#.##") + "M"
+    else if abs_v >= 1000
+        res := str.tostring(v / 1000, "#.#") + "K"
+    else
+        res := str.tostring(v, "0.##")
+    res
+
 // ===== FUNGSI GAMBAR (DRAWING FUNCTION) =====
 draw_profile(bool is_live) =>
     // Jika Live, hapus dulu gambar detik sebelumnya agar tidak numpuk
@@ -286,10 +300,11 @@ draw_profile(bool is_live) =>
         
         // Heatmap & Theme Logic
         color c_base = na
+        float r_delta = 0.0
         if vp_type == "Delta"
             float r_buy = array.get(buyBins, r)
             float r_sell = array.get(sellBins, r)
-            float r_delta = r_buy - r_sell
+            r_delta := r_buy - r_sell
             c_base := r_delta > 0 ? col_bull_eff : col_bear_eff
         else
             c_base := color.from_gradient(r, 0, rows - 1, col_bull_eff, col_bear_eff)
@@ -303,10 +318,20 @@ draw_profile(bool is_live) =>
         y_top = lo_val + ((r + 1) * step)
         currY_center = lo_val + (r * step) + (step * 0.5)
 
-        // Draw Fill
+        // Draw Fill with volume text
         if currX > windowStart
+            string row_txt = format_vol(v)
+            if vp_type == "Delta"
+                row_txt += " | " + (r_delta >= 0 ? "+" : "") + format_vol(r_delta)
+
+            color row_text_color = dark
+            if dynamic_transp <= 75
+                row_text_color := white
+
             b = box.new(left=windowStart, bottom=y_bot, right=currX, top=y_top, 
-                        bgcolor=c_fill_heatmap, border_color=na)
+                        bgcolor=c_fill_heatmap, border_color=na,
+                        text=row_txt, text_color=row_text_color, text_size=size.auto,
+                        text_halign=text.align_left, text_valign=text.align_center)
             if is_live
                 array.push(liveBoxes, b)
 
@@ -359,27 +384,28 @@ draw_profile(bool is_live) =>
         array.push(liveLines, l_vah)
         array.push(liveLines, l_val)
 
-    // Draw elegant POC, VAH, and VAL box text badges with solid borders
+    // Draw elegant POC, VAH, and VAL box text badges with solid borders and high contrast contrasting colors
     boxLeft = windowStart + length
     boxRight = windowStart + length + int(length * 0.12)
     box_height_half = step * 0.4
+    color badge_bg = color.new(#0c0d12, 15) // Deep contrast background
 
     b_poc = box.new(left=boxLeft, top=pocPrice + box_height_half, right=boxRight, bottom=pocPrice - box_height_half,
                     border_color=col_poc_eff, border_width=1, border_style=line.style_solid,
-                    bgcolor=color.new(col_poc_eff, 85),
-                    text="POC\n" + str.tostring(pocPrice, format.mintick), text_color=dark, text_size=size.auto,
+                    bgcolor=badge_bg,
+                    text="POC\n" + str.tostring(pocPrice, format.mintick), text_color=col_poc_eff, text_size=size.auto,
                     text_halign=text.align_center, text_valign=text.align_center)
 
     b_vah = box.new(left=boxLeft, top=vahPrice + box_height_half, right=boxRight, bottom=vahPrice - box_height_half,
                     border_color=col_bull_eff, border_width=1, border_style=line.style_solid,
-                    bgcolor=color.new(col_bull_eff, 85),
-                    text="VAH\n" + str.tostring(vahPrice, format.mintick), text_color=dark, text_size=size.auto,
+                    bgcolor=badge_bg,
+                    text="VAH\n" + str.tostring(vahPrice, format.mintick), text_color=col_bull_eff, text_size=size.auto,
                     text_halign=text.align_center, text_valign=text.align_center)
 
     b_val = box.new(left=boxLeft, top=valPrice + box_height_half, right=boxRight, bottom=valPrice - box_height_half,
                     border_color=col_bear_eff, border_width=1, border_style=line.style_solid,
-                    bgcolor=color.new(col_bear_eff, 85),
-                    text="VAL\n" + str.tostring(valPrice, format.mintick), text_color=dark, text_size=size.auto,
+                    bgcolor=badge_bg,
+                    text="VAL\n" + str.tostring(valPrice, format.mintick), text_color=col_bear_eff, text_size=size.auto,
                     text_halign=text.align_center, text_valign=text.align_center)
 
     if is_live
