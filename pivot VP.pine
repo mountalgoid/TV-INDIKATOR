@@ -362,7 +362,7 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, isLive) =>
                 float b_vol = array.get(buyArr, r)
                 float s_vol = array.get(sellArr, r)
                 float r_delta = b_vol - s_vol
-                
+
                 float pct = maxV == 0 ? 0 : vR / maxV
 
                 int lenBars = math.round(dur * (vpWidth / 100.0) * pct)
@@ -439,17 +439,17 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, isLive) =>
             box_poc = box.new(idxStart, poc_top, idxEnd, poc_bot,
                               border_color=poc_border, border_width=1, border_style=line.style_solid, bgcolor=poc_bg,
                               text=poc_txt, text_color=poc_border, text_size=size.auto,
-                              text_halign="center", text_valign="center")
+                              text_halign="center")
 
             box_vah = box.new(idxStart, vah_top, idxEnd, vah_bot,
                               border_color=vah_border, border_width=1, border_style=line.style_dashed, bgcolor=vah_bg,
                               text=vah_txt, text_color=vah_border, text_size=size.auto,
-                              text_halign="center", text_valign="center")
+                              text_halign="center")
 
             box_val = box.new(idxStart, val_top, idxEnd, val_bot,
                               border_color=val_border, border_width=1, border_style=line.style_dashed, bgcolor=val_bg,
                               text=val_txt, text_color=val_border, text_size=size.auto,
-                              text_halign="center", text_valign="center")
+                              text_halign="center")
 
             if isLive == 1
                 array.push(liveBoxes, box_poc)
@@ -476,7 +476,7 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, isLive) =>
                     if v_curr > v_prev and v_curr > v_next and v_curr > avg_vol * hvnThreshold and r != pocIdx
                         box bhvn = box.new(idxStart, node_top, idxEnd, node_bot,
                              border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
-                             bgcolor=colHvn, text="𝗛𝗩𝗡", text_color=white, text_size=size.tiny, text_halign="right", text_valign="center")
+                             bgcolor=colHvn, text="𝗛𝗩𝗡", text_color=white, text_size=size.tiny, text_halign="right")
                         if isLive == 1
                             array.push(liveBoxes, bhvn)
                         else if isLive == 2
@@ -486,7 +486,7 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, isLive) =>
                     if v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
                         box blvn = box.new(idxStart, node_top, idxEnd, node_bot,
                              border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
-                             bgcolor=colLvn, text="𝗟𝗩𝗡", text_color=white, text_size=size.tiny, text_halign="right", text_valign="center")
+                             bgcolor=colLvn, text="𝗟𝗩🇳", text_color=white, text_size=size.tiny, text_halign="right")
                         if isLive == 1
                             array.push(liveBoxes, blvn)
                         else if isLive == 2
@@ -507,8 +507,19 @@ if bar_index > length and dir == 0
         levelDn := pl, levelDnIdx := lastIdx, brokenDn := false
 
 if dir == -1 
-    if not na(ph) and ph > lastP 
-        // Pivot high updated to a higher high! Update the zigzag line and the last confirmed Volume Profile leg
+    if high > lastP
+        // INSTANT REAL-TIME UPDATE to a higher high! Update the zigzag line and the last confirmed Volume Profile leg instantly
+        clear_last_leg()
+        if not na(lastLegStartIdx)
+            draw_vp_zone(lastLegStartIdx, bar_index, lastLegStartPrice, high, 2)
+
+        lastP := high, lastIdx := bar_index, lastTime := time
+        activeStartIdx := lastIdx, activeStartTime := lastTime, activeStartPrice := lastP
+        if not na(lastLine)
+            line.set_xy2(lastLine, lastIdx, lastP)
+        levelUp := high, levelUpIdx := lastIdx, brokenUp := false
+    else if not na(ph) and ph > lastP
+        // Pivot high updated to a higher high (via standard pivot confirmation)!
         clear_last_leg()
         if not na(lastLegStartIdx)
             draw_vp_zone(lastLegStartIdx, bar_index[length], lastLegStartPrice, ph, 2)
@@ -532,8 +543,19 @@ if dir == -1
         levelDn := pl, levelDnIdx := lastIdx, brokenDn := false
 
 else if dir == 1 
-    if not na(pl) and pl < lastP 
-        // Pivot low updated to a lower low! Update the zigzag line and the last confirmed Volume Profile leg
+    if low < lastP
+        // INSTANT REAL-TIME UPDATE to a lower low! Update the zigzag line and the last confirmed Volume Profile leg instantly
+        clear_last_leg()
+        if not na(lastLegStartIdx)
+            draw_vp_zone(lastLegStartIdx, bar_index, lastLegStartPrice, low, 2)
+
+        lastP := low, lastIdx := bar_index, lastTime := time
+        activeStartIdx := lastIdx, activeStartTime := lastTime, activeStartPrice := lastP
+        if not na(lastLine)
+            line.set_xy2(lastLine, lastIdx, lastP)
+        levelDn := low, levelDnIdx := lastIdx, brokenDn := false
+    else if not na(pl) and pl < lastP
+        // Pivot low updated to a lower low (via standard pivot confirmation)!
         clear_last_leg()
         if not na(lastLegStartIdx)
             draw_vp_zone(lastLegStartIdx, bar_index[length], lastLegStartPrice, pl, 2)
