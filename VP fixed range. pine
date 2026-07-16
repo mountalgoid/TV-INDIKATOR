@@ -388,6 +388,19 @@ draw_profile(bool is_live) =>
         array.push(liveLines, l_vah)
         array.push(liveLines, l_val)
 
+    // Draw transparent backgrounds for VAH-to-Top and VAL-to-Bottom regions
+    color top_bg = color.new(col_bear_eff, 93)
+    color bot_bg = color.new(col_bull_eff, 93)
+
+    b_vah_top = box.new(left=windowStart, top=hi_val, right=windowStart + length, bottom=vahPrice,
+                        bgcolor=top_bg, border_color=na)
+    b_val_bot = box.new(left=windowStart, top=valPrice, right=windowStart + length, bottom=lo_val,
+                        bgcolor=bot_bg, border_color=na)
+
+    if is_live
+        array.push(liveBoxes, b_vah_top)
+        array.push(liveBoxes, b_val_bot)
+
     // Boundaries for right badges
     boxLeft = windowStart + length
     boxRight = windowStart + length + int(length * 0.12)
