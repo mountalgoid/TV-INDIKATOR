@@ -349,22 +349,43 @@ draw_profile(bool is_live) =>
     vahPrice = lo_val + ((hIdx + 1) * step)
     valPrice = lo_val + (lIdx * step)
 
-    // Draw Levels
-    l_poc = line.new(windowStart, pocPrice, windowStart + length, pocPrice, color=col_poc_eff, width=2)
-    l_vah = line.new(windowStart, vahPrice, windowStart + length, vahPrice, color=col_va_eff, style=line.style_dashed, width=1)
-    l_val = line.new(windowStart, valPrice, windowStart + length, valPrice, color=col_va_eff, style=line.style_dashed, width=1)
+    // Draw solid levels lines
+    l_poc = line.new(windowStart, pocPrice, windowStart + length, pocPrice, color=col_poc_eff, width=2, style=line.style_solid)
+    l_vah = line.new(windowStart, vahPrice, windowStart + length, vahPrice, color=col_va_eff, style=line.style_solid, width=1)
+    l_val = line.new(windowStart, valPrice, windowStart + length, valPrice, color=col_va_eff, style=line.style_solid, width=1)
     
-    lbl_poc = label.new(windowStart + length, pocPrice, "POC\n" + str.tostring(pocPrice, format.mintick), color=col_poc_eff, textcolor=dark, size=size.tiny, style=label.style_label_left)
-    lbl_vah = label.new(windowStart + length, vahPrice, "VAH\n" + str.tostring(vahPrice, format.mintick), color=col_bull_eff, textcolor=dark, size=size.tiny, style=label.style_label_left)
-    lbl_val = label.new(windowStart + length, valPrice, "VAL\n" + str.tostring(valPrice, format.mintick), color=col_bear_eff, textcolor=dark, size=size.tiny, style=label.style_label_left)
-
     if is_live
         array.push(liveLines, l_poc)
         array.push(liveLines, l_vah)
         array.push(liveLines, l_val)
-        array.push(liveLabels, lbl_poc)
-        array.push(liveLabels, lbl_vah)
-        array.push(liveLabels, lbl_val)
+
+    // Draw elegant POC, VAH, and VAL box text badges with solid borders
+    boxLeft = windowStart + length
+    boxRight = windowStart + length + int(length * 0.12)
+    box_height_half = step * 0.4
+
+    b_poc = box.new(left=boxLeft, top=pocPrice + box_height_half, right=boxRight, bottom=pocPrice - box_height_half,
+                    border_color=col_poc_eff, border_width=1, border_style=line.style_solid,
+                    bgcolor=color.new(col_poc_eff, 85),
+                    text="POC\n" + str.tostring(pocPrice, format.mintick), text_color=dark, text_size=size.auto,
+                    text_halign=text.align_center, text_valign=text.align_center)
+
+    b_vah = box.new(left=boxLeft, top=vahPrice + box_height_half, right=boxRight, bottom=vahPrice - box_height_half,
+                    border_color=col_bull_eff, border_width=1, border_style=line.style_solid,
+                    bgcolor=color.new(col_bull_eff, 85),
+                    text="VAH\n" + str.tostring(vahPrice, format.mintick), text_color=dark, text_size=size.auto,
+                    text_halign=text.align_center, text_valign=text.align_center)
+
+    b_val = box.new(left=boxLeft, top=valPrice + box_height_half, right=boxRight, bottom=valPrice - box_height_half,
+                    border_color=col_bear_eff, border_width=1, border_style=line.style_solid,
+                    bgcolor=color.new(col_bear_eff, 85),
+                    text="VAL\n" + str.tostring(valPrice, format.mintick), text_color=dark, text_size=size.auto,
+                    text_halign=text.align_center, text_valign=text.align_center)
+
+    if is_live
+        array.push(liveBoxes, b_poc)
+        array.push(liveBoxes, b_vah)
+        array.push(liveBoxes, b_val)
 
     // ===== HVN / LVN IDENTIFICATION & DRAWING =====
     if show_lvn_hvn and totalVol > 0
