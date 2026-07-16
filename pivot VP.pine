@@ -77,6 +77,7 @@ color final_col_bear = use_theme_for_zz ? col_bear : colDn
 grp_vp = "Volume Profile Heatmap"
 showVP = input.bool(true, "Show Volume Profile", group=grp_vp)
 vp_type = input.string("Delta", "Profile View Type", options=["Normal", "Delta"], group=grp_vp)
+vpAlign = input.string("Right", "Profile Alignment", options=["Left", "Right"], group=grp_vp)
 vpRows = input.int(40, "Resolution (Smoothness)", minval=10, maxval=200, group=grp_vp)
 vpWidth = input.int(70, "VP Width (%)", minval=10, maxval=90, group=grp_vp)
 colVolBase = input.color(#2962ff, "Custom Base Volume Color (Override)", group=grp_vp)
@@ -324,7 +325,7 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
 
             // 4. DRAW HEATMAP & CURVE
             int dur = tEnd - tStart
-            int prevX = tStart
+            int prevX = vpAlign == "Left" ? tStart : tEnd
             float prevY = bot
 
             for r = 0 to vpRows - 1
@@ -339,7 +340,10 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
                 if lenTime < (time[1]-time[0]) and vR > 0
                     lenTime := (time[1]-time[0])
                 
-                int x_end = tStart + lenTime
+                int x_box_left  = vpAlign == "Left" ? tStart : tEnd - lenTime
+                int x_box_right = vpAlign == "Left" ? tStart + lenTime : tEnd
+                int x_curve     = vpAlign == "Left" ? tStart + lenTime : tEnd - lenTime
+
                 float y_bot = bot + (step * r)
                 float y_top = bot + ((r + 1) * step)
                 float y_mid = bot + (step * r) + (step * 0.5)
@@ -349,45 +353,71 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
                     float alpha = 98 - (pct * 78) // 20 - 98 Alpha range
                     color base_c = use_theme_for_vp ? (vp_type == "Normal" ? col_poc : (r_delta > 0 ? col_bull : (r_delta < 0 ? col_bear : col_poc))) : colVolBase
                     color heatCol = color.new(base_c, math.round(alpha))
-                    b = box.new(tStart, y_top, x_end, y_bot, xloc=xloc.bar_time, border_width=0, bgcolor=heatCol)
+                    b = box.new(x_box_left, y_top, x_box_right, y_bot, xloc=xloc.bar_time, border_width=0, bgcolor=heatCol)
                     if isLive
                         array.push(liveBoxes, b)
                 
                 // Curve Outline
-                curLine = line.new(prevX, prevY, x_end, y_mid, xloc=xloc.bar_time, color=colCurve, width=1)
+                curLine = line.new(prevX, prevY, x_curve, y_mid, xloc=xloc.bar_time, color=colCurve, width=1)
                 if isLive
                     array.push(liveLines, curLine)
                 
-                prevX := x_end
+                prevX := x_curve
                 prevY := y_mid
 
             // Close Curve
-            lastL = line.new(prevX, prevY, tStart, top, xloc=xloc.bar_time, color=colCurve, width=1)
+            int closeX = vpAlign == "Left" ? tStart : tEnd
+            lastL = line.new(prevX, prevY, closeX, top, xloc=xloc.bar_time, color=colCurve, width=1)
             if isLive
                 array.push(liveLines, lastL)
             
-            // 5. DRAW LEVELS (POC, VAH, VAL)
+            // 5. DRAW LEVELS (POC, VAH, VAL AS AUTO-SIZED BOLD TEXT BOXES)
             pY = bot + (step * pocIdx) + (step/2)
             vahY = bot + (step * (vaT + 1))
             valY = bot + (step * vaB)
             
-            // POC
-            pL = line.new(tStart, pY, tEnd, pY, xloc=xloc.bar_time, color=final_col_poc, width=2)
-            
-            // VAH & VAL Lines
-            l_vah = line.new(tStart, vahY, tEnd, vahY, xloc=xloc.bar_time, color=final_col_va, style=line.style_dashed)
-            l_val = line.new(tStart, valY, tEnd, valY, xloc=xloc.bar_time, color=final_col_va, style=line.style_dashed)
+            // Top and bottom boundaries for level boxes (centered on the respective level)
+            float poc_top = pY + step * 0.35
+            float poc_bot = pY - step * 0.35
+            float vah_top = vahY + step * 0.35
+            float vah_bot = vahY - step * 0.35
+            float val_top = valY + step * 0.35
+            float val_bot = valY - step * 0.35
 
-            // Labels
-            lb_vah = label.new(tEnd, vahY, "VAH", xloc=xloc.bar_time, color=color.new(color.white, 100), style=label.style_none, textcolor=final_col_va, size=size.tiny)
-            lb_val = label.new(tEnd, valY, "VAL", xloc=xloc.bar_time, color=color.new(color.white, 100), style=label.style_none, textcolor=final_col_va, size=size.tiny)
+            // Generate clean label text with brackets and price
+            string poc_txt = "POC [ " + str.tostring(pY, format.mintick) + " ]"
+            string vah_txt = "VAH [ " + str.tostring(vahY, format.mintick) + " ]"
+            string val_txt = "VAL [ " + str.tostring(valY, format.mintick) + " ]"
+
+            // Colors for boxes
+            color poc_bg = color.new(final_col_poc, 92)
+            color vah_bg = color.new(col_bull, 92)
+            color val_bg = color.new(col_bear, 92)
+
+            color poc_border = final_col_poc
+            color vah_border = final_col_va
+            color val_border = final_col_va
+
+            // Draw level boxes spanning the entire zone width (tStart to tEnd)
+            box_poc = box.new(tStart, poc_top, tEnd, poc_bot, xloc=xloc.bar_time,
+                              border_color=poc_border, border_width=1, border_style=line.style_solid, bgcolor=poc_bg,
+                              text=poc_txt, text_color=poc_border, text_size=size.auto, text_style=text.style_bold,
+                              text_halign=text.align_center, text_valign=text.align_center)
+
+            box_vah = box.new(tStart, vah_top, tEnd, vah_bot, xloc=xloc.bar_time,
+                              border_color=vah_border, border_width=1, border_style=line.style_dashed, bgcolor=vah_bg,
+                              text=vah_txt, text_color=vah_border, text_size=size.auto, text_style=text.style_bold,
+                              text_halign=text.align_center, text_valign=text.align_center)
+
+            box_val = box.new(tStart, val_top, tEnd, val_bot, xloc=xloc.bar_time,
+                              border_color=val_border, border_width=1, border_style=line.style_dashed, bgcolor=val_bg,
+                              text=val_txt, text_color=val_border, text_size=size.auto, text_style=text.style_bold,
+                              text_halign=text.align_center, text_valign=text.align_center)
 
             if isLive
-                array.push(liveLines, pL)
-                array.push(liveLines, l_vah)
-                array.push(liveLines, l_val)
-                array.push(liveLabels, lb_vah)
-                array.push(liveLabels, lb_val)
+                array.push(liveBoxes, box_poc)
+                array.push(liveBoxes, box_vah)
+                array.push(liveBoxes, box_val)
 
             // 6. DRAW HVNs and LVNs (as area boxes spanning tStart to tEnd within node boundary)
             if showLvnHvn and totalVol > 0
