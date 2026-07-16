@@ -101,7 +101,9 @@ get_table_bg(float ratio) =>
     color.new(mixed_base, 80)
 
 get_text_color(bool is_key_node, int r, int poc_idx, int va_down, int va_up) =>
-    if is_key_node or r == poc_idx or (r >= va_down and r <= va_up)
+    if is_key_node or r == poc_idx
+        col_poc
+    else if r >= va_down and r <= va_up
         dark
     else
         white
@@ -519,7 +521,7 @@ if barstate.islast and total_profile_volume > 0
         if r == current_price_row_idx
             row_bgcolor := color_theme == "Gear Protocol" ? color.new(white, 25) : color.new(yellow, 30)
 
-        // Contrast text formatting
+        // Contrast text formatting - explicit separation between key value areas and regular non-VA layers
         color t_col = get_text_color(is_key_node, r, poc_idx, va_down, va_up)
 
         string sell_buy_str = format_vol(level_sell_vol) + " | " + format_vol(level_buy_vol)
