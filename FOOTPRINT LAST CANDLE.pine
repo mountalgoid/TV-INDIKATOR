@@ -24,6 +24,9 @@ float lvn_threshold = input.float(0.1, "LVN Threshold (%)", minval=0.01, maxval=
 bool show_large_vol = input.bool(true, "Identify Large Volume Nodes", group=grp_footprint)
 float large_vol_mult = input.float(1.8, "Large Vol Multiplier (vs Avg)", minval=1.0, step=0.1, group=grp_footprint)
 
+// DOM Profile Toggles
+bool show_dom = input.bool(true, "Show DOM (Depth of Market) Profile Column", group=grp_footprint)
+
 // Visual Layout Settings
 string table_pos_input = input.string("bottom_left", "Table Screen Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_visuals)
 string table_size_input = input.string("Tiny", "Table Cell Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=grp_visuals)
@@ -408,7 +411,7 @@ if barstate.islast
             array.push(node_level_labels, lbl)
 
 // -----------------------------------------------------------------------------
-// 6. VOLUME LADDER / FOOTPRINT SCREEN TABLE
+// 6. VOLUME LADDER / FOOTPRINT SCREEN TABLE (INTEGRATED DOM PROFILE)
 // -----------------------------------------------------------------------------
 var table footprint_tbl = na
 
@@ -451,14 +454,22 @@ if barstate.islast and total_profile_volume > 0
         end_r := vp_rows - 1
         start_r := math.max(0, end_r - display_rows + 1)
 
-    // Instantiate dynamic footprints table
-    footprint_tbl := table.new(l_pos, 4, display_rows + 1, bgcolor=dark, border_width=1, border_color=Transparent_Color, frame_color=col_poc, frame_width=1)
+    // Instantiate dynamic footprints table with optional DOM column (column count: 5 if show_dom, otherwise 4)
+    int total_columns = show_dom ? 5 : 4
+    footprint_tbl := table.new(l_pos, total_columns, display_rows + 1, bgcolor=dark, border_width=1, border_color=Transparent_Color, frame_color=col_poc, frame_width=1)
 
     // Header Cells
-    table.cell(footprint_tbl, 0, 0, "Sell | Buy", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
-    table.cell(footprint_tbl, 1, 0, "Total Vol", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
-    table.cell(footprint_tbl, 2, 0, "Net Delta", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
-    table.cell(footprint_tbl, 3, 0, "Price Level", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+    if show_dom
+        table.cell(footprint_tbl, 0, 0, "DOM Profile", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 1, 0, "Sell | Buy", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 2, 0, "Total Vol", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 3, 0, "Net Delta", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 4, 0, "Price Level", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+    else
+        table.cell(footprint_tbl, 0, 0, "Sell | Buy", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 1, 0, "Total Vol", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 2, 0, "Net Delta", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 3, 0, "Price Level", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
 
     // Populate rows (high price to low price)
     for r = start_r to end_r
@@ -538,10 +549,26 @@ if barstate.islast and total_profile_volume > 0
         else if (level_sell_vol > level_buy_vol * vp_imbalance_threshold and level_buy_vol > 0)
             delta_bgcolor := color.new(col_bear, 15)
 
-        table.cell(footprint_tbl, 0, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
-        table.cell(footprint_tbl, 1, tbl_row, format_vol(level_vol), bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
-        table.cell(footprint_tbl, 2, tbl_row, (level_delta >= 0 ? "+" : "") + format_vol(level_delta), bgcolor=delta_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
-        table.cell(footprint_tbl, 3, tbl_row, price_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+        // Construct DOM Profile bar characters (using a simplified professional block bar representation based on volume ratio)
+        int bar_max_blocks = 12
+        int bar_blocks_count = max_profile_vol > 0 ? math.round((level_vol / max_profile_vol) * bar_max_blocks) : 0
+        string dom_bar_str = ""
+        if bar_blocks_count > 0
+            for b = 1 to bar_blocks_count
+                dom_bar_str := dom_bar_str + "█"
+
+        // Cell Population based on column configuration
+        if show_dom
+            table.cell(footprint_tbl, 0, tbl_row, dom_bar_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 1, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 2, tbl_row, format_vol(level_vol), bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 3, tbl_row, (level_delta >= 0 ? "+" : "") + format_vol(level_delta), bgcolor=delta_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 4, tbl_row, price_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+        else
+            table.cell(footprint_tbl, 0, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 1, tbl_row, format_vol(level_vol), bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 2, tbl_row, (level_delta >= 0 ? "+" : "") + format_vol(level_delta), bgcolor=delta_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 3, tbl_row, price_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
 
 // -----------------------------------------------------------------------------
 // 7. BRAND LOGO ANIMATED SYSTEM (FROM BOOKMAP.PINE)
