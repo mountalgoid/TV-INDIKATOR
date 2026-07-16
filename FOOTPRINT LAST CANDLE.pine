@@ -626,7 +626,7 @@ if show_logo and barstate.islast
     Line1b6 := line.new(x1 = bar_index + l_off + 26, y1 = point7b, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = 1)
     Line1b7 := line.new(x1 = bar_index + l_off + 32, y1 = logo_base, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = 1)
 
-    label l = label.new(bar_index + l_off + 54, point2b, "👑 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο" + "\nFOOTPRINT ANALYST PRO v1.1", text_formatting=text.format_bold, style=label.style_none, textcolor=col_poc, size=size.normal, textalign=text.align_left)
+    label l = label.new(bar_index + l_off + 54, point2b, "👑 模块 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο" + "\nFOOTPRINT ANALYST PRO v1.1", text_formatting=text.format_bold, style=label.style_none, textcolor=col_poc, size=size.normal, textalign=text.align_left)
     array.push(brand_labels, l)
 
     label glow1 = label.new(bar_index + l_off + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
@@ -643,5 +643,6 @@ candle_wick_color = show_large_vol_candle and is_large_vol_candle ? col_poc : (c
 
 plotcandle(open, high, low, close, color=candle_body_color, wickcolor=candle_wick_color, bordercolor=candle_wick_color, title="Dynamic Candles")
 
-// Large Volume Candle Indicator shape marker (⚡)
-plotchar(show_large_vol_candle and is_large_vol_candle ? (close >= open ? low : high) : na, "Large Vol Candle Char", char="⚡", location=close >= open ? location.belowbar : location.abovebar, color=col_poc, size=size.small)
+// Large Volume Candle Indicator shape marker (⚡) - Splitted location checks for universal compilation
+plotchar(show_large_vol_candle and is_large_vol_candle and close >= open ? low : na, "Large Vol Candle Bull", char="⚡", location=location.belowbar, color=col_poc, size=size.small)
+plotchar(show_large_vol_candle and is_large_vol_candle and close < open ? high : na, "Large Vol Candle Bear", char="⚡", location=location.abovebar, color=col_poc, size=size.small)
