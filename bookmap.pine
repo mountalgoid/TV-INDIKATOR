@@ -31,8 +31,6 @@ type PredictHist
 
 var line[] predict_lines = array.new_line()
 var label[] predict_labels = array.new_label()
-var box[] predict_boxes = array.new_box()
-var box[] dom_boxes = array.new_box()
 var array<PredictHist> predict_history = array.new<PredictHist>()
 var int total_predictions = 0
 var int hits_count = 0
@@ -48,7 +46,6 @@ string grp_gen    = "General Settings"
 string grp_vis    = "Visuals (Bubbles)"
 string grp_vp     = "Volume Profile Settings"
 string grp_grad   = "Super Gradient Colors"
-string grp_dom    = "Deep Order Market (DOM)"
 string grp_ema    = "EMA Settings"
 string grp_candle = "Candle Settings"
 string grp_hpoc   = "Historical POC Plot"
@@ -128,6 +125,7 @@ bool   show_imb_boxes   = input.bool(true, "Show Imbalance Boxes", group=grp_vis
 // Volume Profile Settings
 bool show_vp        = input.bool(true, "Show Volume Profile", group=grp_vp)
 string vp_type      = input.string("Delta", "Profile View Type", options=["Normal", "Delta"], group=grp_vp)
+string vp_render_style = input.string("Box (Detail)", "Profile Rendering Style", options=["Box (Detail)", "Line (Simple)"], group=grp_vp)
 bool show_vp_labels = input.bool(true, "Show Text Labels", group=grp_vp)
 int  vp_lookback    = input.int(1000, "Main VP Lookback Length", minval=2, maxval=2000, group=grp_vp) 
 bool show_vp_short  = input.bool(true, "Show Short-Term VP", group=grp_vp)
@@ -170,9 +168,8 @@ int   avg_plots_len  = input.int(1000, "Avg Plots Length", minval=1, group=grp_a
 
 // Prediction Settings
 bool   show_predict        = input.bool(false, "Show Prediction Analysis", group=grp_predict)
-int    predict_bars        = input.int(200, "Prediction Lookahead (Bars)", minval=5, maxval=1000, group=grp_predict)
+int    predict_bars        = input.int(60, "Prediction Lookahead (Bars)", minval=5, maxval=1000, group=grp_predict)
 int    predict_targets     = input.int(2, "Max Prediction Targets (Global)", minval=1, maxval=10, group=grp_predict)
-string predict_style       = input.string("Aesthetic Bubbles", "Visual Style", options=["Aesthetic Bubbles", "Path Only", "Bubbles Only"], group=grp_predict)
 bool   show_predict_labels = input.bool(true, "Show Target Values", group=grp_predict)
 bool   show_priority       = input.bool(true, "Show Priority Rank", group=grp_predict)
 bool   show_predict_hist   = input.bool(true, "Show Hit History", group=grp_predict)
@@ -183,9 +180,13 @@ bool   show_candles      = input.bool(false, "Use Candles", group=grp_candle)
 string candle_color_mode = input.string("Bubble Map", "Candle Color Mode", options=["Normal", "Delta Bubble", "Bubble Map"], group=grp_candle)
 bool   show_plotline     = input.bool(true, "Use Plot line", group=grp_candle)
 
-// DOM Settings
-bool show_dom  = input.bool(true, "Show DOM Profile", group=grp_dom)
-int  dom_width = vp_width //input.int(6, "DOM Width (%)", minval=5, maxval=30, group=grp_dom)
+// Position Tool Settings
+string grp_pos     = "Long/Short Position Tool"
+bool   show_pos    = input.bool(false, "Show Position Box", group=grp_pos)
+string pos_type    = input.string("Long", "Position Type", options=["Long", "Short"], group=grp_pos)
+float  pos_entry   = input.float(na, "Entry Price", group=grp_pos)
+float  pos_tp      = input.float(na, "Take Profit Price", group=grp_pos)
+float  pos_sl      = input.float(na, "Stop Loss Price", group=grp_pos)
 
 // Visuals (Bubbles)
 bool   show_plots            = input.bool(true, "Show Volume Bubbles", group=grp_vis)
@@ -253,9 +254,10 @@ f_formatNumber(number, add_sign) =>
 get_table_bg(int c, int r, int total_c, int total_r) =>
     float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
     color base = color.from_gradient(ratio, 0, 1, col_bull, col_bear)
-    // Transparency gradient from 50 (at ratio=0) to 90 (at ratio=1)
-    int t_alpha = math.round(50 + ratio * 40)
-    color.new(base, t_alpha)
+    color mixed_base = color.from_gradient(35, 0, 100, base, #8b4513)
+    // 80 transparency = 20% opacity
+    int t_alpha = 80
+    color.new(mixed_base, t_alpha)
 
 get_profile_alpha(float intensity, float level, float price_center, float inv_fade_range) =>
     float dist_ratio = math.min(1.0, math.abs(level - price_center) * inv_fade_range)
@@ -916,6 +918,7 @@ plotchar(show_s and vol_intensity_sell <= 0.3 ? sell_loc : na, "S3L", char="●"
 // -----------------------------------------------------------------------------
 var box[] vp_boxes = array.new_box()
 var box[] vp_s_boxes = array.new_box()
+var box[] pos_boxes = array.new_box()
 var box[] total_boxes = array.new_box()
 var line[] total_grad_lines = array.new_line()
 var linefill[] total_fills = array.new<linefill>()
@@ -953,6 +956,10 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         for i = 0 to array.size(vp_s_boxes) - 1
             box.delete(array.get(vp_s_boxes, i))
         array.clear(vp_s_boxes)
+    if array.size(pos_boxes) > 0
+        for i = 0 to array.size(pos_boxes) - 1
+            box.delete(array.get(pos_boxes, i))
+        array.clear(pos_boxes)
     if array.size(total_boxes) > 0
         for i = 0 to array.size(total_boxes) - 1
             box.delete(array.get(total_boxes, i))
@@ -965,10 +972,6 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         for i = 0 to array.size(total_fills) - 1
             linefill.delete(array.get(total_fills, i))
         array.clear(total_fills)
-    if array.size(dom_boxes) > 0
-        for i = 0 to array.size(dom_boxes) - 1
-            box.delete(array.get(dom_boxes, i))
-        array.clear(dom_boxes)
     if array.size(vp_lines) > 0
         for i = 0 to array.size(vp_lines) - 1
             line.delete(array.get(vp_lines, i))
@@ -1001,10 +1004,6 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
         for i = 0 to array.size(predict_labels) - 1
             label.delete(array.get(predict_labels, i))
         array.clear(predict_labels)
-    if array.size(predict_boxes) > 0
-        for i = 0 to array.size(predict_boxes) - 1
-            box.delete(array.get(predict_boxes, i))
-        array.clear(predict_boxes)
     if array.size(vp_s_lines) > 0
         for i = 0 to array.size(vp_s_lines) - 1
             line.delete(array.get(vp_s_lines, i))
@@ -1130,6 +1129,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             float vah_price = lowest_p + (va_top * row_height) + row_height
             float val_price = lowest_p + (va_bot * row_height)
+            float poc_price = lowest_p + (poc_idx * row_height) + (row_height/2)
             
             // --- LVN IDENTIFICATION ---
             array<int> lvn_indices = array.new_int(0)
@@ -1155,34 +1155,61 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             // --- HVTs IDENTIFICATION FOR PREDICTION ---
             array.clear(targets_all)
-            // --- HVTs IDENTIFICATION FOR PREDICTION (Optimized collection) ---
+            // --- HVTs IDENTIFICATION FOR PREDICTION (Structured 4-Step Collection) ---
             if show_predict
                 array<HVT> raw_targets = array.new<HVT>()
                 
-                // 0. Collect from User EMA - PRIORITY 1 (Highest Precision)
-                if show_ema_long
-                    array.push(raw_targets, HVT.new(price=ema_long_val, strength=150.0, is_above=ema_long_val > close, priority=1, description="institutional ema s/r"))
+                // STEP 1: Trend Focus (Average Delta +/- Trends & EMA)
+                if show_ema_long and not na(ema_long_val)
+                    array.push(raw_targets, HVT.new(price=ema_long_val, strength=150.0, is_above=ema_long_val > close, priority=1, description="institutional ema trend"))
+                if not na(hist_avg_buy_g)
+                    array.push(raw_targets, HVT.new(price=hist_avg_buy_g, strength=100.0, is_above=hist_avg_buy_g > close, priority=1, description="trend average buy price"))
+                if not na(hist_avg_sell_g)
+                    array.push(raw_targets, HVT.new(price=hist_avg_sell_g, strength=100.0, is_above=hist_avg_sell_g > close, priority=1, description="trend average sell price"))
 
-                // 1. Collect from Bubble Volume (Large Vol Zones) - PRIORITY 1
-                // Real-time (Current Bar)
-                if vol_intensity_buy >= large_vol_threshold
-                    array.push(raw_targets, HVT.new(price=buy_loc, strength=120.0, is_above=buy_loc > close, priority=1, description="real-time buy volume surge"))
-                if vol_intensity_sell >= large_vol_threshold
-                    array.push(raw_targets, HVT.new(price=sell_loc, strength=120.0, is_above=sell_loc > close, priority=1, description="real-time sell volume surge"))
-                // Historical (Unmitigated)
+                // STEP 2: Total Delta Main Volume Profile (VAL, VAH, POC, HVN, LVN)
+                if not na(val_price)
+                    array.push(raw_targets, HVT.new(price=val_price, strength=120.0, is_above=val_price > close, priority=2, description="main profile val"))
+                if not na(vah_price)
+                    array.push(raw_targets, HVT.new(price=vah_price, strength=120.0, is_above=vah_price > close, priority=2, description="main profile vah"))
+                if not na(poc_price)
+                    array.push(raw_targets, HVT.new(price=poc_price, strength=140.0, is_above=poc_price > close, priority=2, description="main profile poc"))
+                if array.size(hvn_indices) > 0
+                    for hvn_idx in hvn_indices
+                        float p_hvn = lowest_p + (hvn_idx * row_height) + (row_height/2)
+                        array.push(raw_targets, HVT.new(price=p_hvn, strength=110.0, is_above=p_hvn > close, priority=2, description="main profile hvn"))
+                if array.size(lvn_indices) > 0
+                    for lvn_idx in lvn_indices
+                        float p_lvn = lowest_p + (lvn_idx * row_height) + (row_height/2)
+                        array.push(raw_targets, HVT.new(price=p_lvn, strength=80.0, is_above=p_lvn > close, priority=2, description="main profile lvn"))
+
+                // STEP 3: Short Volume Profile (VAL, VAH, POC, LVN, HVN)
+                if show_vp_short
+                    if not na(val_s_price)
+                        array.push(raw_targets, HVT.new(price=val_s_price, strength=90.0, is_above=val_s_price > close, priority=3, description="short profile val"))
+                    if not na(vah_s_price)
+                        array.push(raw_targets, HVT.new(price=vah_s_price, strength=90.0, is_above=vah_s_price > close, priority=3, description="short profile vah"))
+                    float poc_s_p = lowest_p + (poc_s_idx * row_height) + (row_height/2)
+                    if not na(poc_s_p)
+                        array.push(raw_targets, HVT.new(price=poc_s_p, strength=100.0, is_above=poc_s_p > close, priority=3, description="short profile poc"))
+                    if array.size(lvn_s_indices) > 0
+                        for l_idx in lvn_s_indices
+                            float lp = lowest_p + (l_idx * row_height) + (row_height/2)
+                            array.push(raw_targets, HVT.new(price=lp, strength=70.0, is_above=lp > close, priority=3, description="short profile lvn"))
+                    if array.size(hvn_s_indices) > 0
+                        for h_idx in hvn_s_indices
+                            float hp = lowest_p + (h_idx * row_height) + (row_height/2)
+                            array.push(raw_targets, HVT.new(price=hp, strength=95.0, is_above=hp > close, priority=3, description="short profile hvn"))
+
+                // STEP 4: Large Bubble Volume (Bubble Volume & Delta Bubble Volume)
+                if vol_intensity_buy >= large_vol_threshold and not na(buy_loc)
+                    array.push(raw_targets, HVT.new(price=buy_loc, strength=130.0, is_above=buy_loc > close, priority=4, description="large buy bubble volume"))
+                if vol_intensity_sell >= large_vol_threshold and not na(sell_loc)
+                    array.push(raw_targets, HVT.new(price=sell_loc, strength=130.0, is_above=sell_loc > close, priority=4, description="large sell bubble volume"))
                 if array.size(lv_boxes) > 0
                     for lvb in lv_boxes
-                        if lvb.active
-                            array.push(raw_targets, HVT.new(price=lvb.level, strength=100.0, is_above=lvb.level > close, priority=1, description="unmitigated large volume zone"))
-
-                // 3. Collect from Volume Profile (Significant Nodes) - PRIORITY 3
-                int bucket_size = array.size(bucket_vol_total)
-                float avg_vp_vol = bucket_size > 0 ? array.sum(bucket_vol_total) / bucket_size : 0
-                for i = 0 to bucket_size - 1
-                    float v = array.get(bucket_vol_total, i)
-                    if v > avg_vp_vol * 1.5
-                        float p = lowest_p + (i * row_height) + (row_height/2)
-                        array.push(raw_targets, HVT.new(price=p, strength=v * inv_max_total_vol * 100, is_above=p > close, priority=3, description="high volume profile node"))
+                        if lvb.active and not na(lvb.level)
+                            array.push(raw_targets, HVT.new(price=lvb.level, strength=110.0, is_above=lvb.level > close, priority=4, description=lvb.is_buy ? "unmitigated large buy volume bubble" : "unmitigated large sell volume bubble"))
 
                 // --- SMART CONFLUENCE MERGING ---
                 float merge_threshold = row_height * 1.2
@@ -1278,10 +1305,15 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             // --- DYNAMIC OFFSET CALCULATION ---
             int predict_count = math.min(predict_targets, array.size(targets_all))
-            predict_reach := predict_count * predict_bars
+            predict_reach := show_predict ? predict_count * predict_bars : 0
             int width_scaler_vp = math.round(30 * (vp_width / 10.0))
             int width_scaler_s = math.round(width_scaler_vp * 0.6)
             int x_s_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
+
+            // Safe Coordinate Capping to prevent RE10020 runtime error
+            int max_x_s_start = bar_index + 416 - (show_vp_short ? width_scaler_s + vp_gap + 20 : 0) - width_scaler_vp - vp_gap
+            x_s_start := math.max(bar_index + 10, math.min(x_s_start, max_x_s_start))
+
             int x_vp_start = x_s_start + (show_vp_short ? width_scaler_s + vp_gap + 20 : 0) // Extra space for short VP labels
             float inv_fade_range = 1.0 / (40 * row_height)
 
@@ -1302,8 +1334,12 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     int len_s = math.round(width_scaler_s * pct_s)
                     string txt_s_delta = show_vp_labels ? ((s_delta > 0 ? "+" : "") + format_vol(s_delta)) : ""
                     string vp_s_txt = show_vp_labels ? (format_vol(b_s_vol) + (vp_type == "Delta" ? " | " + txt_s_delta : "")) : ""
-                    box bs = box.new(x_s_start, level_top, x_s_start + len_s, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
-                    array.push(vp_s_boxes, bs)
+                    if vp_render_style == "Line (Simple)"
+                        line l_vp_s = line.new(x_s_start, level_bottom + row_height/2, x_s_start + len_s, level_bottom + row_height/2, color=s_base_c, width=1)
+                        array.push(vp_s_lines, l_vp_s)
+                    else
+                        box bs = box.new(x_s_start, level_top, x_s_start + len_s, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
+                        array.push(vp_s_boxes, bs)
                     
                     if i == poc_s_idx
                         float poc_s_p = level_bottom + (row_height/2)
@@ -1330,10 +1366,12 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     
                     if show_vp
                         string vp_txt = show_vp_labels ? (format_vol(b_vol) + (vp_type == "Delta" ? " | " + txt_delta : "")) : ""
-                        box b = box.new(x_vp_start, level_top, x_vp_start + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt, text_formatting = text.format_bold,text_size=size.auto, text_color=dark)
-                        array.push(vp_boxes, b)
-
-            float poc_price = lowest_p + (poc_idx * row_height) + (row_height/2)
+                        if vp_render_style == "Line (Simple)"
+                            line l_vp = line.new(x_vp_start, level_bottom + row_height/2, x_vp_start + len_total, level_bottom + row_height/2, color=base_c, width=1)
+                            array.push(vp_lines, l_vp)
+                        else
+                            box b = box.new(x_vp_start, level_top, x_vp_start + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt, text_formatting = text.format_bold,text_size=size.auto, text_color=dark)
+                            array.push(vp_boxes, b)
             
             if show_vp_short
                 float poc_s_p = lowest_p + (poc_s_idx * row_height) + (row_height/2)
@@ -1381,8 +1419,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                                             text_formatting=text.format_bold, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(hvn_s_boxes, b_hvn)
             int end_line = x_vp_start + width_scaler_vp + vp_gap
-            int width_scaler_dom_calc = math.round(30 * (vp_width / 10.0))
-            int final_end_line = end_line + (show_dom ? vp_gap * 5 + width_scaler_dom_calc : 0)
+            int final_end_line = end_line
 
             if show_vp
                 // Profile Boundaries Backgrounds
@@ -1446,39 +1483,8 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 line l_vlh2 = line.new(x_vp_start - 1, vah_price, x_vp_start - 1, highest_p, color=color.new(col_bear , 0), width=6, style=line.style_solid)
                 array.push(vp_lines, l_vlh2)
 
-            // --- DEEP ORDER MARKET (DOM) - SYNCED INTEGRATION ---
-            if show_dom
-                // Re-use buckets or re-calculate for DOM specificity if needed, 
-                // but user wants same length/rows as VP.
-                float max_dom_vol = max_split_vol
-                float inv_max_dom_vol = inv_max_split_vol
-                int x_dom_start = end_line + vp_gap * 5
-
-                for i = 0 to n_rows - 1
-                    float b_buy = array.get(bucket_vol_buy, i)
-                    float b_sell = array.get(bucket_vol_sell, i)
-                    float level_bottom = lowest_p + (i * row_height)
-                    float level_top = level_bottom + row_height
-
-                    if level_bottom >= close
-                        if b_sell > 0
-                            float pct_dom_s = b_sell * inv_max_dom_vol
-                            int t_dom_s = get_profile_alpha(pct_dom_s, level_bottom, close, inv_fade_range)
-                            color grad_dom_sell = color.new(color.from_gradient(b_sell, 0, max_dom_vol, c_sell, col_poc), t_dom_s)
-                            int len_sell = math.round(width_scaler_dom_calc * pct_dom_s)
-                            box bs = box.new(x_dom_start, level_top, x_dom_start + len_sell, level_bottom, border_width=1, border_color=transparent_col, bgcolor=grad_dom_sell)
-                            array.push(dom_boxes, bs)
-                    else
-                        if b_buy > 0
-                            float pct_dom_b = b_buy * inv_max_dom_vol
-                            int t_dom_b = get_profile_alpha(pct_dom_b, level_bottom, close, inv_fade_range)
-                            color grad_dom_buy = color.new(color.from_gradient(b_buy, 0, max_dom_vol, c_buy, col_poc), t_dom_b)
-                            int len_buy = math.round(width_scaler_dom_calc * pct_dom_b)
-                            box bb = box.new(x_dom_start, level_top, x_dom_start + len_buy, level_bottom, border_width=1, border_color=transparent_col, bgcolor=grad_dom_buy)
-                            array.push(dom_boxes, bb)
-                
-                // Update Logo Offset based on final technical stack width
-                l_off := (final_end_line - bar_index) + 10
+            // Update Logo Offset based on final technical stack width
+            l_off := (final_end_line - bar_index) + 10
 
             // --- BUY/SELL AVERAGE LINES (SYNCED WITH HISTORICAL PLOTS) ---
             if not na(hist_avg_buy_g) and show_vp
@@ -1550,29 +1556,27 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 
                 for i = 0 to count - 1
                     HVT t = array.get(targets_all, i)
-                    int x_start = cur_x
+                    int x_start = math.min(bar_index + 450, cur_x)
                     float y_start = cur_y
-                    int x_end = cur_x + predict_bars
+                    int x_end = math.min(bar_index + 450, cur_x + predict_bars)
                     float y_end = t.price
                     color h_col = t.is_above ? col_bull : col_bear
                     
                     // Intensity based on confluence
                     int path_width = math.min(2, t.confluence)
                     
-                    if predict_style != "Bubbles Only"
+                    if x_start < x_end
                         array.push(predict_lines, line.new(x_start, y_start, x_end, y_end, color=color.new(h_col, 0), width=path_width, style=line.style_dotted))
                     
-                    if predict_style != "Path Only"
+                    if x_end <= bar_index + 450
                         string lbl_txt = show_predict_labels ? str.tostring(t.price, format.mintick) : ""
                         if show_priority
                             string p_marker = t.priority == 1 ? (math.abs(t.price - ema_long_val) < row_height * 2 ? "[E]" : "[B]") : (t.priority == 2 ? "[L]" : "[V]")
                             lbl_txt += " | " + p_marker + " #" + str.tostring(i + 1)
                         // Shift labels slightly to the right of the bubble
-                        array.push(predict_labels, label.new(x_end + 3, y_end, lbl_txt, color=color.new(h_col, 80), textcolor=white, style=label.style_label_left, size=size.tiny, text_formatting=text.format_bold))
+                        array.push(predict_labels, label.new(math.min(bar_index + 480, x_end + 3), y_end, lbl_txt, color=color.new(h_col, 80), textcolor=white, style=label.style_label_left, size=size.tiny, text_formatting=text.format_bold))
                         array.push(predict_labels, label.new(x_end, y_end, "●", color=color.new(h_col, 100), textcolor=white, style=label.style_label_center, size=size.small))
                         array.push(predict_labels, label.new(x_end, y_end, "○", color=color.new(h_col, 100), textcolor=white, style=label.style_label_center, size=size.large))
-                        float box_h = row_height * (0.5 + 0.5 * t.confluence)
-                        array.push(predict_boxes, box.new(x_end - 5, y_end + box_h, x_end + 5, y_end - box_h, border_color=color.new(h_col, 60), bgcolor=color.new(h_col, 95), border_style=line.style_dotted, border_width=1))
                         
                         if barstate.isconfirmed and i == 0
                             array.push(predict_history, PredictHist.new(start_idx=bar_index, end_idx=bar_index + predict_bars, y_start=close, target_p=y_end, is_above=t.is_above, is_hit=false, hit_idx=na, is_settled=false, ln_path=na, lbl_target=na, lbl_price=na))
@@ -1832,7 +1836,7 @@ if show_table and barstate.islast
     
 
     int max_table_rows = is_vert ? (show_predict ? 24 : 16) : (show_predict ? 12 : 7)
-    info_table := table.new(pos, is_vert ? 2 : 6, max_table_rows, bgcolor=color.new(dark, 100), border_width=1, border_color=color.new(col_poc, 90), frame_color=color.new(col_poc, 60), frame_width=1)
+    info_table := table.new(pos, is_vert ? 2 : 6, max_table_rows, bgcolor=color.new(dark, 80), border_width=1, border_color=color.new(col_poc, 90), frame_color=color.new(col_poc, 60), frame_width=1)
 
     if is_vert
         // Header
@@ -1989,6 +1993,51 @@ pavgb = plot(show_avg_plots ? hist_avg_buy_g : na, "Avg Buy Hist", color=color.n
 pavgs = plot(show_avg_plots ? hist_avg_sell_g : na, "Avg Sell Hist", color=color.new(col_bear, 0), linewidth=1)
 
 //fill(pavgb,pavgs,color = color.new(col,40),display = show_avg_plots ? display.all : display.none)
+
+// --- LONG/SHORT POSITION TOOL DRAWING ---
+if show_pos and barstate.islast
+    // Determine the entry, tp, and sl values
+    float entry_p = not na(pos_entry) ? pos_entry : close
+    float tp_p    = not na(pos_tp) ? pos_tp : (pos_type == "Long" ? entry_p + 3 * mkt_atr_cur : entry_p - 3 * mkt_atr_cur)
+    float sl_p    = not na(pos_sl) ? pos_sl : (pos_type == "Long" ? entry_p - 2 * mkt_atr_cur : entry_p + 2 * mkt_atr_cur)
+
+    // Calculate percentage change
+    float profit_pct = entry_p > 0 ? math.abs(tp_p - entry_p) / entry_p * 100 : 0.0
+    float loss_pct   = entry_p > 0 ? math.abs(entry_p - sl_p) / entry_p * 100 : 0.0
+
+    // Risk-to-Reward Ratio
+    float risk = math.abs(entry_p - sl_p)
+    float reward = math.abs(tp_p - entry_p)
+    float rr_ratio = risk > 0 ? reward / risk : 0.0
+
+    // Box dimensions
+    int left_idx = bar_index
+    int right_idx = bar_index + 15
+
+    // Build descriptions
+    string tp_text = "TP: " + str.tostring(tp_p, format.mintick) + "\nProfit: +" + str.tostring(profit_pct, "#.##") + "%\nRR Ratio: " + str.tostring(rr_ratio, "#.##")
+    string sl_text = "SL: " + str.tostring(sl_p, format.mintick) + "\nLoss: -" + str.tostring(loss_pct, "#.##") + "%\nEntry: " + str.tostring(entry_p, format.mintick)
+
+    // Draw the Target/TP Box
+    color tp_bg = color.new(col_bull, 85)
+    color tp_border = col_bull
+    color sl_bg = color.new(col_bear, 85)
+    color sl_border = col_bear
+
+    if pos_type == "Long"
+        box_tp = box.new(left_idx, tp_p, right_idx, entry_p, bgcolor=tp_bg, border_color=tp_border, border_width=1,
+                         text=tp_text, text_color=white, text_size=size.small, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+        box_sl = box.new(left_idx, entry_p, right_idx, sl_p, bgcolor=sl_bg, border_color=sl_border, border_width=1,
+                         text=sl_text, text_color=white, text_size=size.small, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+        array.push(pos_boxes, box_tp)
+        array.push(pos_boxes, box_sl)
+    else
+        box_tp = box.new(left_idx, entry_p, right_idx, tp_p, bgcolor=tp_bg, border_color=tp_border, border_width=1,
+                         text=tp_text, text_color=white, text_size=size.small, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+        box_sl = box.new(left_idx, sl_p, right_idx, entry_p, bgcolor=sl_bg, border_color=sl_border, border_width=1,
+                         text=sl_text, text_color=white, text_size=size.small, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+        array.push(pos_boxes, box_tp)
+        array.push(pos_boxes, box_sl)
 
 //═══════════════════════════════════════════════════════════════════════════════
 // LOGO GRADIENT ENHANCED - TOTAL SYNC (LINES & FILL)
