@@ -348,17 +348,19 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
                 float y_top = bot + ((r + 1) * step)
                 float y_mid = bot + (step * r) + (step * 0.5)
 
+                color base_c = use_theme_for_vp ? (vp_type == "Normal" ? col_poc : (r_delta > 0 ? col_bull : (r_delta < 0 ? col_bear : col_poc))) : colVolBase
+
                 // Heatmap Box
                 if vR > 0
                     float alpha = 98 - (pct * 78) // 20 - 98 Alpha range
-                    color base_c = use_theme_for_vp ? (vp_type == "Normal" ? col_poc : (r_delta > 0 ? col_bull : (r_delta < 0 ? col_bear : col_poc))) : colVolBase
                     color heatCol = color.new(base_c, math.round(alpha))
                     b = box.new(x_box_left, y_top, x_box_right, y_bot, xloc=xloc.bar_time, border_width=0, bgcolor=heatCol)
                     if isLive
                         array.push(liveBoxes, b)
                 
-                // Curve Outline
-                curLine = line.new(prevX, prevY, x_curve, y_mid, xloc=xloc.bar_time, color=colCurve, width=1)
+                // Curve Outline (dynamically colored to match the heatmap row)
+                color line_c = vR > 0 ? base_c : colCurve
+                curLine = line.new(prevX, prevY, x_curve, y_mid, xloc=xloc.bar_time, color=line_c, width=1)
                 if isLive
                     array.push(liveLines, curLine)
                 
@@ -395,10 +397,10 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
             color val_bg = color.new(col_bear, 92)
 
             color poc_border = final_col_poc
-            color vah_border = final_col_va
-            color val_border = final_col_va
+            color vah_border = col_bull
+            color val_border = col_bear
 
-            // Draw level boxes spanning the entire zone width (tStart to tEnd)
+            // Draw level boxes spanning the entire zone width (tStart to tEnd) with high-clarity text
             box_poc = box.new(tStart, poc_top, tEnd, poc_bot, xloc=xloc.bar_time,
                               border_color=poc_border, border_width=1, border_style=line.style_solid, bgcolor=poc_bg,
                               text=poc_txt, text_color=poc_border, text_size=size.auto,
@@ -419,7 +421,7 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
                 array.push(liveBoxes, box_vah)
                 array.push(liveBoxes, box_val)
 
-            // 6. DRAW HVNs and LVNs (as area boxes spanning tStart to tEnd within node boundary)
+            // 6. DRAW HVNs and LVNs (as area boxes extending to the right boundary of the chart, with high-clarity bold text)
             if showLvnHvn and totalVol > 0
                 float avg_vol = array.avg(volArr)
                 float thresh_lvn = maxV * lvnThreshold
@@ -435,7 +437,7 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
                     if v_curr > v_prev and v_curr > v_next and v_curr > avg_vol * hvnThreshold and r != pocIdx
                         box bhvn = box.new(tStart, node_top, tEnd, node_bot, xloc=xloc.bar_time,
                              border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
-                             bgcolor=colHvn, text="HVN", text_color=color.new(white, 20), text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                             bgcolor=colHvn, text="𝗛𝗩𝗡", text_color=white, text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
                         if isLive
                             array.push(liveBoxes, bhvn)
 
@@ -443,7 +445,7 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
                     if v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
                         box blvn = box.new(tStart, node_top, tEnd, node_bot, xloc=xloc.bar_time,
                              border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
-                             bgcolor=colLvn, text="LVN", text_color=color.new(white, 20), text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                             bgcolor=colLvn, text="𝗟𝗩𝗡", text_color=white, text_size=size.tiny, text_halign=text.align_right, text_valign=text.align_center)
                         if isLive
                             array.push(liveBoxes, blvn)
 
