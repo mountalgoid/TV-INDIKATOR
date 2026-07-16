@@ -401,17 +401,17 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
             // Draw level boxes spanning the entire zone width (tStart to tEnd)
             box_poc = box.new(tStart, poc_top, tEnd, poc_bot, xloc=xloc.bar_time,
                               border_color=poc_border, border_width=1, border_style=line.style_solid, bgcolor=poc_bg,
-                              text=poc_txt, text_color=poc_border, text_size=size.auto, text_style=text.style_bold,
+                              text=poc_txt, text_color=poc_border, text_size=size.auto,
                               text_halign=text.align_center, text_valign=text.align_center)
 
             box_vah = box.new(tStart, vah_top, tEnd, vah_bot, xloc=xloc.bar_time,
                               border_color=vah_border, border_width=1, border_style=line.style_dashed, bgcolor=vah_bg,
-                              text=vah_txt, text_color=vah_border, text_size=size.auto, text_style=text.style_bold,
+                              text=vah_txt, text_color=vah_border, text_size=size.auto,
                               text_halign=text.align_center, text_valign=text.align_center)
 
             box_val = box.new(tStart, val_top, tEnd, val_bot, xloc=xloc.bar_time,
                               border_color=val_border, border_width=1, border_style=line.style_dashed, bgcolor=val_bg,
-                              text=val_txt, text_color=val_border, text_size=size.auto, text_style=text.style_bold,
+                              text=val_txt, text_color=val_border, text_size=size.auto,
                               text_halign=text.align_center, text_valign=text.align_center)
 
             if isLive
