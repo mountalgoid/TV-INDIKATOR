@@ -1,5 +1,5 @@
 //@version=6
-indicator("Footprint Last Candle Professional 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο", shorttitle="Footprint Last Candle", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+indicator("Footprint Last Candle Professional 专 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο", shorttitle="Footprint Last Candle", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
 
 // -----------------------------------------------------------------------------
 // 1. INPUTS & CONFIGURATION
@@ -590,7 +590,7 @@ get_fade_alpha(float x_rel) =>
     math.round(80 * (1.0 - ratio))
 
 if show_logo and barstate.islast
-    int safe_logo_offset = math.min(logo_offset, bar_index + 400)
+    int safe_logo_offset = math.min(logo_offset, 400)
     int l_off = safe_logo_offset
     color c_head_sync = get_adv_color(1)
 
