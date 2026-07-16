@@ -554,9 +554,18 @@ if barstate.islast and total_profile_volume > 0
             for b = 1 to bar_blocks_count
                 dom_bar_str := dom_bar_str + "█"
 
+        // Set dynamic DOM text color: above current price is bear, below is bull (typology fix for DOM depth displays)
+        color dom_text_color = white
+        if r > current_price_row_idx
+            dom_text_color := col_bear
+        else if r < current_price_row_idx
+            dom_text_color := col_bull
+        else
+            dom_text_color := col_poc
+
         // Cell Population based on column configuration
         if show_dom
-            table.cell(footprint_tbl, 0, tbl_row, dom_bar_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 0, tbl_row, dom_bar_str, bgcolor=row_bgcolor, text_color=dom_text_color, text_size=l_sz, text_formatting=text.format_bold)
             table.cell(footprint_tbl, 1, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
             table.cell(footprint_tbl, 2, tbl_row, format_vol(level_vol), bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
             table.cell(footprint_tbl, 3, tbl_row, (level_delta >= 0 ? "+" : "") + format_vol(level_delta), bgcolor=delta_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
