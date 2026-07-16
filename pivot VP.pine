@@ -197,11 +197,11 @@ distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h,
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
 
-get_ltf_data() =>
-    [b_vol, s_vol] = calc_vol_partition(volume)
-    [open, high, low, close, volume, b_vol, s_vol]
-
-[ltf_o, ltf_h, ltf_l, ltf_c, ltf_v, ltf_b, ltf_s] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_data())
+ltf_o = request.security_lower_tf(syminfo.tickerid, "1", open)
+ltf_h = request.security_lower_tf(syminfo.tickerid, "1", high)
+ltf_l = request.security_lower_tf(syminfo.tickerid, "1", low)
+ltf_c = request.security_lower_tf(syminfo.tickerid, "1", close)
+ltf_v = request.security_lower_tf(syminfo.tickerid, "1", volume)
 
 // --- VARIABLES ---
 var line lastLine = na
@@ -439,17 +439,17 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, isLive) =>
             box_poc = box.new(idxStart, poc_top, idxEnd, poc_bot,
                               border_color=poc_border, border_width=1, border_style=line.style_solid, bgcolor=poc_bg,
                               text=poc_txt, text_color=poc_border, text_size=size.auto,
-                              text_halign=text.align_center, text_valign=text.valign_center)
+                              text_halign="center", text_valign="middle")
 
             box_vah = box.new(idxStart, vah_top, idxEnd, vah_bot,
                               border_color=vah_border, border_width=1, border_style=line.style_dashed, bgcolor=vah_bg,
                               text=vah_txt, text_color=vah_border, text_size=size.auto,
-                              text_halign=text.align_center, text_valign=text.valign_center)
+                              text_halign="center", text_valign="middle")
 
             box_val = box.new(idxStart, val_top, idxEnd, val_bot,
                               border_color=val_border, border_width=1, border_style=line.style_dashed, bgcolor=val_bg,
                               text=val_txt, text_color=val_border, text_size=size.auto,
-                              text_halign=text.align_center, text_valign=text.valign_center)
+                              text_halign="center", text_valign="middle")
 
             if isLive == 1
                 array.push(liveBoxes, box_poc)
@@ -476,7 +476,7 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, isLive) =>
                     if v_curr > v_prev and v_curr > v_next and v_curr > avg_vol * hvnThreshold and r != pocIdx
                         box bhvn = box.new(idxStart, node_top, idxEnd, node_bot,
                              border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
-                             bgcolor=colHvn, text="𝗛𝗩𝗡", text_color=white, text_size=size.tiny, text_halign=text.align_right, text_valign=text.valign_center)
+                             bgcolor=colHvn, text="𝗛𝗩𝗡", text_color=white, text_size=size.tiny, text_halign="right", text_valign="middle")
                         if isLive == 1
                             array.push(liveBoxes, bhvn)
                         else if isLive == 2
@@ -486,7 +486,7 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, isLive) =>
                     if v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
                         box blvn = box.new(idxStart, node_top, idxEnd, node_bot,
                              border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
-                             bgcolor=colLvn, text="𝗟𝗩𝗡", text_color=white, text_size=size.tiny, text_halign=text.align_right, text_valign=text.valign_center)
+                             bgcolor=colLvn, text="𝗟𝗩𝗡", text_color=white, text_size=size.tiny, text_halign="right", text_valign="middle")
                         if isLive == 1
                             array.push(liveBoxes, blvn)
                         else if isLive == 2
