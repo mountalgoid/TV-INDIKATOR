@@ -9,6 +9,20 @@ width_pct    = input.float(0.8, "Width %", step=0.01, group=grp_gen)
 va_pct       = input.float(0.70, "Value Area %", step=0.05, group=grp_gen)
 vp_type      = input.string("Normal", "Profile View Type", options=["Normal", "Delta"], group=grp_gen)
 
+// ===== CANDLE SETTINGS =====
+grp_candle   = "Candle Settings"
+show_candles = input.bool(true, "Show Custom Candles", group=grp_candle)
+candle_mode  = input.string("Based Normal", "Candle Color Mode", options=["Based Normal", "Based Previous POC", "Based Current POC", "Based Delta Volume"], group=grp_candle)
+candle_bull_col = input.color(color.new(#179c74, 30), "Custom Candle Bullish Color", group=grp_candle)
+candle_bear_col = input.color(color.new(#f23645, 30), "Custom Candle Bearish Color", group=grp_candle)
+candle_bull_border = input.color(#179c74, "Custom Candle Bullish Border/Wick", group=grp_candle)
+candle_bear_border = input.color(#f23645, "Custom Candle Bearish Border/Wick", group=grp_candle)
+
+// ===== LOGO SETTINGS =====
+grp_logo     = "Logo Settings"
+show_logo    = input.bool(true, "Show Logo", group=grp_logo, tooltip="Enable/Disable visual logo display")
+OFF_LOGO     = input.int(85, "Logo Offset", group=grp_logo, tooltip="Offset position of the logo from the current bar")
+
 // ----- THEME SYSTEM -----
 grp_theme    = "Visual Themes & Colors"
 theme_mode   = input.bool(true, "Use Selected Color Theme", group=grp_theme)
@@ -217,6 +231,68 @@ get_ltf_v() =>
     [open, high, low, close, volume, b, s]
 
 [ltf_o, ltf_h, ltf_l, ltf_c, ltf_v, ltf_b, ltf_s] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_v())
+
+// ===== GLOBAL POC & CUSTOM CANDLE CALCULATION =====
+var array<float> localVolBins  = array.new_float(rows, 0.0)
+var array<float> localBuyBins  = array.new_float(rows, 0.0)
+var array<float> localSellBins = array.new_float(rows, 0.0)
+
+// Range and segment change tracking
+var float last_hi = na
+var float last_lo = na
+bool range_changed = (hi_val != last_hi) or (lo_val != last_lo)
+
+float local_rng = math.max(hi_val - lo_val, syminfo.mintick * 10)
+float local_step = local_rng / rows
+float local_inv_step = 1.0 / local_step
+
+if bar_index == windowStart or range_changed
+    // Recalculate full segment up to current bar because range changed or segment reset
+    array.fill(localVolBins, 0.0)
+    array.fill(localBuyBins, 0.0)
+    array.fill(localSellBins, 0.0)
+
+    int local_currentLen = bar_index - windowStart + 1
+    for i = 0 to local_currentLen - 1
+        distribute_vol(rows, lo_val, local_inv_step, open[i], high[i], low[i], close[i], volume[i], localVolBins, localBuyBins, localSellBins)
+
+    last_hi := hi_val
+    last_lo := lo_val
+else
+    // Range didn't change! Just incrementally add the current bar's volume
+    distribute_vol(rows, lo_val, local_inv_step, open, high, low, close, volume, localVolBins, localBuyBins, localSellBins)
+
+float local_maxVol = array.max(localVolBins)
+int local_pocIdx = array.indexof(localVolBins, local_maxVol)
+float curr_poc = lo_val + (local_pocIdx * local_step) + (local_step * 0.5)
+
+// Persistent Previous POC tracking across window segments
+var float prev_poc = na
+var float last_finished_poc = na
+
+if bar_index == windowStart and bar_index > 0
+    prev_poc := last_finished_poc
+
+if isWindowEnd
+    last_finished_poc := curr_poc
+
+// Calculate custom candle state
+bool is_bull = false
+if candle_mode == "Based Normal"
+    is_bull := close >= open
+else if candle_mode == "Based Previous POC"
+    is_bull := na(prev_poc) ? (close >= open) : (close >= prev_poc)
+else if candle_mode == "Based Current POC"
+    is_bull := close >= curr_poc
+else if candle_mode == "Based Delta Volume"
+    [b_v, s_v] = calc_vol_partition(volume)
+    is_bull := b_v >= s_v
+
+plot_candle_body = show_candles ? (is_bull ? candle_bull_col : candle_bear_col) : na
+plot_candle_wick = show_candles ? (is_bull ? candle_bull_border : candle_bear_border) : na
+
+plotcandle(open, high, low, close, title="Custom Volume Profile Candles",
+           color=plot_candle_body, wickcolor=plot_candle_wick, bordercolor=plot_candle_wick)
 
 // Volume formatting helper function
 format_vol(float v) =>
@@ -473,3 +549,133 @@ if isWindowEnd
 // 2. Jika Bar Terakhir (Realtime): Gambar sementara (true)
 if barstate.islast and not isWindowEnd
     draw_profile(true)
+
+// ===== ANIMATED BREATHING LOGO SYSTEM =====
+bool  trend_check = ta.ema(close, 2) > ta.ema(open, 2)
+color c_start     = trend_check ? col_bull_eff : col_bear_eff
+color c_end       = trend_check ? col_bear_eff : col_bull_eff
+
+// Animasi "Breathing"
+float time_cycle = timenow / 1000
+float breathe    = (math.sin(time_cycle * 3) + 1) / 2
+
+get_adv_color(step) =>
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15)
+    if dynamic_ratio > 1
+        dynamic_ratio := 1
+    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+
+get_fade_alpha(float x_rel) =>
+    float dist = math.abs(x_rel - 32)
+    float ratio = dist / 32.0
+    math.round(80 * (1 - ratio))
+
+int LG_Line_Widthb = 1
+int periodb        = 200
+
+float logo_base_raw = ta.lowest(low, periodb)
+float logo_range    = ta.highest(high, periodb) - logo_base_raw
+var float h_unit    = na
+
+float target_h = math.max(ta.atr(periodb) * 1.5, logo_range * 0.22)
+h_unit := na(h_unit) ? target_h : h_unit * 0.98 + target_h * 0.02
+
+float logo_base = logo_base_raw - h_unit * 0.2
+
+float point1b  = logo_base + h_unit * 0.71
+float point2b  = logo_base + h_unit * 0.43
+float point3b  = logo_base + h_unit * 0.61
+float point4b  = logo_base + h_unit * 0.32
+float point5b  = logo_base + h_unit * 1.00
+float point6b  = logo_base + h_unit * 0.71
+float point7b  = logo_base + h_unit * 0.18
+float point8b  = logo_base + h_unit * 0.21
+float point9b  = logo_base + h_unit * 0.71
+float point1b0 = logo_base + h_unit * 0.86
+
+var line Line1b  = na
+var line Line2b  = na
+var line Line3b  = na
+var line Line4b  = na
+var line Line5b  = na
+var line Line6b  = na
+var line Line7b  = na
+var line Line8b  = na
+var line Line9b  = na
+var line Line1b0 = na
+var line Line1b1 = na
+var line Line1b2 = na
+var line Line1b3 = na
+var line Line1b4 = na
+var line Line1b5 = na
+var line Line1b6 = na
+var line Line1b7 = na
+var line Line1b8 = na
+var label[] brand_labels = array.new_label()
+
+if not na(Line1b)
+    line.delete(Line1b)
+    line.delete(Line2b)
+    line.delete(Line3b)
+    line.delete(Line4b)
+    line.delete(Line5b)
+    line.delete(Line6b)
+    line.delete(Line7b)
+    line.delete(Line8b)
+    line.delete(Line9b)
+    line.delete(Line1b0)
+    line.delete(Line1b1)
+    line.delete(Line1b2)
+    line.delete(Line1b3)
+    line.delete(Line1b4)
+    line.delete(Line1b5)
+    line.delete(Line1b6)
+    line.delete(Line1b7)
+    line.delete(Line1b8)
+    while array.size(brand_labels) > 0
+        label.delete(array.pop(brand_labels))
+
+if show_logo and barstate.islast
+    color c_head_sync = get_adv_color(1)
+
+    Line1b := line.new(x1 = bar_index + OFF_LOGO + 4, y1 = point7b, x2 = bar_index + OFF_LOGO + 11, y2 = point1b, color = col_poc_eff, width = LG_Line_Widthb)
+    Line2b := line.new(x1 = bar_index + OFF_LOGO + 8, y1 = point7b, x2 = bar_index + OFF_LOGO + 11, y2 = point2b, color = col_poc_eff, width = LG_Line_Widthb)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, get_fade_alpha(7.5)))
+
+    Line3b := line.new(x1 = bar_index + OFF_LOGO + 11, y1 = point1b, x2 = bar_index + OFF_LOGO + 13, y2 = point3b, color = col_poc_eff, width = LG_Line_Widthb)
+    Line4b := line.new(x1 = bar_index + OFF_LOGO + 11, y1 = point2b, x2 = bar_index + OFF_LOGO + 13, y2 = point4b, color = col_poc_eff, width = LG_Line_Widthb)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), get_fade_alpha(12.0)))
+
+    Line5b := line.new(x1 = bar_index + OFF_LOGO + 13, y1 = point3b, x2 = bar_index + OFF_LOGO + 19, y2 = point5b, color = col_poc_eff, width = LG_Line_Widthb)
+    Line6b := line.new(x1 = bar_index + OFF_LOGO + 13, y1 = point4b, x2 = bar_index + OFF_LOGO + 19, y2 = point6b, color = col_poc_eff, width = LG_Line_Widthb)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), get_fade_alpha(16.0)))
+
+    Line7b := line.new(x1 = bar_index + OFF_LOGO + 19, y1 = point5b, x2 = bar_index + OFF_LOGO + 24, y2 = point3b, color = col_poc_eff, width = LG_Line_Widthb)
+    Line8b := line.new(x1 = bar_index + OFF_LOGO + 19, y1 = point6b, x2 = bar_index + OFF_LOGO + 24, y2 = point4b, color = col_poc_eff, width = LG_Line_Widthb)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), get_fade_alpha(21.5)))
+
+    Line9b := line.new(x1 = bar_index + OFF_LOGO + 24, y1 = point3b, x2 = bar_index + OFF_LOGO + 26, y2 = point1b, color = col_poc_eff, width = LG_Line_Widthb)
+    Line1b0 := line.new(x1 = bar_index + OFF_LOGO + 24, y1 = point4b, x2 = bar_index + OFF_LOGO + 26, y2 = point2b, color = col_poc_eff, width = LG_Line_Widthb)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), get_fade_alpha(25.0)))
+
+    Line1b1 := line.new(x1 = bar_index + OFF_LOGO + 26, y1 = point1b, x2 = bar_index + OFF_LOGO + 36, y2 = logo_base, color = col_poc_eff, width = LG_Line_Widthb)
+    Line1b2 := line.new(x1 = bar_index + OFF_LOGO + 26, y1 = point2b, x2 = bar_index + OFF_LOGO + 32, y2 = logo_base, color = col_poc_eff, width = LG_Line_Widthb)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), get_fade_alpha(31.0)))
+
+    Line1b3 := line.new(x1 = bar_index + OFF_LOGO + 2, y1 = point7b, x2 = bar_index + OFF_LOGO + 26, y2 = point7b, color = col_poc_eff, width = LG_Line_Widthb)
+    Line1b4 := line.new(x1 = bar_index + OFF_LOGO + 0, y1 = logo_base, x2 = bar_index + OFF_LOGO + 24, y2 = logo_base, color = col_poc_eff, width = LG_Line_Widthb)
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, get_fade_alpha(13.0)))
+
+    Line1b5 := line.new(x1 = bar_index + OFF_LOGO + 2, y1 = point7b, x2 = bar_index + OFF_LOGO + 0, y2 = logo_base, color = col_poc_eff, width = LG_Line_Widthb)
+    Line1b6 := line.new(x1 = bar_index + OFF_LOGO + 26, y1 = point7b, x2 = bar_index + OFF_LOGO + 24, y2 = logo_base, color = col_poc_eff, width = LG_Line_Widthb)
+
+    Line1b7 := line.new(x1 = bar_index + OFF_LOGO + 32, y1 = logo_base, x2 = bar_index + OFF_LOGO + 36, y2 = logo_base, color = col_poc_eff, width = LG_Line_Widthb)
+
+    label l = label.new(bar_index + OFF_LOGO + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤" + "\nVOLUME PROFILE FIXED RANGE PRO", text_formatting = text.format_bold, style=label.style_none, textcolor=col_poc_eff, size=size.normal, textalign = text.align_left)
+    array.push(brand_labels, l)
+
+    label glow1 = label.new(bar_index + OFF_LOGO + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
+    label glow2 = label.new(bar_index + OFF_LOGO + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc_eff, size=size.huge)
+    array.push(brand_labels, glow1)
+    array.push(brand_labels, glow2)
