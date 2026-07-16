@@ -30,10 +30,6 @@ string table_size_input = input.string("Tiny", "Table Cell Size", options=["Tiny
 bool show_logo = input.bool(true, "Show Breathing Brand Logo", group=grp_visuals)
 int logo_offset = input.int(85, "Logo Horizontal Offset (Bars)", minval=0, maxval=300, group=grp_visuals)
 
-// Large Volume Candle Identification Settings
-bool show_large_vol_candle = input.bool(true, "Highlight Large Volume Candles", group=grp_visuals)
-float large_vol_candle_mult = input.float(1.5, "Large Volume Candle Multiplier (vs SMA 20)", minval=1.0, step=0.1, group=grp_visuals)
-
 // Core Colors Mapping
 color dark   = #000000
 color white  = #c4d3ff
@@ -341,10 +337,6 @@ float val_price = r_low + va_down * r_step
 
 // Average Volume Calculation
 float avg_level_vol = total_profile_volume > 0 ? total_profile_volume / vp_rows : 0.0
-
-// Large Volume Candle Calculation
-float avg_vol_sma = ta.sma(volume, 20)
-bool is_large_vol_candle = volume > avg_vol_sma * large_vol_candle_mult
 
 // -----------------------------------------------------------------------------
 // 5. LOCAL DRAWINGS ON THE LAST CANDLE (POC, VAH, VAL LINES & NODE LEVEL LINES)
@@ -686,12 +678,7 @@ if show_logo and barstate.islast
 // -----------------------------------------------------------------------------
 // 8. PLOT AND STYLING AESTHETICS
 // -----------------------------------------------------------------------------
-// Dynamic highlight colors based on Large Volume Candle detection
-candle_body_color = show_large_vol_candle and is_large_vol_candle ? color.new(col_poc, 50) : color.new(close >= open ? col_bull : col_bear, 80)
-candle_wick_color = show_large_vol_candle and is_large_vol_candle ? col_poc : (close >= open ? col_bull : col_bear)
+color candle_body_color = color.new(close >= open ? col_bull : col_bear, 80)
+color candle_wick_color = close >= open ? col_bull : col_bear
 
 plotcandle(open, high, low, close, color=candle_body_color, wickcolor=candle_wick_color, bordercolor=candle_wick_color, title="Dynamic Candles")
-
-// Large Volume Candle Indicator shape marker (⚡) - Splitted location checks for universal compilation
-plotchar(show_large_vol_candle and is_large_vol_candle and close >= open ? low : na, "Large Vol Candle Bull", char="⚡", location=location.belowbar, color=col_poc, size=size.small)
-plotchar(show_large_vol_candle and is_large_vol_candle and close < open ? high : na, "Large Vol Candle Bear", char="⚡", location=location.abovebar, color=col_poc, size=size.small)
