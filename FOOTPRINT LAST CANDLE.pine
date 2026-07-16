@@ -93,12 +93,14 @@ color col_poc = switch color_theme
     'Deep Sea' => white
     => white
 
-// Visual Table Helpers
-get_table_bg(float ratio) =>
+// Visual Table Helpers (Value Area vs Out of Value Area Gradients)
+get_table_bg(float ratio, bool is_in_va) =>
     color base = color.from_gradient(ratio, 0.0, 1.0, col_bull, col_bear)
     color mixed_base = color.from_gradient(35.0, 0.0, 100.0, base, #8b4513)
-    // 80 transparency = 20% opacity as specified in guidelines
-    color.new(mixed_base, 80)
+    // Area value lebih pekat lagi: 60 alpha (40% opacity) inside Value Area
+    // 95 transparency = 5% opacity outside Value Area boundary limit
+    int alpha = is_in_va ? 60 : 95
+    color.new(mixed_base, alpha)
 
 get_text_color(bool is_key_node, int r, int poc_idx, int va_down, int va_up) =>
     white
@@ -222,11 +224,10 @@ distribute_footprint(int _rows, float _lowest_p, float _inv_row_h, float _o, flo
             float inv_range = 1.0 / _range_val
             float w_l = (b_low - _l) * inv_range
             float w_b = (b_high - b_low) * inv_range
-            float w_u = (_h - b_high) * inv_range
 
             float v_l = _v_total * w_l
             float v_b = _v_total * w_b
-            float v_u = _v_total * w_u
+            float v_u = _v_total * (1.0 - w_l - w_b)
 
             if v_l > 0
                 int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
@@ -366,6 +367,7 @@ if barstate.islast
     int t_start = bar_index
     int t_end = bar_index + 10
 
+    // Synced line colors with table changes
     poc_line := line.new(t_start, poc_price, t_end, poc_price, color=col_poc, width=2, style=line.style_solid)
     vah_line := line.new(t_start, vah_price, t_end, vah_price, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
     val_line := line.new(t_start, val_price, t_end, val_price, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
@@ -390,20 +392,22 @@ if barstate.islast
             if show_large_vol and v_curr > avg_level_vol * large_vol_mult
                 is_large_vol := true
 
-        // Draw horizontal line and labels for identified key nodes (removed characters for clean professional interface)
+        // Draw horizontal line and labels for identified key nodes with synced table colors
         if is_large_vol and r != poc_idx
-            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bull, 40), width=1, style=line.style_dashed)
-            lbl = label.new(t_end, level_price, "LARGE VOL", color=color.new(col_bull, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
+            // Synced color with large vol node layout
+            color is_sell_dom = array.get(sell_at_level, r) > array.get(buy_at_level, r) ? col_bear : col_bull
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(is_sell_dom, 40), width=1, style=line.style_dashed)
+            lbl = label.new(t_end, level_price, "LARGE VOL", color=color.new(is_sell_dom, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
             array.push(node_level_lines, ln)
             array.push(node_level_labels, lbl)
         else if is_hvn
-            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(orange, 40), width=1, style=line.style_solid)
-            lbl = label.new(t_end, level_price, "HVN", color=color.new(orange, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bull, 40), width=1, style=line.style_solid)
+            lbl = label.new(t_end, level_price, "HVN", color=color.new(col_bull, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
             array.push(node_level_lines, ln)
             array.push(node_level_labels, lbl)
         else if is_lvn
-            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(gray, 40), width=1, style=line.style_dotted)
-            lbl = label.new(t_end, level_price, "LVN", color=color.new(gray, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bear, 40), width=1, style=line.style_dotted)
+            lbl = label.new(t_end, level_price, "LVN", color=color.new(col_bear, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
             array.push(node_level_lines, ln)
             array.push(node_level_labels, lbl)
 
@@ -457,7 +461,7 @@ if barstate.islast and total_profile_volume > 0
 
     // Header Cells
     if show_dom
-        table.cell(footprint_tbl, 0, 0, "DOM Profile", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 0, 0, "DOM Profile", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold, text_halign=text.align_left)
         table.cell(footprint_tbl, 1, 0, "Sell | Buy", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
         table.cell(footprint_tbl, 2, 0, "Total Vol", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
         table.cell(footprint_tbl, 3, 0, "Net Delta", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
@@ -478,7 +482,8 @@ if barstate.islast and total_profile_volume > 0
         float level_delta = level_buy_vol - level_sell_vol
 
         float ratio = level_vol > 0 ? level_buy_vol / level_vol : 0.5
-        color row_bgcolor = get_table_bg(ratio)
+        bool is_in_va = r >= va_down and r <= va_up
+        color row_bgcolor = get_table_bg(ratio, is_in_va)
 
         // Analyze Node Attributes
         bool is_hvn = false
@@ -496,21 +501,33 @@ if barstate.islast and total_profile_volume > 0
             if show_large_vol and v_curr > avg_level_vol * large_vol_mult
                 is_large_vol := true
 
-        // Customize Background & Identity styling based on key levels
+        // Customize Background & Identity styling based on key levels (transparency mapped proportionally to volume value)
         bool is_key_node = false
+
+        // Transparency mapped based on proportional volume ratio: higher volume = more solid
+        // Alpha mapped from 95 (very faint/transparent) down to 45 (more solid)
+        int d_alpha = max_profile_vol > 0 ? math.round(95 - (level_vol / max_profile_vol) * 50) : 80
+
         if r == poc_idx
-            row_bgcolor := color.new(col_poc, 40)
+            // POC gets a bright, distinct background color
+            row_bgcolor := color.new(col_poc, 15)
         else if is_large_vol
-            row_bgcolor := color.new(col_bull, 45)
+            if level_sell_vol > level_buy_vol
+                row_bgcolor := color.new(col_bear, d_alpha)
+            else
+                row_bgcolor := color.new(col_bull, d_alpha)
             is_key_node := true
         else if is_hvn
-            row_bgcolor := color.new(col_bull, 60)
+            // HVN: transparent bull based on level volume
+            row_bgcolor := color.new(col_bull, d_alpha)
             is_key_node := true
         else if is_lvn
-            row_bgcolor := color.new(col_bear, 60)
+            // LVN: transparent bear based on level volume
+            row_bgcolor := color.new(col_bear, d_alpha)
             is_key_node := true
-        else if r >= va_down and r <= va_up
-            row_bgcolor := get_table_bg(ratio)
+        else if r == va_up or r == va_down
+            // VAH/VAL rows are configured to be highly transparent
+            row_bgcolor := color.new(col_poc, 90)
 
         // Current Price Highlighting
         if r == current_price_row_idx
@@ -565,7 +582,7 @@ if barstate.islast and total_profile_volume > 0
 
         // Cell Population based on column configuration
         if show_dom
-            table.cell(footprint_tbl, 0, tbl_row, dom_bar_str, bgcolor=row_bgcolor, text_color=dom_text_color, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 0, tbl_row, dom_bar_str, bgcolor=row_bgcolor, text_color=dom_text_color, text_size=l_sz, text_formatting=text.format_bold, text_halign=text.align_left)
             table.cell(footprint_tbl, 1, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
             table.cell(footprint_tbl, 2, tbl_row, format_vol(level_vol), bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
             table.cell(footprint_tbl, 3, tbl_row, (level_delta >= 0 ? "+" : "") + format_vol(level_delta), bgcolor=delta_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
