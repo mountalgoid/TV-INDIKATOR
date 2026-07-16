@@ -347,16 +347,28 @@ float avg_vol_sma = ta.sma(volume, 20)
 bool is_large_vol_candle = volume > avg_vol_sma * large_vol_candle_mult
 
 // -----------------------------------------------------------------------------
-// 5. LOCAL DRAWINGS ON THE LAST CANDLE (POC, VAH, VAL LINES)
+// 5. LOCAL DRAWINGS ON THE LAST CANDLE (POC, VAH, VAL LINES & NODE LEVEL LINES)
 // -----------------------------------------------------------------------------
 var line poc_line = na
 var line vah_line = na
 var line val_line = na
+var line[] node_level_lines = array.new<line>()
+var label[] node_level_labels = array.new<label>()
 
 if barstate.islast
     line.delete(poc_line)
     line.delete(vah_line)
     line.delete(val_line)
+
+    // Clean old node level lines and labels
+    if array.size(node_level_lines) > 0
+        for ln in node_level_lines
+            line.delete(ln)
+        array.clear(node_level_lines)
+    if array.size(node_level_labels) > 0
+        for lbl in node_level_labels
+            label.delete(lbl)
+        array.clear(node_level_labels)
 
     // Position coordinates on the last bar
     int t_start = bar_index
@@ -365,6 +377,43 @@ if barstate.islast
     poc_line := line.new(t_start, poc_price, t_end, poc_price, color=col_poc, width=2, style=line.style_solid)
     vah_line := line.new(t_start, vah_price, t_end, vah_price, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
     val_line := line.new(t_start, val_price, t_end, val_price, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
+
+    // Collect and draw node level lines occurring in the last candle footprint
+    for r = 0 to vp_rows - 1
+        float level_price = r_low + r * r_step + (r_step / 2.0)
+        float level_vol = array.get(total_at_level, r)
+
+        bool is_hvn = false
+        bool is_lvn = false
+        bool is_large_vol = false
+
+        if r > 0 and r < vp_rows - 1
+            float v_prev = array.get(total_at_level, r - 1)
+            float v_curr = level_vol
+            float v_next = array.get(total_at_level, r + 1)
+            if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= total_profile_volume * hvn_threshold / vp_rows and r != poc_idx
+                is_hvn := true
+            if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < total_profile_volume * lvn_threshold / vp_rows
+                is_lvn := true
+            if show_large_vol and v_curr > avg_level_vol * large_vol_mult
+                is_large_vol := true
+
+        // Draw horizontal line and labels for identified key nodes
+        if is_large_vol and r != poc_idx
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bull, 40), width=1, style=line.style_dashed)
+            lbl = label.new(t_end, level_price, "⚡ LARGE VOL", color=color.new(col_bull, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
+            array.push(node_level_lines, ln)
+            array.push(node_level_labels, lbl)
+        else if is_hvn
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(orange, 40), width=1, style=line.style_solid)
+            lbl = label.new(t_end, level_price, "HVN", color=color.new(orange, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
+            array.push(node_level_lines, ln)
+            array.push(node_level_labels, lbl)
+        else if is_lvn
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(gray, 40), width=1, style=line.style_dotted)
+            lbl = label.new(t_end, level_price, "LVN", color=color.new(gray, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
+            array.push(node_level_lines, ln)
+            array.push(node_level_labels, lbl)
 
 // -----------------------------------------------------------------------------
 // 6. VOLUME LADDER / FOOTPRINT SCREEN TABLE
