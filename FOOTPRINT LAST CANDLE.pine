@@ -1,5 +1,5 @@
 //@version=6
-indicator("Footprint Last Candle Professional 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="Footprint Last Candle", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+indicator("Footprint Last Candle Professional 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο", shorttitle="Footprint Last Candle", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
 
 // -----------------------------------------------------------------------------
 // 1. INPUTS & CONFIGURATION
@@ -29,6 +29,10 @@ string table_pos_input = input.string("bottom_left", "Table Screen Position", op
 string table_size_input = input.string("Tiny", "Table Cell Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=grp_visuals)
 bool show_logo = input.bool(true, "Show Breathing Brand Logo", group=grp_visuals)
 int logo_offset = input.int(85, "Logo Horizontal Offset (Bars)", minval=0, maxval=300, group=grp_visuals)
+
+// Large Volume Candle Identification Settings
+bool show_large_vol_candle = input.bool(true, "Highlight Large Volume Candles", group=grp_visuals)
+float large_vol_candle_mult = input.float(1.5, "Large Volume Candle Multiplier (vs SMA 20)", minval=1.0, step=0.1, group=grp_visuals)
 
 // Core Colors Mapping
 color dark   = #000000
@@ -338,6 +342,10 @@ float val_price = r_low + va_down * r_step
 // Average Volume Calculation
 float avg_level_vol = total_profile_volume > 0 ? total_profile_volume / vp_rows : 0.0
 
+// Large Volume Candle Calculation
+float avg_vol_sma = ta.sma(volume, 20)
+bool is_large_vol_candle = volume > avg_vol_sma * large_vol_candle_mult
+
 // -----------------------------------------------------------------------------
 // 5. LOCAL DRAWINGS ON THE LAST CANDLE (POC, VAH, VAL LINES)
 // -----------------------------------------------------------------------------
@@ -618,7 +626,7 @@ if show_logo and barstate.islast
     Line1b6 := line.new(x1 = bar_index + l_off + 26, y1 = point7b, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = 1)
     Line1b7 := line.new(x1 = bar_index + l_off + 32, y1 = logo_base, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = 1)
 
-    label l = label.new(bar_index + l_off + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤" + "\nFOOTPRINT ANALYST PRO v1.0", text_formatting=text.format_bold, style=label.style_none, textcolor=col_poc, size=size.normal, textalign=text.align_left)
+    label l = label.new(bar_index + l_off + 54, point2b, "👑 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο" + "\nFOOTPRINT ANALYST PRO v1.1", text_formatting=text.format_bold, style=label.style_none, textcolor=col_poc, size=size.normal, textalign=text.align_left)
     array.push(brand_labels, l)
 
     label glow1 = label.new(bar_index + l_off + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
@@ -629,4 +637,11 @@ if show_logo and barstate.islast
 // -----------------------------------------------------------------------------
 // 8. PLOT AND STYLING AESTHETICS
 // -----------------------------------------------------------------------------
-plotcandle(open, high, low, close, color=color.new(close >= open ? col_bull : col_bear, 80), wickcolor=close >= open ? col_bull : col_bear, bordercolor=close >= open ? col_bull : col_bear, title="Dynamic Candles")
+// Dynamic highlight colors based on Large Volume Candle detection
+candle_body_color = show_large_vol_candle and is_large_vol_candle ? color.new(col_poc, 50) : color.new(close >= open ? col_bull : col_bear, 80)
+candle_wick_color = show_large_vol_candle and is_large_vol_candle ? col_poc : (close >= open ? col_bull : col_bear)
+
+plotcandle(open, high, low, close, color=candle_body_color, wickcolor=candle_wick_color, bordercolor=candle_wick_color, title="Dynamic Candles")
+
+// Large Volume Candle Indicator shape marker (⚡)
+plotchar(show_large_vol_candle and is_large_vol_candle ? (close >= open ? low : high) : na, "Large Vol Candle Char", char="⚡", location=close >= open ? location.belowbar : location.abovebar, color=col_poc, size=size.small)
