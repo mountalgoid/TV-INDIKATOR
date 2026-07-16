@@ -285,10 +285,13 @@ draw_profile(bool is_live) =>
     totalVol = array.sum(volBins)
     maxWidth = int(length * width_pct) 
     
-    // 2. DRAW SPINE
+    // 2. DRAW SPINE & OUTER PROFILE FRAME BOX
     l_spine = line.new(windowStart, lo_val, windowStart, hi_val, color=spine_col, width=4)
+    b_frame = box.new(left=windowStart, bottom=lo_val, right=windowStart + length, top=hi_val,
+                      bgcolor=na, border_color=spine_col, border_width=1, border_style=line.style_solid)
     if is_live
         array.push(liveLines, l_spine)
+        array.push(liveBoxes, b_frame)
     
     prevX = windowStart
     prevY = lo_val
@@ -311,6 +314,7 @@ draw_profile(bool is_live) =>
 
         int dynamic_transp = math.round(95 - (pct * 75))
         color c_fill_heatmap = color.new(c_base, dynamic_transp)
+        color c_border_heatmap = color.new(c_base, 80) // Semi-transparent border for neater look
         
         // Coordinates
         currX = windowStart + int(pct * maxWidth)
@@ -318,7 +322,7 @@ draw_profile(bool is_live) =>
         y_top = lo_val + ((r + 1) * step)
         currY_center = lo_val + (r * step) + (step * 0.5)
 
-        // Draw Fill with volume text
+        // Draw Fill with volume text & clean borders
         if currX > windowStart
             string row_txt = format_vol(v)
             if vp_type == "Delta"
@@ -329,7 +333,7 @@ draw_profile(bool is_live) =>
                 row_text_color := white
 
             b = box.new(left=windowStart, bottom=y_bot, right=currX, top=y_top, 
-                        bgcolor=c_fill_heatmap, border_color=na,
+                        bgcolor=c_fill_heatmap, border_color=c_border_heatmap, border_width=1,
                         text=row_txt, text_color=row_text_color, text_size=size.auto,
                         text_halign=text.align_left, text_valign=text.align_center)
             if is_live
@@ -384,12 +388,13 @@ draw_profile(bool is_live) =>
         array.push(liveLines, l_vah)
         array.push(liveLines, l_val)
 
-    // Draw elegant POC, VAH, and VAL box text badges with solid borders and high contrast contrasting colors
+    // Boundaries for right badges
     boxLeft = windowStart + length
     boxRight = windowStart + length + int(length * 0.12)
     box_height_half = step * 0.4
     color badge_bg = color.new(#0c0d12, 15) // Deep contrast background
 
+    // Draw elegant POC, VAH, and VAL box text badges with solid borders and high contrast contrasting colors
     b_poc = box.new(left=boxLeft, top=pocPrice + box_height_half, right=boxRight, bottom=pocPrice - box_height_half,
                     border_color=col_poc_eff, border_width=1, border_style=line.style_solid,
                     bgcolor=badge_bg,
@@ -414,6 +419,7 @@ draw_profile(bool is_live) =>
         array.push(liveBoxes, b_val)
 
     // ===== HVN / LVN IDENTIFICATION & DRAWING =====
+    // Style and place HVN and LVN badges directly at the right boundary of the volume profile
     if show_lvn_hvn and totalVol > 0
         float avg_profile_vol = array.avg(volBins)
         float thresh_lvn = maxVol * lvn_threshold
@@ -426,24 +432,22 @@ draw_profile(bool is_live) =>
             float y_bot = lo_val + (r * step)
             float y_top = lo_val + ((r + 1) * step)
 
-            // HVN detection (Local Maxima above threshold multiplier of average volume)
+            // HVN detection (Local Maxima above threshold multiplier of average volume) - Rendered as elegant right badges
             if v_curr > v_prev and v_curr > v_next and v_curr > avg_profile_vol * hvn_threshold and r != pocIdx
-                color hvn_border_c = color.new(col_bull_eff, 30)
-                color hvn_bg_c = color.new(col_bull_eff, 90)
-                box b_hvn = box.new(left=windowStart, top=y_top, right=windowStart + maxWidth, bottom=y_bot,
+                color hvn_border_c = col_bull_eff
+                box b_hvn = box.new(left=boxLeft, top=y_top, right=boxRight, bottom=y_bot,
                                     border_color=hvn_border_c, border_width=1, border_style=line.style_solid,
-                                    bgcolor=hvn_bg_c, text="HVN", text_color=color.white, text_size=size.tiny,
+                                    bgcolor=badge_bg, text="HVN", text_color=col_bull_eff, text_size=size.auto,
                                     text_halign=text.align_center, text_valign=text.align_center)
                 if is_live
                     array.push(liveBoxes, b_hvn)
 
-            // LVN detection (Local Minima below threshold volume)
+            // LVN detection (Local Minima below threshold volume) - Rendered as elegant right badges
             if v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
-                color lvn_border_c = color.new(col_bear_eff, 30)
-                color lvn_bg_c = color.new(col_bear_eff, 90)
-                box b_lvn = box.new(left=windowStart, top=y_top, right=windowStart + maxWidth, bottom=y_bot,
-                                    border_color=lvn_border_c, border_width=1, border_style=line.style_dashed,
-                                    bgcolor=lvn_bg_c, text="LVN", text_color=color.white, text_size=size.tiny,
+                color lvn_border_c = col_bear_eff
+                box b_lvn = box.new(left=boxLeft, top=y_top, right=boxRight, bottom=y_bot,
+                                    border_color=lvn_border_c, border_width=1, border_style=line.style_solid,
+                                    bgcolor=badge_bg, text="LVN", text_color=col_bear_eff, text_size=size.auto,
                                     text_halign=text.align_center, text_valign=text.align_center)
                 if is_live
                     array.push(liveBoxes, b_lvn)
