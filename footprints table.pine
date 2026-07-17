@@ -30,6 +30,7 @@ bool show_dom = input.bool(true, "Show DOM (Depth of Market) Profile Column", gr
 // Visual Layout Settings
 string table_pos_input = input.string("bottom_left", "Table Screen Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_visuals)
 string table_size_input = input.string("Tiny", "Table Cell Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=grp_visuals)
+string candle_color_style = input.string("Normal", "Custom Candle Coloring Style", options=["Normal", "Based Previous POC", "Based Previous VAL VAH", "Based Current POC", "Based Current VAH VAL"], group=grp_visuals)
 bool show_logo = input.bool(true, "Show Breathing Brand Logo", group=grp_visuals)
 int logo_offset = input.int(85, "Logo Horizontal Offset (Bars)", minval=0, maxval=300, group=grp_visuals)
 
@@ -377,9 +378,9 @@ if total_profile_volume > 0
     line vah_ln = line.new(t_start, vah_price, t_end, vah_price, color=color.new(col_bull, 20), width=1, style=line.style_solid)
     line val_ln = line.new(t_start, val_price, t_end, val_price, color=color.new(col_bear, 20), width=1, style=line.style_solid)
 
-    box va_bx = box.new(t_start, vah_price, t_end, val_price, bgcolor=color.new(col_poc, 92), border_color=color.new(col_poc, 70), border_style=line.style_dashed, border_width=1)
-    box upper_bx = box.new(t_start, r_high, t_end, vah_price, bgcolor=color.new(col_bull, 96), border_color=color.new(col_bull, 85), border_style=line.style_dotted, border_width=1)
-    box lower_bx = box.new(t_start, val_price, t_end, r_low, bgcolor=color.new(col_bear, 96), border_color=color.new(col_bear, 85), border_style=line.style_dotted, border_width=1)
+    box va_bx = box.new(t_start, vah_price, t_end, val_price, bgcolor=color.new(col_poc, 85), border_color=color.new(col_poc, 70), border_style=line.style_dashed, border_width=1)
+    box upper_bx = box.new(t_start, r_high, t_end, vah_price, bgcolor=color.new(col_bull, 92), border_color=color.new(col_bull, 85), border_style=line.style_dotted, border_width=1)
+    box lower_bx = box.new(t_start, val_price, t_end, r_low, bgcolor=color.new(col_bear, 92), border_color=color.new(col_bear, 85), border_style=line.style_dotted, border_width=1)
 
     if barstate.islast
         last_poc_line := poc_ln
@@ -780,7 +781,14 @@ if barstate.islast
         line.delete(last_wick)
         line.delete(last_body)
 
-color candle_color = close >= open ? col_bull : col_bear
+color candle_color = switch candle_color_style
+    "Normal" => close >= open ? col_bull : col_bear
+    "Based Previous POC" => close >= nz(poc_price[1], poc_price) ? col_bull : col_bear
+    "Based Previous VAL VAH" => close >= nz(vah_price[1], vah_price) ? col_bull : (close <= nz(val_price[1], val_price) ? col_bear : col_poc)
+    "Based Current POC" => close >= poc_price ? col_bull : col_bear
+    "Based Current VAH VAL" => close >= vah_price ? col_bull : (close <= val_price ? col_bear : col_poc)
+    => close >= open ? col_bull : col_bear
+
 float body_high = math.max(open, close)
 float body_low = math.min(open, close)
 
