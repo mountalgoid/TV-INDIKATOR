@@ -178,11 +178,25 @@ format_vol(float v) =>
 //════════════════════════════════════════════════════════════════════════
 // TREND CALCULATION
 //════════════════════════════════════════════════════════════════════════
+var float latest_supply_top = na
+var float latest_demand_bottom = na
+var int latest_supply_idx = na
+var int latest_demand_idx = na
+
 ema_val = ta.ema(close, ema_len)
 [st_val, st_dir] = ta.supertrend(st_factor, st_period)
 
 ph = ta.pivothigh(high, lookback, lookback)
 pl = ta.pivotlow(low, lookback, lookback)
+
+// S/R Tracking (Unconditional for Volume Profile, Premium/Discount, and POC series accuracy)
+if not na(ph)
+    latest_supply_top := high[lookback]
+    latest_supply_idx := bar_index[lookback]
+
+if not na(pl)
+    latest_demand_bottom := low[lookback]
+    latest_demand_idx := bar_index[lookback]
 
 // POC Series Tracking
 var float poc_p_series = na
@@ -274,23 +288,10 @@ type Zone
     int start_bar
 
 var array<Zone> zones = array.new<Zone>()
-var float latest_supply_top = na
-var float latest_demand_bottom = na
-var int latest_supply_idx = na
-var int latest_demand_idx = na
 
 //════════════════════════════════════════════════════════════════════════
 // DETECTION
 //════════════════════════════════════════════════════════════════════════
-// S/R Tracking (Unconditional for Volume Profile, Premium/Discount, and POC series accuracy)
-if not na(ph)
-    latest_supply_top := high[lookback]
-    latest_supply_idx := bar_index[lookback]
-
-if not na(pl)
-    latest_demand_bottom := low[lookback]
-    latest_demand_idx := bar_index[lookback]
-
 if show_sr and not na(ph) and (not filter_by_trend or trend_is_bear[lookback])
     [b_v, s_v] = get_precise_vol(lookback)
     float z_top = high[lookback]
