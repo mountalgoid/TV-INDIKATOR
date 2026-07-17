@@ -91,6 +91,10 @@ bool show_hvn_lvn = input.bool(true, "Identify HVN & LVN Levels", group=grp_foot
 float hvn_threshold_pct = input.float(60.0, "HVN Volume Threshold (%)", minval=0.0, maxval=100.0, step=5.0, group=grp_footprint, tooltip="Peak percentage of maximum volume to qualify as HVN")
 float lvn_threshold_pct = input.float(40.0, "LVN Volume Threshold (%)", minval=0.0, maxval=100.0, step=5.0, group=grp_footprint, tooltip="Valley percentage of maximum volume to qualify as LVN")
 
+// Large Volume Settings
+bool show_large_vol = input.bool(true, "Identify Large Volume Levels", group=grp_footprint)
+float large_vol_mult = input.float(1.5, "Large Volume Multiplier (vs Avg)", minval=1.0, step=0.1, group=grp_footprint, tooltip="Multiplier threshold above average level volume to identify large volume")
+
 // Candle Settings
 int candle_body_trans = input.int(0, "Candle Body Transparency", minval=0, maxval=100, group=grp_candle)
 int candle_wick_trans = input.int(0, "Candle Wick Transparency", minval=0, maxval=100, group=grp_candle)
@@ -342,14 +346,35 @@ if barstate.islast
                     // Glass effect transparency mapped to level delta quality
                     int trans = math.round(95 - intensity * 65)
                     
+                    // HVN & LVN IDENTIFICATION
+                    bool is_hvn = false
+                    bool is_lvn = false
+                    if show_hvn_lvn and i > 0 and i < volume_levels - 1
+                        float prev_total = array.get(buy_level, i - 1) + array.get(sell_level, i - 1)
+                        float next_total = array.get(buy_level, i + 1) + array.get(sell_level, i + 1)
+                        is_hvn := lvl_total > prev_total and lvl_total > next_total and lvl_total >= (max_lvl_vol * hvn_threshold_pct / 100.0)
+                        is_lvn := lvl_total < prev_total and lvl_total < next_total and lvl_total <= (max_lvl_vol * lvn_threshold_pct / 100.0)
+
                     // Text format: ▲Buy | ▼Sell
                     string txt = show_values ? ("▲" + format_vol(lvl_buy) + " \n▼" + format_vol(lvl_sell)) : ""
+                    if show_hvn_lvn
+                        if is_hvn
+                            txt := show_values ? ("▲" + format_vol(lvl_buy) + " \n▼" + format_vol(lvl_sell) + " \nHVN") : "HVN"
+                        else if is_lvn
+                            txt := show_values ? ("▲" + format_vol(lvl_buy) + " \n▼" + format_vol(lvl_sell) + " \nLVN") : "LVN"
+
                     // All text is set to fully opaque white color for clean professional look
                     color txt_color = white
                     
+                    color box_border_color = (is_hvn or is_lvn) ? color.new(white, 0) : na
+                    int box_border_width = (is_hvn or is_lvn) ? 1 : 0
+                    string box_border_style = (is_hvn or is_lvn) ? line.style_dashed : line.style_solid
+
                     box b = box.new(idx, lvl_high, idx + 1, lvl_low,
                                     bgcolor=color.new(base_col, trans),
-                                    border_color=na,
+                                    border_color=box_border_color,
+                                    border_width=box_border_width,
+                                    border_style=box_border_style,
                                     text=txt,
                                     text_size=size.auto,
                                     text_color=txt_color,
@@ -359,43 +384,15 @@ if barstate.islast
                     array.push(profile_boxes, b)
 
                     // -----------------------------------------------------------------
-                    // HVN & LVN IDENTIFICATION WITH SEMI-TRANSPARENT BORDERS
+                    // LARGE VOLUME IDENTIFICATION WITH DOTTED LINES
                     // -----------------------------------------------------------------
-                    if show_hvn_lvn and i > 0 and i < volume_levels - 1
-                        float prev_total = array.get(buy_level, i - 1) + array.get(sell_level, i - 1)
-                        float next_total = array.get(buy_level, i + 1) + array.get(sell_level, i + 1)
-                        
-                        // Local Peak -> HVN
-                        bool is_hvn = lvl_total > prev_total and lvl_total > next_total and lvl_total >= (max_lvl_vol * hvn_threshold_pct / 100.0)
-                        // Local Valley -> LVN
-                        bool is_lvn = lvl_total < prev_total and lvl_total < next_total and lvl_total <= (max_lvl_vol * lvn_threshold_pct / 100.0)
-                        
-                        if is_hvn
-                            box hvn_b = box.new(idx, lvl_high, idx + 1, lvl_low,
-                                                bgcolor=color.new(dark, 100),
-                                                border_color=color.new(white, 0),
-                                                border_width=1,
-                                                border_style=line.style_dashed,
-                                                text="HVN",
-                                                text_size=size.auto,
-                                                text_color=color.new(white, 0),
-                                                text_formatting=text.format_bold,
-                                                text_valign=text.align_center,
-                                                text_halign=text.align_right)
-                            array.push(profile_boxes, hvn_b)
-                        else if is_lvn
-                            box lvn_b = box.new(idx, lvl_high, idx + 1, lvl_low,
-                                                bgcolor=color.new(dark, 100),
-                                                border_color=color.new(white, 0),
-                                                border_width=1,
-                                                border_style=line.style_dashed,
-                                                text="LVN",
-                                                text_size=size.auto,
-                                                text_color=color.new(white, 0),
-                                                text_formatting=text.format_bold,
-                                                text_valign=text.align_center,
-                                                text_halign=text.align_right)
-                            array.push(profile_boxes, lvn_b)
+                    float avg_level_vol = total_prof_vol / float(volume_levels)
+                    bool is_large_vol = show_large_vol and lvl_total > avg_level_vol * large_vol_mult
+                    if is_large_vol
+                        color lv_col = lvl_buy >= lvl_sell ? col_bull : col_bear
+                        float lvl_center_price = lvl_low + 0.5 * level_height
+                        line lv_line = line.new(idx, lvl_center_price, idx + 1, lvl_center_price, color=lv_col, width=3, style=line.style_dotted)
+                        array.push(level_lines, lv_line)
 
             // --- DRAW KEY HORIZONTAL LINES (VAH, VAL, POC) ---
             // Render lines with high visibility colors and custom widths to ensure they stand out clearly
