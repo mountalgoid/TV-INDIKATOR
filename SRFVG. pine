@@ -77,6 +77,14 @@ lookback = input.int(10, "Pivot Lookback", minval=2, group=sr_group)
 fvg_group = "FVG Settings"
 show_fvg = input.bool(true, "Show FVG Zones", group=fvg_group)
 
+trend_group = "Trend Settings"
+trend_type = input.string("None", "Trend Filter Type", options=["None", "EMA", "Supertrend"], group=trend_group)
+ema_len = input.int(200, "EMA Length", minval=1, group=trend_group)
+st_factor = input.float(3.0, "Supertrend Factor", minval=0.1, step=0.1, group=trend_group)
+st_period = input.int(10, "Supertrend ATR Period", minval=1, group=trend_group)
+filter_by_trend = input.bool(true, "Filter SR & FVG by Trend Direction", group=trend_group)
+show_trend_visual = input.bool(true, "Show Trend Line", group=trend_group)
+
 mitig_group = "Mitigation Settings"
 show_mitigated = input.bool(true, "Show Mitigated Zones", group=mitig_group)
 max_zones = input.int(30, "Max Active Zones", group=mitig_group)
@@ -168,6 +176,16 @@ format_vol(float v) =>
         str.tostring(v, "0")
 
 //════════════════════════════════════════════════════════════════════════
+// TREND CALCULATION
+//════════════════════════════════════════════════════════════════════════
+ema_val = ta.ema(close, ema_len)
+[st_val, st_dir] = ta.supertrend(st_factor, st_period)
+
+// Determine trend direction series
+trend_is_bull = trend_type == "EMA" ? (close >= ema_val) : (trend_type == "Supertrend" ? (st_dir < 0) : true)
+trend_is_bear = trend_type == "EMA" ? (close < ema_val) : (trend_type == "Supertrend" ? (st_dir > 0) : true)
+
+//════════════════════════════════════════════════════════════════════════
 // CANDLE LOGIC
 //════════════════════════════════════════════════════════════════════════
 [curr_b_v, curr_s_v] = get_precise_vol(0)
@@ -179,6 +197,11 @@ c_col = bull_c ? col_bull : col_bear
 c_body = bull_c ? color.new(col_bull, 70) : color.new(col_bear, 70)
 
 plotcandle(open, high, low, close, title="Custom Candles", color=show_candles ? c_body : na, wickcolor=show_candles ? c_col : na, bordercolor=show_candles ? c_col : na)
+
+// Plot Trend Visuals
+trend_line_val = trend_type == "EMA" ? ema_val : (trend_type == "Supertrend" ? st_val : na)
+trend_line_color = trend_type == "EMA" ? (close >= ema_val ? col_bull : col_bear) : (st_dir < 0 ? col_bull : col_bear)
+plot(show_trend_visual ? trend_line_val : na, "Trend Line", color=trend_line_color, linewidth=2)
 
 //════════════════════════════════════════════════════════════════════════
 // TYPE & ARRAYS
@@ -209,7 +232,7 @@ var int latest_demand_idx = na
 ph = ta.pivothigh(high, lookback, lookback)
 pl = ta.pivotlow(low, lookback, lookback)
 
-if show_sr and not na(ph)
+if show_sr and not na(ph) and (not filter_by_trend or trend_is_bear[lookback])
     [b_v, s_v] = get_precise_vol(lookback)
     float z_top = high[lookback]
     float z_bottom = math.max(open[lookback], close[lookback])
@@ -224,7 +247,7 @@ if show_sr and not na(ph)
         svb := box.new(bar_index[lookback] + math.round(extend_len * b_ratio), z_top, bar_index + extend_len, z_bottom, bgcolor=color.new(col_bear, 70), border_color=na)
     array.push(zones, Zone.new(main_box=mb, buy_vol_box=bvb, sell_vol_box=svb, top=z_top, bottom=z_bottom, buy_vol=b_v, sell_vol=s_v, is_bull=false, is_fvg=false, active=true, start_bar=bar_index[lookback]))
 
-if show_sr and not na(pl)
+if show_sr and not na(pl) and (not filter_by_trend or trend_is_bull[lookback])
     [b_v, s_v] = get_precise_vol(lookback)
     float z_top = math.min(open[lookback], close[lookback])
     float z_bottom = low[lookback]
@@ -240,8 +263,8 @@ if show_sr and not na(pl)
     array.push(zones, Zone.new(main_box=mb, buy_vol_box=bvb, sell_vol_box=svb, top=z_top, bottom=z_bottom, buy_vol=b_v, sell_vol=s_v, is_bull=true, is_fvg=false, active=true, start_bar=bar_index[lookback]))
 
 // FVG Detection
-bull_fvg = show_fvg and low > high[2] and close[1] > high[2]
-bear_fvg = show_fvg and high < low[2] and close[1] < low[2]
+bull_fvg = show_fvg and low > high[2] and close[1] > high[2] and (not filter_by_trend or trend_is_bull[1])
+bear_fvg = show_fvg and high < low[2] and close[1] < low[2] and (not filter_by_trend or trend_is_bear[1])
 
 if bull_fvg
     [b_v, s_v] = get_precise_vol(1)
