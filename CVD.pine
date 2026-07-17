@@ -1,0 +1,237 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © MLTFX
+
+//@version=6
+indicator("CVD V1.0 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="CVD", overlay=false)
+
+// -----------------------------------------------------------------------------
+// 1. INPUTS & CONFIGURATION (Theme system synced with footprints.pine)
+// -----------------------------------------------------------------------------
+string GlobalGroup = "Visual Themes & Global"
+string grp_div = "Divergence Settings"
+
+string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=GlobalGroup)
+
+// Divergence Settings
+bool show_bull_div = input.bool(true, "Show Bullish Divergence", group=grp_div)
+bool show_bear_div = input.bool(true, "Show Bearish Divergence", group=grp_div)
+int piv_left = input.int(5, "Pivot Left Strength", minval=1, group=grp_div)
+int piv_right = input.int(5, "Pivot Right Strength", minval=1, group=grp_div)
+
+// Core Colors
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
+
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
+
+// -----------------------------------------------------------------------------
+// 2. LOWER TIMEFRAME (LTF) SECURITY REQUEST
+// -----------------------------------------------------------------------------
+[ltf_o_series, ltf_h_series, ltf_l_series, ltf_c_series, ltf_v_series] = request.security_lower_tf(syminfo.tickerid, "1", [open, high, low, close, volume])
+
+// Cumulative variable to allow continuous up-and-down (CVD-style) candles
+var float cum_val = 0.0
+
+float open_val = cum_val
+float close_val = open_val
+float high_val = open_val
+float low_val = open_val
+
+// Safe check for lower timeframe array existence
+bool has_ltf = false
+if not na(ltf_v_series)
+    if array.size(ltf_v_series) > 0
+        has_ltf := true
+
+if has_ltf
+    float current_running = 0.0
+    float max_running = 0.0
+    float min_running = 0.0
+    int ltf_sz = array.size(ltf_v_series)
+    for j = 0 to ltf_sz - 1
+        float l_o = array.get(ltf_o_series, j)
+        float l_c = array.get(ltf_c_series, j)
+        float l_v = array.get(ltf_v_series, j)
+
+        float delta = l_c >= l_o ? l_v : -l_v
+        current_running := current_running + delta
+        max_running := math.max(max_running, current_running)
+        min_running := math.min(min_running, current_running)
+
+    close_val := open_val + current_running
+    high_val := open_val + max_running
+    low_val := open_val + min_running
+else
+    // High-fidelity fallback heuristic partitioning
+    float body_high = math.max(open, close)
+    float body_low = math.min(open, close)
+    float body_size = body_high - body_low
+    float upper_wick = high - body_high
+    float lower_wick = body_low - low
+
+    float total_weight = body_size * 1.5 + upper_wick * 1.0 + lower_wick * 1.0
+    float b_vol = 0.0
+    float s_vol = 0.0
+    if total_weight > 0
+        float up_vol = volume * (upper_wick * 1.0 / total_weight)
+        float bo_vol = volume * (body_size * 1.5 / total_weight)
+        float dn_vol = volume * (lower_wick * 1.0 / total_weight)
+
+        float b_up = up_vol * 0.1
+        float s_up = up_vol * 0.9
+
+        float b_dn = dn_vol * 0.9
+        float s_dn = dn_vol * 0.1
+
+        float b_bo = 0.0
+        float s_bo = 0.0
+        if close >= open
+            b_bo := bo_vol * 0.8
+            s_bo := bo_vol * 0.2
+        else
+            b_bo := bo_vol * 0.2
+            s_bo := bo_vol * 0.8
+
+        b_vol := b_up + b_dn + b_bo
+        s_vol := s_up + s_dn + s_bo
+    else
+        b_vol := close >= open ? volume : 0.0
+        s_vol := close < open ? volume : 0.0
+
+    float total_delta = b_vol - s_vol
+    close_val := open_val + total_delta
+    high_val := math.max(open_val, close_val)
+    low_val := math.min(open_val, close_val)
+
+// Update cumulative state for the next bar
+cum_val := close_val
+
+// Render TDV continuous trend candle (CVD Style)
+color candle_col = close_val >= open_val ? col_bull : col_bear
+plotcandle(open_val, high_val, low_val, close_val, "CVD Candles", color=candle_col, wickcolor=candle_col, bordercolor=candle_col)
+
+// -----------------------------------------------------------------------------
+// 3. EACH CANDLE PERCENTAGE VALUE ANNOTATION
+// -----------------------------------------------------------------------------
+float bar_delta_val = close_val - open_val
+float bar_pct = volume > 0 ? (bar_delta_val / volume) * 100.0 : 0.0
+string bar_pct_txt = (bar_pct >= 0 ? "+" : "") + str.tostring(bar_pct, "0.#") + "%"
+color bar_pct_col = bar_pct >= 0 ? col_bull : col_bear
+
+// Safe dynamic offset using pseudo-ATR calculation on CVD values
+var float cvd_atr = 0.0
+cvd_atr := nz(cvd_atr[1] * 13 + (high_val - low_val)) / 14.0
+float cvd_offset = cvd_atr * 0.25
+
+label pct_lbl = label.new(bar_index, bar_pct >= 0 ? high_val + cvd_offset : low_val - cvd_offset,
+                          text=bar_pct_txt,
+                          color=color.new(dark, 100),
+                          textcolor=bar_pct_col,
+                          style=bar_pct >= 0 ? label.style_label_down : label.style_label_up,
+                          size=size.small)
+
+var label[] pct_labels = array.new<label>()
+array.push(pct_labels, pct_lbl)
+if array.size(pct_labels) > 100
+    label.delete(array.shift(pct_labels))
+
+// -----------------------------------------------------------------------------
+// 4. BULLISH & BEARISH DIVERGENCE DETECTION
+// -----------------------------------------------------------------------------
+// Pivot detection on both Price (close/high/low) and CVD (close_val/high_val/low_val)
+float p_high_piv = ta.pivothigh(high, piv_left, piv_right)
+float p_low_piv = ta.pivotlow(low, piv_left, piv_right)
+
+float cvd_high_piv = ta.pivothigh(high_val, piv_left, piv_right)
+float cvd_low_piv = ta.pivotlow(low_val, piv_left, piv_right)
+
+// Persistent trackers for low pivots
+var int prev_low_idx = na
+var float prev_low_p_price = na
+var float prev_low_cvd_val = na
+
+// Persistent trackers for high pivots
+var int prev_high_idx = na
+var float prev_high_p_price = na
+var float prev_high_cvd_val = na
+
+// Check Low Pivots (Bullish Divergence)
+if not na(p_low_piv) and not na(cvd_low_piv)
+    int curr_low_idx = bar_index - piv_right
+    float curr_low_p_price = low[piv_right]
+    float curr_low_cvd_val = low_val[piv_right]
+
+    if show_bull_div and not na(prev_low_idx)
+        if curr_low_p_price < prev_low_p_price and curr_low_cvd_val > prev_low_cvd_val
+            // Bullish Divergence detected!
+            line.new(prev_low_idx, prev_low_cvd_val, curr_low_idx, curr_low_cvd_val,
+                     color=col_bull, width=2, style=line.style_dashed)
+            label.new(curr_low_idx, curr_low_cvd_val - cvd_offset,
+                      text="Bull Div",
+                      color=color.new(col_bull, 100),
+                      textcolor=col_bull,
+                      style=label.style_label_up,
+                      size=size.small)
+
+    prev_low_idx := curr_low_idx
+    prev_low_p_price := curr_low_p_price
+    prev_low_cvd_val := curr_low_cvd_val
+
+// Check High Pivots (Bearish Divergence)
+if not na(p_high_piv) and not na(cvd_high_piv)
+    int curr_high_idx = bar_index - piv_right
+    float curr_high_p_price = high[piv_right]
+    float curr_high_cvd_val = high_val[piv_right]
+
+    if show_bear_div and not na(prev_high_idx)
+        if curr_high_p_price > prev_high_p_price and curr_high_cvd_val < prev_high_cvd_val
+            // Bearish Divergence detected!
+            line.new(prev_high_idx, prev_high_cvd_val, curr_high_idx, curr_high_cvd_val,
+                     color=col_bear, width=2, style=line.style_dashed)
+            label.new(curr_high_idx, curr_high_cvd_val + cvd_offset,
+                      text="Bear Div",
+                      color=color.new(col_bear, 100),
+                      textcolor=col_bear,
+                      style=label.style_label_down,
+                      size=size.small)
+
+    prev_high_idx := curr_high_idx
+    prev_high_p_price := curr_high_p_price
+    prev_high_cvd_val := curr_high_cvd_val
