@@ -1,0 +1,734 @@
+//@version=6
+indicator("Footprint Last Candle Professional 专 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο", shorttitle="Footprint Last Candle", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+
+// -----------------------------------------------------------------------------
+// 1. INPUTS & CONFIGURATION
+// -----------------------------------------------------------------------------
+string GlobalGroup   = "Visual Themes & Global"
+string grp_footprint = "Footprint Profile Settings"
+string grp_visuals   = "Visual Enhancements"
+
+// Color Theme
+string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=GlobalGroup)
+
+// Footprint Rows Configuration
+int vp_rows = input.int(28, "Footprint Resolution (Rows)", minval=5, maxval=100, group=grp_footprint)
+int ladder_max_rows = input.int(24, "Max Visible Rows in Table", minval=4, maxval=100, group=grp_footprint)
+float vp_imbalance_threshold = input.float(3.0, "Delta Imbalance Ratio", minval=1.5, step=0.5, group=grp_footprint)
+
+// Key Node Display Toggles
+bool show_hvn = input.bool(true, "Identify HVN Levels", group=grp_footprint)
+float hvn_threshold = input.float(0.7, "HVN Threshold (%)", minval=0.01, maxval=1.0, step=0.01, group=grp_footprint)
+bool show_lvn = input.bool(true, "Identify LVN Levels", group=grp_footprint)
+float lvn_threshold = input.float(0.1, "LVN Threshold (%)", minval=0.01, maxval=0.5, step=0.01, group=grp_footprint)
+bool show_large_vol = input.bool(true, "Identify Large Volume Nodes", group=grp_footprint)
+float large_vol_mult = input.float(1.8, "Large Vol Multiplier (vs Avg)", minval=1.0, step=0.1, group=grp_footprint)
+
+// DOM Profile Toggles
+bool show_dom = input.bool(true, "Show DOM (Depth of Market) Profile Column", group=grp_footprint)
+
+// Visual Layout Settings
+string table_pos_input = input.string("bottom_left", "Table Screen Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_visuals)
+string table_size_input = input.string("Tiny", "Table Cell Size", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=grp_visuals)
+bool show_logo = input.bool(true, "Show Breathing Brand Logo", group=grp_visuals)
+int logo_offset = input.int(85, "Logo Horizontal Offset (Bars)", minval=0, maxval=300, group=grp_visuals)
+
+// Core Colors Mapping
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
+color Transparent_Color = color.new(white, 100)
+
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
+
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
+
+color col_poc = switch color_theme
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+
+// Visual Table Helpers (Value Area vs Out of Value Area Gradients)
+get_table_bg(float ratio, bool is_in_va) =>
+    color base = color.from_gradient(ratio, 0.0, 1.0, col_bull, col_bear)
+    color mixed_base = color.from_gradient(35.0, 0.0, 100.0, base, #8b4513)
+    // Area value lebih pekat lagi: 60 alpha (40% opacity) inside Value Area
+    // 95 transparency = 5% opacity outside Value Area boundary limit
+    int alpha = is_in_va ? 60 : 95
+    color.new(mixed_base, alpha)
+
+get_text_color(bool is_key_node, int r, int poc_idx, int va_down, int va_up) =>
+    white
+
+format_vol(float v) =>
+    float abs_v = math.abs(v)
+    string res = ""
+    if abs_v >= 1000000000
+        res := str.tostring(v / 1000000000, "#.##") + "B"
+    else if abs_v >= 1000000
+        res := str.tostring(v / 1000000, "#.##") + "M"
+    else if abs_v >= 1000
+        res := str.tostring(v / 1000, "#.#") + "K"
+    else
+        res := str.tostring(v, "0.##")
+    res
+
+// Heuristic Fallback Volume Partitioning
+calc_vol_partition(float vol) =>
+    float range_size = high - low
+    float b_vol = 0.0
+    float s_vol = 0.0
+
+    if range_size > 0
+        float body_high = math.max(open, close)
+        float body_low  = math.min(open, close)
+        float body_size = body_high - body_low
+        float upper_wick = high - body_high
+        float lower_wick = body_low - low
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (open + close) / 2
+        float body_pos = (b_center - low) / range_size
+        float br_b = close > open ? math.min(0.9, 0.6 + body_pos * 0.3) : (close < open ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+        b_vol := vol * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := vol * (w_body * (1.0 - br_b) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := vol * 0.5
+        s_vol := vol * 0.5
+    [b_vol, s_vol]
+
+// Heuristic Fallback distribution
+fallback_footprint(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        if _range_val <= 0
+            int idx = math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h)))
+            float v_half = _v_total * 0.5
+            array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + v_half)
+            array.set(_bucket_sell, idx, array.get(_bucket_sell, idx) + v_half)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h - b_high) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * w_u
+
+            float b_center = (_o + _c) * 0.5
+            float body_pos = (b_center - _l) * inv_range
+
+            float br_b = _c > _o ? math.min(0.9, 0.6 + body_pos * 0.3) : (_c < _o ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+            if v_l > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.90
+                    float v_j_sell = v_j * 0.10
+                    for j = idx_l to idx_h
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_b > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * br_b
+                    float v_j_sell = v_j * (1.0 - br_b)
+                    for j = idx_l to idx_h
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_u > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.10
+                    float v_j_sell = v_j * 0.90
+                    for j = idx_l to idx_h
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+
+// Dynamic distribution for LTF candles using strict candle-direction rule
+distribute_footprint(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        bool is_buy_candle = _c >= _o
+        if _range_val <= 0
+            int idx = math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h)))
+            if is_buy_candle
+                array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + _v_total)
+            else
+                array.set(_bucket_sell, idx, array.get(_bucket_sell, idx) + _v_total)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * (1.0 - w_l - w_b)
+
+            if v_l > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    for j = idx_l to idx_h
+                        if is_buy_candle
+                            array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j)
+                        else
+                            array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j)
+            if v_b > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    for j = idx_l to idx_h
+                        if is_buy_candle
+                            array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j)
+                        else
+                            array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j)
+            if v_u > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    for j = idx_l to idx_h
+                        if is_buy_candle
+                            array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j)
+                        else
+                            array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j)
+
+// -----------------------------------------------------------------------------
+// 2. DATA RETRIEVAL (LTF STRATEGY)
+// -----------------------------------------------------------------------------
+float[] ltf_o = request.security_lower_tf(syminfo.tickerid, "1", open)
+float[] ltf_h = request.security_lower_tf(syminfo.tickerid, "1", high)
+float[] ltf_l = request.security_lower_tf(syminfo.tickerid, "1", low)
+float[] ltf_c = request.security_lower_tf(syminfo.tickerid, "1", close)
+float[] ltf_v = request.security_lower_tf(syminfo.tickerid, "1", volume)
+
+// -----------------------------------------------------------------------------
+// 3. CORE CALCULATION ENGINE
+// -----------------------------------------------------------------------------
+var array<float> buy_at_level = array.new_float(vp_rows, 0.0)
+var array<float> sell_at_level = array.new_float(vp_rows, 0.0)
+var array<float> total_at_level = array.new_float(vp_rows, 0.0)
+
+// Reset accumulators per bar
+array.fill(buy_at_level, 0.0)
+array.fill(sell_at_level, 0.0)
+array.fill(total_at_level, 0.0)
+
+float r_high = high
+float r_low = low
+float r_range = r_high - r_low
+float r_step = r_range > 0 ? r_range / vp_rows : 0.0
+
+if r_range > 0 and r_step > 0
+    float inv_r_step = 1.0 / r_step
+    has_ltf = not na(ltf_v) and array.size(ltf_v) > 0
+
+    if has_ltf
+        for i = 0 to array.size(ltf_v) - 1
+            float _o = array.get(ltf_o, i)
+            float _h = array.get(ltf_h, i)
+            float _l = array.get(ltf_l, i)
+            float _c = array.get(ltf_c, i)
+            float _v = array.get(ltf_v, i)
+            distribute_footprint(vp_rows, r_low, inv_r_step, _o, _h, _l, _c, _v, buy_at_level, sell_at_level)
+    else
+        // Fallback wick/body partitioning heuristic
+        fallback_footprint(vp_rows, r_low, inv_r_step, open, high, low, close, volume, buy_at_level, sell_at_level)
+
+    // Calculate total at each level
+    for i = 0 to vp_rows - 1
+        array.set(total_at_level, i, array.get(buy_at_level, i) + array.get(sell_at_level, i))
+
+// -----------------------------------------------------------------------------
+// 4. LEVEL CALCULATIONS (POC, VAH, VAL, HVN, LVN, LARGE VOL NODES)
+// -----------------------------------------------------------------------------
+float total_profile_volume = array.sum(total_at_level)
+float max_profile_vol = array.size(total_at_level) > 0 ? array.max(total_at_level) : 0.0
+int poc_idx = array.size(total_at_level) > 0 ? array.indexof(total_at_level, max_profile_vol) : 0
+
+int va_up = poc_idx
+int va_down = poc_idx
+float target_va_vol = total_profile_volume * 0.70
+float current_va_vol = max_profile_vol
+
+int va_loop_safe = 0
+while current_va_vol < target_va_vol and va_loop_safe < vp_rows
+    va_loop_safe += 1
+    float vol_up = (va_up < vp_rows - 1) ? array.get(total_at_level, va_up + 1) : 0.0
+    float vol_down = (va_down > 0) ? array.get(total_at_level, va_down - 1) : 0.0
+    if vol_up == 0.0 and vol_down == 0.0
+        break
+    if vol_up >= vol_down
+        current_va_vol += vol_up
+        va_up := math.min(va_up + 1, vp_rows - 1)
+    else
+        current_va_vol += vol_down
+        va_down := math.max(va_down - 1, 0)
+
+float poc_price = r_low + (poc_idx * r_step) + (r_step / 2.0)
+float vah_price = r_low + (va_up + 1) * r_step
+float val_price = r_low + va_down * r_step
+
+// Average Volume Calculation
+float avg_level_vol = total_profile_volume > 0 ? total_profile_volume / vp_rows : 0.0
+
+// -----------------------------------------------------------------------------
+// 5. LOCAL DRAWINGS ON THE LAST CANDLE (POC, VAH, VAL LINES & NODE LEVEL LINES)
+// -----------------------------------------------------------------------------
+var line poc_line = na
+var line vah_line = na
+var line val_line = na
+var line[] node_level_lines = array.new<line>()
+var label[] node_level_labels = array.new<label>()
+
+if barstate.islast
+    line.delete(poc_line)
+    line.delete(vah_line)
+    line.delete(val_line)
+
+    // Clean old node level lines and labels
+    if array.size(node_level_lines) > 0
+        for ln in node_level_lines
+            line.delete(ln)
+        array.clear(node_level_lines)
+    if array.size(node_level_labels) > 0
+        for lbl in node_level_labels
+            label.delete(lbl)
+        array.clear(node_level_labels)
+
+    // Position coordinates on the last bar
+    int t_start = bar_index
+    int t_end = bar_index + 10
+
+    // Synced line colors with table changes
+    poc_line := line.new(t_start, poc_price, t_end, poc_price, color=col_poc, width=2, style=line.style_solid)
+    vah_line := line.new(t_start, vah_price, t_end, vah_price, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
+    val_line := line.new(t_start, val_price, t_end, val_price, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
+
+    // Collect and draw node level lines occurring in the last candle footprint
+    for r = 0 to vp_rows - 1
+        float level_price = r_low + r * r_step + (r_step / 2.0)
+        float level_vol = array.get(total_at_level, r)
+
+        bool is_hvn = false
+        bool is_lvn = false
+        bool is_large_vol = false
+
+        if r > 0 and r < vp_rows - 1
+            float v_prev = array.get(total_at_level, r - 1)
+            float v_curr = level_vol
+            float v_next = array.get(total_at_level, r + 1)
+            if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= total_profile_volume * hvn_threshold / vp_rows and r != poc_idx
+                is_hvn := true
+            if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < total_profile_volume * lvn_threshold / vp_rows
+                is_lvn := true
+            if show_large_vol and v_curr > avg_level_vol * large_vol_mult
+                is_large_vol := true
+
+        // Draw horizontal line and labels for identified key nodes with synced table colors
+        if is_large_vol and r != poc_idx
+            // Synced color with large vol node layout
+            color is_sell_dom = array.get(sell_at_level, r) > array.get(buy_at_level, r) ? col_bear : col_bull
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(is_sell_dom, 40), width=1, style=line.style_dashed)
+            lbl = label.new(t_end, level_price, "LARGE VOL", color=color.new(is_sell_dom, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
+            array.push(node_level_lines, ln)
+            array.push(node_level_labels, lbl)
+        else if is_hvn
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bull, 40), width=1, style=line.style_solid)
+            lbl = label.new(t_end, level_price, "HVN", color=color.new(col_bull, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
+            array.push(node_level_lines, ln)
+            array.push(node_level_labels, lbl)
+        else if is_lvn
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bear, 40), width=1, style=line.style_dotted)
+            lbl = label.new(t_end, level_price, "LVN", color=color.new(col_bear, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
+            array.push(node_level_lines, ln)
+            array.push(node_level_labels, lbl)
+
+// -----------------------------------------------------------------------------
+// 6. VOLUME LADDER / FOOTPRINT SCREEN TABLE (INTEGRATED DOM PROFILE)
+// -----------------------------------------------------------------------------
+var table footprint_tbl = na
+
+if barstate.islast and total_profile_volume > 0
+    table.delete(footprint_tbl)
+
+    // Position mapping
+    string l_pos = switch table_pos_input
+        "top_left"     => position.top_left
+        "top_right"    => position.top_right
+        "bottom_left"  => position.bottom_left
+        "bottom_right" => position.bottom_right
+        => position.bottom_left
+
+    // Size mapping
+    string l_sz = switch table_size_input
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        "Large"  => size.large
+        "Huge"   => size.huge
+        => size.tiny
+
+    // Current price index identification
+    int current_price_row_idx = -1
+    if close >= r_low and close <= r_high and r_step > 0
+        current_price_row_idx := math.floor((close - r_low) / r_step)
+        current_price_row_idx := math.max(0, math.min(vp_rows - 1, current_price_row_idx))
+
+    // Determine displaying rows window (cropping and centering)
+    int display_rows = math.min(vp_rows, ladder_max_rows)
+    int center_idx = current_price_row_idx != -1 ? current_price_row_idx : poc_idx
+    int start_r = center_idx - math.floor(display_rows / 2)
+    int end_r = start_r + display_rows - 1
+
+    if start_r < 0
+        start_r := 0
+        end_r := display_rows - 1
+    if end_r >= vp_rows
+        end_r := vp_rows - 1
+        start_r := math.max(0, end_r - display_rows + 1)
+
+    // Instantiate dynamic footprints table with optional DOM column (column count: 5 if show_dom, otherwise 4)
+    int total_columns = show_dom ? 5 : 4
+    footprint_tbl := table.new(l_pos, total_columns, display_rows + 1, bgcolor=dark, border_width=1, border_color=Transparent_Color, frame_color=col_poc, frame_width=1)
+
+    // Header Cells
+    if show_dom
+        table.cell(footprint_tbl, 0, 0, "DOM Profile", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold, text_halign=text.align_left)
+        table.cell(footprint_tbl, 1, 0, "Sell | Buy", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 2, 0, "Total Vol", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 3, 0, "Net Delta", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 4, 0, "Price Level", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+    else
+        table.cell(footprint_tbl, 0, 0, "Sell | Buy", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 1, 0, "Total Vol", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 2, 0, "Net Delta", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+        table.cell(footprint_tbl, 3, 0, "Price Level", bgcolor=dark, text_color=col_poc, text_size=l_sz, text_formatting=text.format_bold)
+
+    // Populate rows (high price to low price)
+    for r = start_r to end_r
+        int tbl_row = end_r - r + 1
+        float level_price = r_low + r * r_step
+        float level_vol = array.get(total_at_level, r)
+        float level_buy_vol = array.get(buy_at_level, r)
+        float level_sell_vol = array.get(sell_at_level, r)
+        float level_delta = level_buy_vol - level_sell_vol
+
+        float ratio = level_vol > 0 ? level_buy_vol / level_vol : 0.5
+        bool is_in_va = r >= va_down and r <= va_up
+        color row_bgcolor = get_table_bg(ratio, is_in_va)
+
+        // Analyze Node Attributes
+        bool is_hvn = false
+        bool is_lvn = false
+        bool is_large_vol = false
+
+        if r > 0 and r < vp_rows - 1
+            float v_prev = array.get(total_at_level, r - 1)
+            float v_curr = level_vol
+            float v_next = array.get(total_at_level, r + 1)
+            if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= total_profile_volume * hvn_threshold / vp_rows and r != poc_idx
+                is_hvn := true
+            if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < total_profile_volume * lvn_threshold / vp_rows
+                is_lvn := true
+            if show_large_vol and v_curr > avg_level_vol * large_vol_mult
+                is_large_vol := true
+
+        // Customize Background & Identity styling based on key levels (transparency mapped proportionally to volume value)
+        bool is_key_node = false
+
+        // Transparency mapped based on proportional volume ratio: higher volume = more solid
+        // Alpha mapped from 95 (very faint/transparent) down to 45 (more solid)
+        int d_alpha = max_profile_vol > 0 ? math.round(95 - (level_vol / max_profile_vol) * 50) : 80
+
+        if r == poc_idx
+            // POC gets a bright, distinct background color
+            row_bgcolor := color.new(col_poc, 15)
+        else if is_large_vol
+            if level_sell_vol > level_buy_vol
+                row_bgcolor := color.new(col_bear, d_alpha)
+            else
+                row_bgcolor := color.new(col_bull, d_alpha)
+            is_key_node := true
+        else if is_hvn
+            // HVN: transparent bull based on level volume
+            row_bgcolor := color.new(col_bull, d_alpha)
+            is_key_node := true
+        else if is_lvn
+            // LVN: transparent bear based on level volume
+            row_bgcolor := color.new(col_bear, d_alpha)
+            is_key_node := true
+        else if r == va_up or r == va_down
+            // VAH/VAL rows are configured to be highly transparent
+            row_bgcolor := color.new(col_poc, 90)
+
+        // Current Price Highlighting
+        if r == current_price_row_idx
+            row_bgcolor := color_theme == "Gear Protocol" ? color.new(white, 25) : color.new(yellow, 30)
+
+        // All table text colors are set to a clean white as requested, relying only on cell background colors (row_bgcolor) to identify the Value Area (VA) layer
+        color t_col = white
+
+        string sell_buy_str = format_vol(level_sell_vol) + " | " + format_vol(level_buy_vol)
+        string price_str = str.tostring(level_price, format.mintick)
+
+        // Node tags prefix/suffix additions (removed characters for professional visual clean alignment)
+        if r == current_price_row_idx
+            price_str := "▶ " + price_str + " ◀"
+        if r == poc_idx
+            price_str := "[POC] " + price_str
+        else if is_large_vol
+            price_str := "[LARGE_VOL] " + price_str
+        else if is_hvn
+            price_str := "[HVN] " + price_str
+        else if is_lvn
+            price_str := "[LVN] " + price_str
+
+        if r == va_up
+            price_str := "[VAH] " + price_str
+        else if r == va_down
+            price_str := "[VAL] " + price_str
+
+        // Apply Imbalance styling on Delta cells
+        color delta_bgcolor = row_bgcolor
+        if (level_buy_vol > level_sell_vol * vp_imbalance_threshold and level_sell_vol > 0)
+            delta_bgcolor := color.new(col_bull, 15)
+        else if (level_sell_vol > level_buy_vol * vp_imbalance_threshold and level_buy_vol > 0)
+            delta_bgcolor := color.new(col_bear, 15)
+
+        // Construct DOM Profile bar characters (using a simplified professional block bar representation based on volume ratio)
+        int bar_max_blocks = 12
+        int bar_blocks_count = max_profile_vol > 0 ? math.round((level_vol / max_profile_vol) * bar_max_blocks) : 0
+        string dom_bar_str = ""
+        if bar_blocks_count > 0
+            for b = 1 to bar_blocks_count
+                dom_bar_str := dom_bar_str + "█"
+
+        // Set dynamic DOM text color: above current price is bear, below is bull (typology fix for DOM depth displays)
+        color dom_text_color = white
+        if r > current_price_row_idx
+            dom_text_color := col_bear
+        else if r < current_price_row_idx
+            dom_text_color := col_bull
+        else
+            dom_text_color := col_poc
+
+        // Cell Population based on column configuration
+        if show_dom
+            table.cell(footprint_tbl, 0, tbl_row, dom_bar_str, bgcolor=row_bgcolor, text_color=dom_text_color, text_size=l_sz, text_formatting=text.format_bold, text_halign=text.align_left)
+            table.cell(footprint_tbl, 1, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 2, tbl_row, format_vol(level_vol), bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 3, tbl_row, (level_delta >= 0 ? "+" : "") + format_vol(level_delta), bgcolor=delta_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 4, tbl_row, price_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+        else
+            table.cell(footprint_tbl, 0, tbl_row, sell_buy_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 1, tbl_row, format_vol(level_vol), bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 2, tbl_row, (level_delta >= 0 ? "+" : "") + format_vol(level_delta), bgcolor=delta_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+            table.cell(footprint_tbl, 3, tbl_row, price_str, bgcolor=row_bgcolor, text_color=t_col, text_size=l_sz, text_formatting=text.format_bold)
+
+// -----------------------------------------------------------------------------
+// 7. BRAND LOGO ANIMATED SYSTEM (FROM BOOKMAP.PINE)
+// -----------------------------------------------------------------------------
+color c_start = col_bull
+color c_end   = col_bear
+
+// Breathing Animation cycle
+float time_cycle = timenow / 1000
+float breathe    = (math.sin(time_cycle * 3) + 1.0) / 2.0
+
+int periodb = 200
+float logo_base_raw = ta.lowest(low, periodb)
+float logo_range    = ta.highest(high, periodb) - logo_base_raw
+var float h_unit    = na
+
+float target_h = math.max(ta.atr(periodb) * 1.5, logo_range * 0.22)
+h_unit := na(h_unit) ? target_h : h_unit * 0.98 + target_h * 0.02
+
+float logo_base = logo_base_raw - h_unit * 0.2
+
+float point1b  = logo_base + h_unit * 0.71
+float point2b  = logo_base + h_unit * 0.43
+float point3b  = logo_base + h_unit * 0.61
+float point4b  = logo_base + h_unit * 0.32
+float point5b  = logo_base + h_unit * 1.00
+float point6b  = logo_base + h_unit * 0.71
+float point7b  = logo_base + h_unit * 0.18
+float point8b  = logo_base + h_unit * 0.21
+float point9b  = logo_base + h_unit * 0.71
+float point1b0 = logo_base + h_unit * 0.86
+
+// Logo Visual Objects
+var line Line1b  = na
+var line Line2b  = na
+var line Line3b  = na
+var line Line4b  = na
+var line Line5b  = na
+var line Line6b  = na
+var line Line7b  = na
+var line Line8b  = na
+var line Line9b  = na
+var line Line1b0 = na
+var line Line1b1 = na
+var line Line1b2 = na
+var line Line1b3 = na
+var line Line1b4 = na
+var line Line1b5 = na
+var line Line1b6 = na
+var line Line1b7 = na
+var line Line1b8 = na
+var label[] brand_labels = array.new<label>()
+
+// Cleanup Logo elements to prevent leaking
+if not na(Line1b)
+    line.delete(Line1b)
+    line.delete(Line2b)
+    line.delete(Line3b)
+    line.delete(Line4b)
+    line.delete(Line5b)
+    line.delete(Line6b)
+    line.delete(Line7b)
+    line.delete(Line8b)
+    line.delete(Line9b)
+    line.delete(Line1b0)
+    line.delete(Line1b1)
+    line.delete(Line1b2)
+    line.delete(Line1b3)
+    line.delete(Line1b4)
+    line.delete(Line1b5)
+    line.delete(Line1b6)
+    line.delete(Line1b7)
+    line.delete(Line1b8)
+    while array.size(brand_labels) > 0
+        label.delete(array.pop(brand_labels))
+
+get_adv_color(int step) =>
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15)
+    if dynamic_ratio > 1.0
+        dynamic_ratio := 1.0
+    color.from_gradient(dynamic_ratio, 0.0, 1.0, c_start, c_end)
+
+get_fade_alpha(float x_rel) =>
+    float dist = math.abs(x_rel - 32.0)
+    float ratio = dist / 32.0
+    math.round(80 * (1.0 - ratio))
+
+if show_logo and barstate.islast
+    int safe_logo_offset = math.min(logo_offset, 400)
+    int l_off = safe_logo_offset
+    color c_head_sync = get_adv_color(1)
+
+    Line1b := line.new(x1 = bar_index + l_off + 4, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point1b, color = col_poc, width = 1)
+    Line2b := line.new(x1 = bar_index + l_off + 8, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point2b, color = col_poc, width = 1)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, get_fade_alpha(7.5)))
+
+    Line3b := line.new(x1 = bar_index + l_off + 11, y1 = point1b, x2 = bar_index + l_off + 13, y2 = point3b, color = col_poc, width = 1)
+    Line4b := line.new(x1 = bar_index + l_off + 11, y1 = point2b, x2 = bar_index + l_off + 13, y2 = point4b, color = col_poc, width = 1)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), get_fade_alpha(12.0)))
+
+    Line5b := line.new(x1 = bar_index + l_off + 13, y1 = point3b, x2 = bar_index + l_off + 19, y2 = point5b, color = col_poc, width = 1)
+    Line6b := line.new(x1 = bar_index + l_off + 13, y1 = point4b, x2 = bar_index + l_off + 19, y2 = point6b, color = col_poc, width = 1)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), get_fade_alpha(16.0)))
+
+    Line7b := line.new(x1 = bar_index + l_off + 19, y1 = point5b, x2 = bar_index + l_off + 24, y2 = point3b, color = col_poc, width = 1)
+    Line8b := line.new(x1 = bar_index + l_off + 19, y1 = point6b, x2 = bar_index + l_off + 24, y2 = point4b, color = col_poc, width = 1)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), get_fade_alpha(21.5)))
+
+    Line9b := line.new(x1 = bar_index + l_off + 24, y1 = point3b, x2 = bar_index + l_off + 26, y2 = point1b, color = col_poc, width = 1)
+    Line1b0 := line.new(x1 = bar_index + l_off + 24, y1 = point4b, x2 = bar_index + l_off + 26, y2 = point2b, color = col_poc, width = 1)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), get_fade_alpha(25.0)))
+
+    Line1b1 := line.new(x1 = bar_index + l_off + 26, y1 = point1b, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = 1)
+    Line1b2 := line.new(x1 = bar_index + l_off + 26, y1 = point2b, x2 = bar_index + l_off + 32, y2 = logo_base, color = col_poc, width = 1)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), get_fade_alpha(31.0)))
+
+    Line1b3 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 26, y2 = point7b, color = col_poc, width = 1)
+    Line1b4 := line.new(x1 = bar_index + l_off + 0, y1 = logo_base, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = 1)
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, get_fade_alpha(13.0)))
+
+    Line1b5 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 0, y2 = logo_base, color = col_poc, width = 1)
+    Line1b6 := line.new(x1 = bar_index + l_off + 26, y1 = point7b, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = 1)
+    Line1b7 := line.new(x1 = bar_index + l_off + 32, y1 = logo_base, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = 1)
+
+    label l = label.new(bar_index + l_off + 54, point2b, "模块 专 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο" + "\nFOOTPRINT ANALYST PRO v1.1", text_formatting=text.format_bold, style=label.style_none, textcolor=col_poc, size=size.normal, textalign=text.align_left)
+    array.push(brand_labels, l)
+
+    label glow1 = label.new(bar_index + l_off + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
+    label glow2 = label.new(bar_index + l_off + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc, size=size.huge)
+    array.push(brand_labels, glow1)
+    array.push(brand_labels, glow2)
+
+// -----------------------------------------------------------------------------
+// 8. PLOT AND STYLING AESTHETICS
+// -----------------------------------------------------------------------------
+color candle_body_color = color.new(close >= open ? col_bull : col_bear, 80)
+color candle_wick_color = close >= open ? col_bull : col_bear
+
+plotcandle(open, high, low, close, color=candle_body_color, wickcolor=candle_wick_color, bordercolor=candle_wick_color, title="Dynamic Candles")
