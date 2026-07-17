@@ -77,6 +77,14 @@ lookback = input.int(10, "Pivot Lookback", minval=2, group=sr_group)
 fvg_group = "FVG Settings"
 show_fvg = input.bool(true, "Show FVG Zones", group=fvg_group)
 
+trend_group = "Trend Settings"
+trend_type = input.string("None", "Trend Filter Type", options=["None", "EMA", "Supertrend", "Based POC"], group=trend_group)
+ema_len = input.int(200, "EMA Length", minval=1, group=trend_group)
+st_factor = input.float(3.0, "Supertrend Factor", minval=0.1, step=0.1, group=trend_group)
+st_period = input.int(10, "Supertrend ATR Period", minval=1, group=trend_group)
+filter_by_trend = input.bool(true, "Filter SR & FVG by Trend Direction", group=trend_group)
+show_trend_visual = input.bool(true, "Show Trend Line", group=trend_group)
+
 mitig_group = "Mitigation Settings"
 show_mitigated = input.bool(true, "Show Mitigated Zones", group=mitig_group)
 max_zones = input.int(30, "Max Active Zones", group=mitig_group)
@@ -88,7 +96,7 @@ use_ltf = input.bool(true, "Use Lower Timeframe (1m) for Accuracy", group=vol_gr
 
 candle_group = "Candle Settings"
 show_candles = input.bool(false, "Show Custom Candles", group=candle_group)
-candle_mode  = input.string("Delta Volume", "Candle Color Mode", options=["Normal", "Delta Volume"], group=candle_group)
+candle_mode  = input.string("Delta Volume", "Candle Color Mode", options=["Normal", "Delta Volume", "Based Trend"], group=candle_group)
 
 pd_group = "Premium & Discount Settings"
 show_pd = input.bool(true, "Show P/D Zones with Volume Profile", group=pd_group)
@@ -168,17 +176,100 @@ format_vol(float v) =>
         str.tostring(v, "0")
 
 //════════════════════════════════════════════════════════════════════════
+// TREND CALCULATION
+//════════════════════════════════════════════════════════════════════════
+var float latest_supply_top = na
+var float latest_demand_bottom = na
+var int latest_supply_idx = na
+var int latest_demand_idx = na
+
+ema_val = ta.ema(close, ema_len)
+[st_val, st_dir] = ta.supertrend(st_factor, st_period)
+
+ph = ta.pivothigh(high, lookback, lookback)
+pl = ta.pivotlow(low, lookback, lookback)
+
+// S/R Tracking (Unconditional for Volume Profile, Premium/Discount, and POC series accuracy)
+if not na(ph)
+    latest_supply_top := high[lookback]
+    latest_supply_idx := bar_index[lookback]
+
+if not na(pl)
+    latest_demand_bottom := low[lookback]
+    latest_demand_idx := bar_index[lookback]
+
+// POC Series Tracking
+var float poc_p_series = na
+var float range_high = na
+var float range_low = na
+var float[] buckets_total = array.new_float(vp_rows, 0.0)
+
+// Detect when S/R range changes (by looking at pivots)
+range_changed = not na(ph) or not na(pl)
+
+if range_changed and not na(latest_supply_top) and not na(latest_demand_bottom)
+    range_high := latest_supply_top
+    range_low := latest_demand_bottom
+    float row_h = (range_high - range_low) / vp_rows
+    if row_h > 0
+        array.fill(buckets_total, 0.0)
+        int start_vp_idx = math.min(latest_supply_idx, latest_demand_idx)
+        int check_len = bar_index - start_vp_idx
+        if check_len > 0
+            for i = 0 to check_len
+                int l_idx = i
+                float v_val = volume[l_idx], o_val = open[l_idx], h_val = high[l_idx], l_val = low[l_idx], c_val = close[l_idx]
+                [hb_v, hs_v] = calc_vol_partition(v_val, o_val, h_val, l_val, c_val)
+                int b_idx_h = math.min(vp_rows - 1, math.max(0, math.floor((h_val - range_low) / row_h)))
+                int b_idx_l = math.min(vp_rows - 1, math.max(0, math.floor((l_val - range_low) / row_h)))
+                int num_b = math.max(1, b_idx_h - b_idx_l + 1)
+                for j = b_idx_l to b_idx_h
+                    array.set(buckets_total, j, array.get(buckets_total, j) + v_val / num_b)
+            float max_vol = array.max(buckets_total)
+            int poc_idx = array.indexof(buckets_total, max_vol)
+            poc_p_series := range_low + (poc_idx * row_h) + (row_h / 2)
+else if not na(range_high) and not na(range_low)
+    float row_h = (range_high - range_low) / vp_rows
+    if row_h > 0
+        [hb_v, hs_v] = calc_vol_partition(volume, open, high, low, close)
+        int b_idx_h = math.min(vp_rows - 1, math.max(0, math.floor((high - range_low) / row_h)))
+        int b_idx_l = math.min(vp_rows - 1, math.max(0, math.floor((low - range_low) / row_h)))
+        int num_b = math.max(1, b_idx_h - b_idx_l + 1)
+        for j = b_idx_l to b_idx_h
+            array.set(buckets_total, j, array.get(buckets_total, j) + volume / num_b)
+        float max_vol = array.max(buckets_total)
+        int poc_idx = array.indexof(buckets_total, max_vol)
+        poc_p_series := range_low + (poc_idx * row_h) + (row_h / 2)
+
+// Determine trend direction series
+trend_is_bull = trend_type == "EMA" ? (close >= ema_val) : (trend_type == "Supertrend" ? (st_dir < 0) : (trend_type == "Based POC" ? (not na(poc_p_series) and close >= poc_p_series) : true))
+trend_is_bear = trend_type == "EMA" ? (close < ema_val) : (trend_type == "Supertrend" ? (st_dir > 0) : (trend_type == "Based POC" ? (not na(poc_p_series) and close < poc_p_series) : true))
+
+//════════════════════════════════════════════════════════════════════════
 // CANDLE LOGIC
 //════════════════════════════════════════════════════════════════════════
 [curr_b_v, curr_s_v] = get_precise_vol(0)
 delta_bull = curr_b_v >= curr_s_v
 normal_bull = close >= open
 
-bull_c = candle_mode == "Normal" ? normal_bull : delta_bull
-c_col = bull_c ? col_bull : col_bear
-c_body = bull_c ? color.new(col_bull, 70) : color.new(col_bear, 70)
+// Super Gradient trend calculation
+atr_val = ta.atr(14)
+diff = trend_type == "EMA" ? (close - ema_val) : (trend_type == "Supertrend" ? (close - st_val) : (trend_type == "Based POC" ? (not na(poc_p_series) ? close - poc_p_series : 0.0) : (close - open)))
+normalized_diff = atr_val > 0 ? diff / (atr_val * 2.0) : 0.0
+trend_ratio = math.max(0, math.min(100, math.round((normalized_diff + 1.0) / 2.0 * 100)))
+
+super_grad_color = color.from_gradient(trend_ratio, 0, 100, col_bear, col_bull)
+super_grad_body = color.new(super_grad_color, 70)
+
+c_col = candle_mode == "Normal" ? (normal_bull ? col_bull : col_bear) : (candle_mode == "Delta Volume" ? (delta_bull ? col_bull : col_bear) : super_grad_color)
+c_body = candle_mode == "Normal" ? (normal_bull ? color.new(col_bull, 70) : color.new(col_bear, 70)) : (candle_mode == "Delta Volume" ? (delta_bull ? color.new(col_bull, 70) : color.new(col_bear, 70)) : super_grad_body)
 
 plotcandle(open, high, low, close, title="Custom Candles", color=show_candles ? c_body : na, wickcolor=show_candles ? c_col : na, bordercolor=show_candles ? c_col : na)
+
+// Plot Trend Visuals
+trend_line_val = trend_type == "EMA" ? ema_val : (trend_type == "Supertrend" ? st_val : (trend_type == "Based POC" ? poc_p_series : na))
+trend_line_color = trend_type == "EMA" ? (close >= ema_val ? col_bull : col_bear) : (trend_type == "Supertrend" ? (st_dir < 0 ? col_bull : col_bear) : (close >= poc_p_series ? col_bull : col_bear))
+plot(show_trend_visual ? trend_line_val : na, "Trend Line", color=trend_line_color, linewidth=2)
 
 //════════════════════════════════════════════════════════════════════════
 // TYPE & ARRAYS
@@ -197,24 +288,14 @@ type Zone
     int start_bar
 
 var array<Zone> zones = array.new<Zone>()
-var float latest_supply_top = na
-var float latest_demand_bottom = na
-var int latest_supply_idx = na
-var int latest_demand_idx = na
 
 //════════════════════════════════════════════════════════════════════════
 // DETECTION
 //════════════════════════════════════════════════════════════════════════
-// S/R Detection
-ph = ta.pivothigh(high, lookback, lookback)
-pl = ta.pivotlow(low, lookback, lookback)
-
-if show_sr and not na(ph)
+if show_sr and not na(ph) and (not filter_by_trend or trend_is_bear[lookback])
     [b_v, s_v] = get_precise_vol(lookback)
     float z_top = high[lookback]
     float z_bottom = math.max(open[lookback], close[lookback])
-    latest_supply_top := z_top
-    latest_supply_idx := bar_index[lookback]
     float b_ratio = (b_v + s_v) > 0 ? b_v / (b_v + s_v) : 0.5
     string info = show_vol_details ? "SUPPLY | B:" + format_vol(b_v) + " S:" + format_vol(s_v) : ""
     box mb = box.new(bar_index[lookback], z_top, bar_index + extend_len, z_bottom, bgcolor=color.new(col_bear, 90), border_color=col_bear, text=info, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
@@ -224,12 +305,10 @@ if show_sr and not na(ph)
         svb := box.new(bar_index[lookback] + math.round(extend_len * b_ratio), z_top, bar_index + extend_len, z_bottom, bgcolor=color.new(col_bear, 70), border_color=na)
     array.push(zones, Zone.new(main_box=mb, buy_vol_box=bvb, sell_vol_box=svb, top=z_top, bottom=z_bottom, buy_vol=b_v, sell_vol=s_v, is_bull=false, is_fvg=false, active=true, start_bar=bar_index[lookback]))
 
-if show_sr and not na(pl)
+if show_sr and not na(pl) and (not filter_by_trend or trend_is_bull[lookback])
     [b_v, s_v] = get_precise_vol(lookback)
     float z_top = math.min(open[lookback], close[lookback])
     float z_bottom = low[lookback]
-    latest_demand_bottom := z_bottom
-    latest_demand_idx := bar_index[lookback]
     float b_ratio = (b_v + s_v) > 0 ? b_v / (b_v + s_v) : 0.5
     string info = show_vol_details ? "DEMAND | B:" + format_vol(b_v) + " S:" + format_vol(s_v) : ""
     box mb = box.new(bar_index[lookback], z_top, bar_index + extend_len, z_bottom, bgcolor=color.new(col_bull, 90), border_color=col_bull, text=info, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
@@ -240,8 +319,8 @@ if show_sr and not na(pl)
     array.push(zones, Zone.new(main_box=mb, buy_vol_box=bvb, sell_vol_box=svb, top=z_top, bottom=z_bottom, buy_vol=b_v, sell_vol=s_v, is_bull=true, is_fvg=false, active=true, start_bar=bar_index[lookback]))
 
 // FVG Detection
-bull_fvg = show_fvg and low > high[2] and close[1] > high[2]
-bear_fvg = show_fvg and high < low[2] and close[1] < low[2]
+bull_fvg = show_fvg and low > high[2] and close[1] > high[2] and (not filter_by_trend or trend_is_bull[1])
+bear_fvg = show_fvg and high < low[2] and close[1] < low[2] and (not filter_by_trend or trend_is_bear[1])
 
 if bull_fvg
     [b_v, s_v] = get_precise_vol(1)
