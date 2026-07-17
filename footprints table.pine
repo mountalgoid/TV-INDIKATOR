@@ -434,13 +434,10 @@ if total_profile_volume > 0
         // Draw horizontal line / box for identified key nodes with synced table colors (using box/line only)
         if is_large_vol and r != poc_idx
             color is_sell_dom = array.get(sell_at_level, r) > array.get(buy_at_level, r) ? col_bear : col_bull
-            // Line
+            // Line only (no box) for Large Volume Node to make it clear as requested
             ln = line.new(t_start, level_price, t_end, level_price, color=color.new(is_sell_dom, 40), width=1, style=line.style_dashed)
-            // Box
-            bx = box.new(t_start, level_price + (r_step / 2.0), t_end, level_price - (r_step / 2.0), bgcolor=color.new(is_sell_dom, 92), border_color=color.new(is_sell_dom, 75), border_style=line.style_dashed, border_width=1)
             if barstate.islast
                 array.push(last_node_level_lines, ln)
-                array.push(last_node_level_boxes, bx)
         else if is_hvn
             // Line
             ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bull, 40), width=1, style=line.style_solid)
