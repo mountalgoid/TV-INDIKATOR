@@ -130,7 +130,7 @@ bool show_vp_labels = input.bool(true, "Show Text Labels", group=grp_vp)
 int  vp_lookback    = input.int(1000, "Main VP Lookback Length", minval=2, maxval=2000, group=grp_vp) 
 bool show_vp_short  = input.bool(true, "Show Short-Term VP", group=grp_vp)
 int  vp_lookback_s  = input.int(200, "Short VP Lookback Length", minval=2, maxval=1000, group=grp_vp)
-bool sync_with_main_vp = input.bool(true, "Sync Short VP & Bubble with Main VP", group=grp_vp, tooltip="When enabled, Short Volume Profile and Bubble Volume lookbacks are automatically synchronized with the Main Volume Profile lookback.")
+bool sync_with_main_vp = input.bool(true, "Sync Bubble with Main VP", group=grp_vp, tooltip="When enabled, the Bubble Volume lookback is automatically synchronized with the Main Volume Profile lookback, while the Short-Term Volume Profile remains independent.")
 int  vp_rows        = input.int(200, "Profile Row Count", minval=10, maxval=200, group=grp_vp)
 bool vp_use_grain   = input.bool(false, "Use Price Grain (Tick-based)", group=grp_vp)
 float vp_grain      = input.float(0.1, "Price Grain (Ticks)", minval=0.1, step=0.1, group=grp_vp)
@@ -209,7 +209,7 @@ int    ladder_max_rows = input.int(16, "Volume Ladder Max Rows", minval=4, maxva
 var table ladder_tbl = na
 
 // Synchronized Lookback Calculations
-int final_vp_lookback_s = sync_with_main_vp ? vp_lookback : vp_lookback_s
+int final_vp_lookback_s = vp_lookback_s
 int final_bubble_lookback = sync_with_main_vp ? vp_lookback : lookback
 int final_avg_plots_len = sync_with_main_vp ? vp_lookback : avg_plots_len
 
