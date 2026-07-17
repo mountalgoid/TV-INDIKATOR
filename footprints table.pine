@@ -434,23 +434,23 @@ if total_profile_volume > 0
         // Draw horizontal line / box for identified key nodes with synced table colors (using box/line only)
         if is_large_vol and r != poc_idx
             color is_sell_dom = array.get(sell_at_level, r) > array.get(buy_at_level, r) ? col_bear : col_bull
-            // Line only (no box) for Large Volume Node to make it clear as requested
-            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(is_sell_dom, 40), width=1, style=line.style_dashed)
+            // Line only (no box) for Large Volume Node, drawn thicker (width=2) as requested
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(is_sell_dom, 40), width=2, style=line.style_dashed)
             if barstate.islast
                 array.push(last_node_level_lines, ln)
         else if is_hvn
             // Line
             ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bull, 40), width=1, style=line.style_solid)
-            // Box
-            bx = box.new(t_start, level_price + (r_step / 2.0), t_end, level_price - (r_step / 2.0), bgcolor=color.new(col_bull, 92), border_color=color.new(col_bull, 75), border_style=line.style_solid, border_width=1)
+            // Box (with centered "HVN" text as requested)
+            bx = box.new(t_start, level_price + (r_step / 2.0), t_end, level_price - (r_step / 2.0), bgcolor=color.new(col_bull, 92), border_color=color.new(col_bull, 75), border_style=line.style_solid, border_width=1, text="HVN", text_color=white, text_size=size.tiny, text_valign=text.valign_center, text_halign=text.align_center)
             if barstate.islast
                 array.push(last_node_level_lines, ln)
                 array.push(last_node_level_boxes, bx)
         else if is_lvn
             // Line
             ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bear, 40), width=1, style=line.style_dotted)
-            // Box
-            bx = box.new(t_start, level_price + (r_step / 2.0), t_end, level_price - (r_step / 2.0), bgcolor=color.new(col_bear, 95), border_color=color.new(col_bear, 80), border_style=line.style_dotted, border_width=1)
+            // Box (with centered "LVN" text as requested)
+            bx = box.new(t_start, level_price + (r_step / 2.0), t_end, level_price - (r_step / 2.0), bgcolor=color.new(col_bear, 95), border_color=color.new(col_bear, 80), border_style=line.style_dotted, border_width=1, text="LVN", text_color=white, text_size=size.tiny, text_valign=text.valign_center, text_halign=text.align_center)
             if barstate.islast
                 array.push(last_node_level_lines, ln)
                 array.push(last_node_level_boxes, bx)
