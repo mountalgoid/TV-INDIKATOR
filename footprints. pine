@@ -99,9 +99,9 @@ float large_vol_mult = input.float(1.5, "Large Volume Multiplier (vs Avg)", minv
 int candle_body_trans = input.int(0, "Candle Body Transparency", minval=0, maxval=100, group=grp_candle)
 int candle_wick_trans = input.int(0, "Candle Wick Transparency", minval=0, maxval=100, group=grp_candle)
 
-// TDV Box Settings
-bool show_tdv = input.bool(true, "Show TDV Box (Separate Delta Box)", group=grp_tdv)
-float tdv_offset_mult = input.float(0.1, "TDV Box ATR Offset Multiplier", minval=0.0, maxval=2.0, step=0.1, group=grp_tdv, tooltip="Spacing between candle wick and TDV box based on ATR")
+// TDV Label Settings
+bool show_tdv = input.bool(true, "Show TDV Label (Separate Delta Label)", group=grp_tdv)
+float tdv_offset_mult = input.float(0.1, "TDV Label ATR Offset Multiplier", minval=0.0, maxval=2.0, step=0.1, group=grp_tdv, tooltip="Spacing between candle wick and TDV label based on ATR")
 
 // Hide standard candles
 plotcandle(open, high, low, close, color=na, wickcolor=na, bordercolor=na, editable=false)
@@ -120,7 +120,7 @@ atr_series = ta.atr(14)
 var box[] profile_boxes = array.new<box>()
 var line[] candle_lines = array.new<line>()
 var line[] level_lines = array.new<line>()
-var box[] tdv_boxes = array.new<box>()
+var label[] tdv_labels = array.new<label>()
 
 // --- HELPER FUNCTIONS FOR VOLUME FORMATTING ---
 format_vol(float v) =>
@@ -161,9 +161,9 @@ if barstate.islast
         line.delete(l)
     array.clear(level_lines)
     
-    for b in tdv_boxes
-        box.delete(b)
-    array.clear(tdv_boxes)
+    for lbl in tdv_labels
+        label.delete(lbl)
+    array.clear(tdv_labels)
 
     for k = 0 to lookback_bars - 1
         int idx = bar_index - k
@@ -411,7 +411,7 @@ if barstate.islast
             array.push(level_lines, l_val)
 
             // ---------------------------------------------------------------------
-            // TOTAL DELTA VOLUME (TDV) BOX DRAWING
+            // TOTAL DELTA VOLUME (TDV) LABEL DRAWING
             // ---------------------------------------------------------------------
             if show_tdv
                 float total_delta = total_buy_sum - total_sell_sum
@@ -419,38 +419,29 @@ if barstate.islast
                 
                 // Color matches delta sign
                 color tdv_base_col = total_delta >= 0 ? col_bull : col_bear
-                // Transparency maps to absolute delta percentage (quality of the delta dominance)
-                float delta_quality = math.abs(total_delta_pct) / 100.0
-                int tdv_trans = math.round(95 - delta_quality * 65)
                 
                 // ATR offset positioning to avoid overlap
                 float safe_atr = not na(atr_val) ? atr_val : (h - l) * 0.5
                 float vertical_offset = safe_atr * tdv_offset_mult
-                float box_height_val = (h - l) * 0.12
-                box_height_val := box_height_val > 0 ? box_height_val : syminfo.mintick * 12
                 
-                float tdv_y_high = 0.0
-                float tdv_y_low = 0.0
+                float tdv_y = 0.0
+                string lbl_style = ""
                 
                 if total_delta >= 0
-                    tdv_y_low := h + vertical_offset
-                    tdv_y_high := tdv_y_low + box_height_val
+                    tdv_y := l - vertical_offset
+                    lbl_style := label.style_label_up
                 else
-                    tdv_y_high := l - vertical_offset
-                    tdv_y_low := tdv_y_high - box_height_val
+                    tdv_y := h + vertical_offset
+                    lbl_style := label.style_label_down
                 
                 // Content containing delta, delta %, buy vol, and sell vol
                 string prefix_sign = total_delta >= 0 ? "+" : ""
                 string tdv_text = "Δ: " + prefix_sign + format_vol(total_delta) + " (" + prefix_sign + str.tostring(total_delta_pct, "0.#") + "%)\n▲" + format_vol(total_buy_sum) + " | ▼" + format_vol(total_sell_sum)
                 
-                box tdv_b = box.new(idx, tdv_y_high, idx + 1, tdv_y_low,
-                                    bgcolor=color.new(tdv_base_col,100),
-                                    border_color=color.new(tdv_base_col,tdv_trans),
-                                    text=tdv_text,
-                                    text_size=size.auto,
-                                    text_color=white,
-                                    text_formatting=text.format_bold,
-                                    text_valign=text.align_center,
-                                    text_halign=text.align_center,
-                                    border_width= 2)
-                array.push(tdv_boxes, tdv_b)
+                label tdv_lbl = label.new(idx, tdv_y,
+                                          text=tdv_text,
+                                          color=tdv_base_col,
+                                          textcolor=white,
+                                          style=lbl_style,
+                                          size=size.tiny)
+                array.push(tdv_labels, tdv_lbl)
