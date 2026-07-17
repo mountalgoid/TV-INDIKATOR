@@ -2,20 +2,69 @@
 // © MLTFX
 
 //@version=6
-indicator("TDV Candles V1.0 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="TDV Candles", overlay=false)
+indicator("TDV Candles V1.0 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο", shorttitle="TDV Candles", overlay=false)
 
-// Color definitions
-color col_bull = input.color(#179c74, "Bullish Candle Color")
-color col_bear = input.color(#f23645, "Bearish Candle Color")
+// -----------------------------------------------------------------------------
+// 1. INPUTS & CONFIGURATION (Theme system synced with footprints.pine)
+// -----------------------------------------------------------------------------
+string GlobalGroup = "Visual Themes & Global"
+string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=GlobalGroup)
 
-// 1. Lower Timeframe request
+// Core Colors
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
+
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
+
+// -----------------------------------------------------------------------------
+// 2. LOWER TIMEFRAME (LTF) SECURITY REQUEST
+// -----------------------------------------------------------------------------
 [ltf_o_series, ltf_h_series, ltf_l_series, ltf_c_series, ltf_v_series] = request.security_lower_tf(syminfo.tickerid, "1", [open, high, low, close, volume])
 
-// Calculations
-float open_val = 0.0
-float close_val = 0.0
-float high_val = 0.0
-float low_val = 0.0
+// Cumulative variable to allow continuous up-and-down (CVD-style) candles
+var float cum_val = 0.0
+
+float open_val = cum_val
+float close_val = open_val
+float high_val = open_val
+float low_val = open_val
 
 // Safe check for lower timeframe array existence
 bool has_ltf = false
@@ -24,9 +73,9 @@ if not na(ltf_v_series)
         has_ltf := true
 
 if has_ltf
-    float cum_delta = 0.0
-    float max_delta = 0.0
-    float min_delta = 0.0
+    float current_running = 0.0
+    float max_running = 0.0
+    float min_running = 0.0
     int ltf_sz = array.size(ltf_v_series)
     for j = 0 to ltf_sz - 1
         float l_o = array.get(ltf_o_series, j)
@@ -34,13 +83,13 @@ if has_ltf
         float l_v = array.get(ltf_v_series, j)
 
         float delta = l_c >= l_o ? l_v : -l_v
-        cum_delta := cum_delta + delta
-        max_delta := math.max(max_delta, cum_delta)
-        min_delta := math.min(min_delta, cum_delta)
+        current_running := current_running + delta
+        max_running := math.max(max_running, current_running)
+        min_running := math.min(min_running, current_running)
 
-    close_val := cum_delta
-    high_val := max_delta
-    low_val := min_delta
+    close_val := open_val + current_running
+    high_val := open_val + max_running
+    low_val := open_val + min_running
 else
     // High-fidelity fallback heuristic partitioning
     float body_high = math.max(open, close)
@@ -79,13 +128,13 @@ else
         s_vol := close < open ? volume : 0.0
 
     float total_delta = b_vol - s_vol
-    close_val := total_delta
-    high_val := math.max(0.0, total_delta)
-    low_val := math.min(0.0, total_delta)
+    close_val := open_val + total_delta
+    high_val := math.max(open_val, close_val)
+    low_val := math.min(open_val, close_val)
 
-// Render TDV candle
+// Update cumulative state for the next bar
+cum_val := close_val
+
+// Render TDV continuous trend candle
 color candle_col = close_val >= open_val ? col_bull : col_bear
 plotcandle(open_val, high_val, low_val, close_val, "TDV Candles", color=candle_col, wickcolor=candle_col, bordercolor=candle_col)
-
-// Reference zero line
-plot(0, color=color.new(color.gray, 50), title="Zero Line")
