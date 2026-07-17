@@ -389,25 +389,29 @@ if total_profile_volume > 0
         last_non_va_area_upper_box := upper_bx
         last_non_va_area_lower_box := lower_bx
 
-// Node level lines and labels (still only on the last candle)
-var line[] node_level_lines = array.new<line>()
-var label[] node_level_labels = array.new<label>()
+// Node level lines and boxes for both historical and last candle (no labels as requested)
+var line[] last_node_level_lines = array.new<line>()
+var box[] last_node_level_boxes = array.new<box>()
+var int last_node_bar_idx = na
 
+// Clean old node level drawings from the last bar on tick updates
 if barstate.islast
-    // Clean old node level lines and labels
-    if array.size(node_level_lines) > 0
-        for ln in node_level_lines
-            line.delete(ln)
-        array.clear(node_level_lines)
-    if array.size(node_level_labels) > 0
-        for lbl in node_level_labels
-            label.delete(lbl)
-        array.clear(node_level_labels)
-    
-    // Position coordinates for node labels on the last candle
-    int t_node_end = bar_index + 10
-    
-    // Collect and draw node level lines occurring in the last candle footprint
+    if last_node_bar_idx != bar_index
+        array.clear(last_node_level_lines)
+        array.clear(last_node_level_boxes)
+        last_node_bar_idx := bar_index
+    else
+        if array.size(last_node_level_lines) > 0
+            for ln in last_node_level_lines
+                line.delete(ln)
+            array.clear(last_node_level_lines)
+        if array.size(last_node_level_boxes) > 0
+            for bx in last_node_level_boxes
+                box.delete(bx)
+            array.clear(last_node_level_boxes)
+
+// Draw node levels (Large Volume, HVN, LVN) on every candle using boxes/lines with width extending to bar_index + 1
+if total_profile_volume > 0
     for r = 0 to vp_rows - 1
         float level_price = r_low + r * r_step + (r_step / 2.0)
         float level_vol = array.get(total_at_level, r)
@@ -427,23 +431,32 @@ if barstate.islast
             if show_large_vol and v_curr > avg_level_vol * large_vol_mult
                 is_large_vol := true
                 
-        // Draw horizontal line and labels for identified key nodes with synced table colors
+        // Draw horizontal line / box for identified key nodes with synced table colors (using box/line only)
         if is_large_vol and r != poc_idx
             color is_sell_dom = array.get(sell_at_level, r) > array.get(buy_at_level, r) ? col_bear : col_bull
-            ln = line.new(t_start, level_price, t_node_end, level_price, color=color.new(is_sell_dom, 40), width=1, style=line.style_dashed)
-            lbl = label.new(t_node_end, level_price, "LARGE VOL", color=color.new(is_sell_dom, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
-            array.push(node_level_lines, ln)
-            array.push(node_level_labels, lbl)
+            // Line
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(is_sell_dom, 40), width=1, style=line.style_dashed)
+            // Box
+            bx = box.new(t_start, level_price + (r_step / 2.0), t_end, level_price - (r_step / 2.0), bgcolor=color.new(is_sell_dom, 92), border_color=color.new(is_sell_dom, 75), border_style=line.style_dashed, border_width=1)
+            if barstate.islast
+                array.push(last_node_level_lines, ln)
+                array.push(last_node_level_boxes, bx)
         else if is_hvn
-            ln = line.new(t_start, level_price, t_node_end, level_price, color=color.new(col_bull, 40), width=1, style=line.style_solid)
-            lbl = label.new(t_node_end, level_price, "HVN", color=color.new(col_bull, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
-            array.push(node_level_lines, ln)
-            array.push(node_level_labels, lbl)
+            // Line
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bull, 40), width=1, style=line.style_solid)
+            // Box
+            bx = box.new(t_start, level_price + (r_step / 2.0), t_end, level_price - (r_step / 2.0), bgcolor=color.new(col_bull, 92), border_color=color.new(col_bull, 75), border_style=line.style_solid, border_width=1)
+            if barstate.islast
+                array.push(last_node_level_lines, ln)
+                array.push(last_node_level_boxes, bx)
         else if is_lvn
-            ln = line.new(t_start, level_price, t_node_end, level_price, color=color.new(col_bear, 40), width=1, style=line.style_dotted)
-            lbl = label.new(t_node_end, level_price, "LVN", color=color.new(col_bear, 80), textcolor=white, style=label.style_label_left, size=size.tiny)
-            array.push(node_level_lines, ln)
-            array.push(node_level_labels, lbl)
+            // Line
+            ln = line.new(t_start, level_price, t_end, level_price, color=color.new(col_bear, 40), width=1, style=line.style_dotted)
+            // Box
+            bx = box.new(t_start, level_price + (r_step / 2.0), t_end, level_price - (r_step / 2.0), bgcolor=color.new(col_bear, 95), border_color=color.new(col_bear, 80), border_style=line.style_dotted, border_width=1)
+            if barstate.islast
+                array.push(last_node_level_lines, ln)
+                array.push(last_node_level_boxes, bx)
 
 // -----------------------------------------------------------------------------
 // 6. VOLUME LADDER / FOOTPRINT SCREEN TABLE (INTEGRATED DOM PROFILE)
@@ -760,37 +773,32 @@ if show_logo and barstate.islast
     array.push(brand_labels, glow2)
 
 // -----------------------------------------------------------------------------
-// 8. PLOT AND STYLING AESTHETICS (CUSTOM PLOT CANDLE WITH 3 LINES)
+// 8. PLOT AND STYLING AESTHETICS (CUSTOM PLOT CANDLE WITH 2 LINES)
 // -----------------------------------------------------------------------------
-var line last_wick_up = na
-var line last_wick_dn = na
+var line last_wick = na
 var line last_body = na
 var int last_candle_bar_idx = na
 
 // For real-time updates on the last bar, delete the lines from the previous tick of the same bar
 if barstate.islast
     if last_candle_bar_idx != bar_index
-        last_wick_up := na
-        last_wick_dn := na
+        last_wick := na
         last_body := na
         last_candle_bar_idx := bar_index
     else
-        line.delete(last_wick_up)
-        line.delete(last_wick_dn)
+        line.delete(last_wick)
         line.delete(last_body)
 
 color candle_color = close >= open ? col_bull : col_bear
 float body_high = math.max(open, close)
 float body_low = math.min(open, close)
 
-// Draw wick lines (width = 1)
-line wick_up_ln = line.new(bar_index, high, bar_index, body_high, color=candle_color, width=1)
-line wick_dn_ln = line.new(bar_index, body_low, bar_index, low, color=candle_color, width=1)
+// Draw wick line (from low to high, width = 1)
+line wick_ln = line.new(bar_index, high, bar_index, low, color=candle_color, width=1)
 
-// Draw body line (width = 6)
+// Draw body line (from body_low to body_high, width = 6)
 line body_ln = line.new(bar_index, body_high, bar_index, body_low, color=candle_color, width=6)
 
 if barstate.islast
-    last_wick_up := wick_up_ln
-    last_wick_dn := wick_dn_ln
+    last_wick := wick_ln
     last_body := body_ln
