@@ -440,8 +440,8 @@ if barstate.islast
                 
                 label tdv_lbl = label.new(idx, tdv_y,
                                           text=tdv_text,
-                                          color=tdv_base_col,
-                                          textcolor=white,
+                                          color=color.new(tdv_base_col, 100),
+                                          textcolor=tdv_base_col,
                                           style=lbl_style,
                                           size=size.tiny)
                 array.push(tdv_labels, tdv_lbl)

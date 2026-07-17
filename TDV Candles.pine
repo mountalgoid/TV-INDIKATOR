@@ -1,0 +1,91 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © MLTFX
+
+//@version=6
+indicator("TDV Candles V1.0 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="TDV Candles", overlay=false)
+
+// Color definitions
+color col_bull = input.color(#179c74, "Bullish Candle Color")
+color col_bear = input.color(#f23645, "Bearish Candle Color")
+
+// 1. Lower Timeframe request
+[ltf_o_series, ltf_h_series, ltf_l_series, ltf_c_series, ltf_v_series] = request.security_lower_tf(syminfo.tickerid, "1", [open, high, low, close, volume])
+
+// Calculations
+float open_val = 0.0
+float close_val = 0.0
+float high_val = 0.0
+float low_val = 0.0
+
+// Safe check for lower timeframe array existence
+bool has_ltf = false
+if not na(ltf_v_series)
+    if array.size(ltf_v_series) > 0
+        has_ltf := true
+
+if has_ltf
+    float cum_delta = 0.0
+    float max_delta = 0.0
+    float min_delta = 0.0
+    int ltf_sz = array.size(ltf_v_series)
+    for j = 0 to ltf_sz - 1
+        float l_o = array.get(ltf_o_series, j)
+        float l_c = array.get(ltf_c_series, j)
+        float l_v = array.get(ltf_v_series, j)
+
+        float delta = l_c >= l_o ? l_v : -l_v
+        cum_delta := cum_delta + delta
+        max_delta := math.max(max_delta, cum_delta)
+        min_delta := math.min(min_delta, cum_delta)
+
+    close_val := cum_delta
+    high_val := max_delta
+    low_val := min_delta
+else
+    // High-fidelity fallback heuristic partitioning
+    float body_high = math.max(open, close)
+    float body_low = math.min(open, close)
+    float body_size = body_high - body_low
+    float upper_wick = high - body_high
+    float lower_wick = body_low - low
+
+    float total_weight = body_size * 1.5 + upper_wick * 1.0 + lower_wick * 1.0
+    float b_vol = 0.0
+    float s_vol = 0.0
+    if total_weight > 0
+        float up_vol = volume * (upper_wick * 1.0 / total_weight)
+        float bo_vol = volume * (body_size * 1.5 / total_weight)
+        float dn_vol = volume * (lower_wick * 1.0 / total_weight)
+
+        float b_up = up_vol * 0.1
+        float s_up = up_vol * 0.9
+
+        float b_dn = dn_vol * 0.9
+        float s_dn = dn_vol * 0.1
+
+        float b_bo = 0.0
+        float s_bo = 0.0
+        if close >= open
+            b_bo := bo_vol * 0.8
+            s_bo := bo_vol * 0.2
+        else
+            b_bo := bo_vol * 0.2
+            s_bo := bo_vol * 0.8
+
+        b_vol := b_up + b_dn + b_bo
+        s_vol := s_up + s_dn + s_bo
+    else
+        b_vol := close >= open ? volume : 0.0
+        s_vol := close < open ? volume : 0.0
+
+    float total_delta = b_vol - s_vol
+    close_val := total_delta
+    high_val := math.max(0.0, total_delta)
+    low_val := math.min(0.0, total_delta)
+
+// Render TDV candle
+color candle_col = close_val >= open_val ? col_bull : col_bear
+plotcandle(open_val, high_val, low_val, close_val, "TDV Candles", color=candle_col, wickcolor=candle_col, bordercolor=candle_col)
+
+// Reference zero line
+plot(0, color=color.new(color.gray, 50), title="Zero Line")
