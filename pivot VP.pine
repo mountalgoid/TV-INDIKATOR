@@ -2,30 +2,206 @@
 indicator("PIVOT VP PRO (Realtime + VA Fixed)", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
 
 // --- SETTINGS ---
+grp_theme = "Color Theme Settings"
+color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=grp_theme)
+
+// Core Colors
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
+
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
+
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
+
+color col_poc = switch color_theme
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+
 grp_zz = "ZigZag Structure"
 length = input.int(10, "Sensitivity", minval=2, group=grp_zz)
 lineW = input.int(2, "ZigZag Line Width", group=grp_zz)
-colUp = input.color(#089981, "Bullish Color", group=grp_zz)
-colDn = input.color(#f23645, "Bearish Color", group=grp_zz)
+colUp = input.color(#089981, "Custom Bullish Color (Override)", group=grp_zz)
+colDn = input.color(#f23645, "Custom Bearish Color (Override)", group=grp_zz)
+use_theme_for_zz = input.bool(true, "Use Theme Colors for ZigZag", group=grp_zz)
+
+color final_col_bull = use_theme_for_zz ? col_bull : colUp
+color final_col_bear = use_theme_for_zz ? col_bear : colDn
 
 grp_vp = "Volume Profile Heatmap"
 showVP = input.bool(true, "Show Volume Profile", group=grp_vp)
+vp_type = input.string("Delta", "Profile View Type", options=["Normal", "Delta"], group=grp_vp)
+vpAlign = input.string("Right", "Profile Alignment", options=["Left", "Right"], group=grp_vp)
 vpRows = input.int(40, "Resolution (Smoothness)", minval=10, maxval=200, group=grp_vp)
 vpWidth = input.int(70, "VP Width (%)", minval=10, maxval=90, group=grp_vp)
-colVolBase = input.color(#2962ff, "Base Volume Color", group=grp_vp)
+colVolBase = input.color(#2962ff, "Custom Base Volume Color (Override)", group=grp_vp)
+use_theme_for_vp = input.bool(true, "Use Theme Colors for VP Heatmap", group=grp_vp)
 colCurve   = input.color(color.white, "Curve Outline Color", group=grp_vp)
-colPoc    = input.color(#ffeb3b, "POC Line Color", group=grp_vp)
-colVa     = input.color(color.new(color.white, 50), "VAH/VAL Color", group=grp_vp)
+colPoc    = input.color(#ffeb3b, "Custom POC Line Color (Override)", group=grp_vp)
+colVa     = input.color(color.new(color.white, 50), "Custom VAH/VAL Color (Override)", group=grp_vp)
+use_theme_for_levels = input.bool(true, "Use Theme Colors for POC/VAH/VAL", group=grp_vp)
+
+color final_col_poc = use_theme_for_levels ? col_poc : colPoc
+color final_col_va = use_theme_for_levels ? color.new(col_poc, 50) : colVa
 
 grp_bnd = "Zone Box Settings"
 showZoneBox = input.bool(true, "Show Boundary Box", group=grp_bnd)
 colZoneBorder = input.color(color.new(color.gray, 50), "Zone Border Color", group=grp_bnd)
 colZoneBg = input.color(color.new(color.gray, 95), "Zone Background", group=grp_bnd)
 
+grp_lvn_hvn = "HVN & LVN Settings"
+showLvnHvn = input.bool(true, "Identify HVN and LVN", group=grp_lvn_hvn)
+hvnThreshold = input.float(1.5, "HVN Volume Multiplier", minval=1.0, step=0.25, group=grp_lvn_hvn, tooltip="Multiplier of average volume to identify High Volume Nodes.")
+lvnThreshold = input.float(0.15, "LVN Volume Threshold (%)", minval=0.01, maxval=0.5, step=0.01, group=grp_lvn_hvn, tooltip="Percentage of max volume below which to identify Low Volume Nodes.")
+colHvn = input.color(color.new(#ff9800, 90), "HVN Color", group=grp_lvn_hvn)
+colLvn = input.color(color.new(#62647a, 90), "LVN Color", group=grp_lvn_hvn)
+
 grp_str = "SMC Structure"
 showStr = input.bool(true, "Show BOS/CHoCH", group=grp_str)
 colBos = input.color(#089981, "BOS Color", group=grp_str)
 colChoch = input.color(#f23645, "CHoCH Color", group=grp_str)
+
+// --- UTILS & ANATOMICAL VOLUME PARTITIONING ---
+calc_vol_partition(float vol) =>
+    float range_size = high - low
+    float b_vol = 0.0
+    float s_vol = 0.0
+
+    if range_size > 0
+        float b_high = math.max(open, close)
+        float b_low  = math.min(open, close)
+        float body_size = b_high - b_low
+        float upper_wick = high - b_high
+        float lower_wick = b_low - low
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (open + close) / 2
+        float body_pos = (b_center - low) / range_size
+        float br_b = close > open ? math.min(0.9, 0.6 + body_pos * 0.3) : (close < open ? math.max(0.1, 0.4 - (1-body_pos) * 0.3) : 0.5)
+
+        b_vol := vol * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := vol * (w_body * (1 - br_b) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := vol * 0.5
+        s_vol := vol * 0.5
+    [b_vol, s_vol]
+
+distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float[] _bucket_total, float[] _bucket_buy, float[] _bucket_sell) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        if _range_val <= 0
+            int idx = int(math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h))))
+            array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
+            float v_half = _v_total * 0.5
+            array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + v_half)
+            array.set(_bucket_sell, idx, array.get(_bucket_sell, idx) + v_half)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h - b_high) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * w_u
+
+            float b_center = (_o + _c) * 0.5
+            float body_pos = (b_center - _l) * inv_range
+
+            float br_b = _c > _o ? math.min(0.9, 0.6 + body_pos * 0.3) : (_c < _o ? math.max(0.1, 0.4 - (1-body_pos) * 0.3) : 0.5)
+
+            if v_l > 0
+                int idx_l = int(math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h))))
+                int idx_h = int(math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h))))
+                if idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.90
+                    float v_j_sell = v_j * 0.10
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_b > 0
+                int idx_l = int(math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h))))
+                int idx_h = int(math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h))))
+                if idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * br_b
+                    float v_j_sell = v_j * (1.0 - br_b)
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_u > 0
+                int idx_l = int(math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h))))
+                int idx_h = int(math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h))))
+                if idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.10
+                    float v_j_sell = v_j * 0.90
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+
+ltf_o = request.security_lower_tf(syminfo.tickerid, "1", open)
+ltf_h = request.security_lower_tf(syminfo.tickerid, "1", high)
+ltf_l = request.security_lower_tf(syminfo.tickerid, "1", low)
+ltf_c = request.security_lower_tf(syminfo.tickerid, "1", close)
+ltf_v = request.security_lower_tf(syminfo.tickerid, "1", volume)
 
 // --- VARIABLES ---
 var line lastLine = na
@@ -42,6 +218,14 @@ var float activeStartPrice = na
 var line[] liveLines = array.new_line(0)
 var box[] liveBoxes = array.new_box(0)
 var label[] liveLabels = array.new_label(0)
+
+// Last Confirmed Leg Objects & Coordinates
+var box[] lastLegBoxes = array.new_box(0)
+var line[] lastLegLines = array.new_line(0)
+var label[] lastLegLabels = array.new_label(0)
+
+var int lastLegStartIdx = na
+var float lastLegStartPrice = na
 
 var int trend = 0 
 var float levelUp = na 
@@ -66,41 +250,83 @@ clear_live() =>
             label.delete(array.get(liveLabels, i))
         array.clear(liveLabels)
 
+clear_last_leg() =>
+    if array.size(lastLegBoxes) > 0
+        for i = 0 to array.size(lastLegBoxes) - 1
+            box.delete(array.get(lastLegBoxes, i))
+        array.clear(lastLegBoxes)
+    if array.size(lastLegLines) > 0
+        for i = 0 to array.size(lastLegLines) - 1
+            line.delete(array.get(lastLegLines, i))
+        array.clear(lastLegLines)
+    if array.size(lastLegLabels) > 0
+        for i = 0 to array.size(lastLegLabels) - 1
+            label.delete(array.get(lastLegLabels, i))
+        array.clear(lastLegLabels)
+
+finalize_last_leg() =>
+    array.clear(lastLegBoxes)
+    array.clear(lastLegLines)
+    array.clear(lastLegLabels)
+
 // --- DRAW VP ZONE ---
-draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
+draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, isLive) =>
     if showVP
         float top = math.max(priceStart, priceEnd)
         float bot = math.min(priceStart, priceEnd)
         float rangeP = top - bot
         
-        if rangeP > 0 and (tEnd > tStart)
+        if rangeP > 0 and (idxEnd > idxStart)
             // 1. ZONE BOX
             if showZoneBox
-                zBox = box.new(tStart, top, tEnd, bot, xloc=xloc.bar_time, border_color=colZoneBorder, bgcolor=colZoneBg, border_width=1)
-                if isLive
+                zBox = box.new(idxStart, top, idxEnd, bot, border_color=colZoneBorder, bgcolor=colZoneBg, border_width=1)
+                if isLive == 1
                     array.push(liveBoxes, zBox)
+                else if isLive == 2
+                    array.push(lastLegBoxes, zBox)
 
-            // 2. VOLUME CALCULATION
+            // 2. ACCURATE VOLUME CALCULATION
             float step = rangeP / vpRows
+            float inv_step = 1.0 / step
             float[] volArr = array.new_float(vpRows, 0.0)
-            float totalVol = 0.0
+            float[] buyArr = array.new_float(vpRows, 0.0)
+            float[] sellArr = array.new_float(vpRows, 0.0)
+
             int absStart = bar_index - idxStart
             int absEnd = bar_index - idxEnd
+
+            // Loop through historical bars in the zigzag zone (only skip the current live bar at index 0 when it is the active live leg)
+            int loopStart = (isLive == 1) ? absEnd + 1 : absEnd
+            if loopStart <= absStart
+                for i = loopStart to absStart
+                    float cOpen = open[i]
+                    float cHigh = high[i]
+                    float cLow = low[i]
+                    float cClose = close[i]
+                    float cVol = volume[i]
+                    if not na(cVol)
+                        distribute_vol(vpRows, bot, inv_step, cOpen, cHigh, cLow, cClose, cVol, volArr, buyArr, sellArr)
+
+            // Add real-time LTF precision data for the current bar (only when it is the active live leg)
+            int ltf_size = not na(ltf_v) ? array.size(ltf_v) : 0
+            float ltf_v_sum = 0.0
+            if isLive == 1 and ltf_size > 0
+                for j = 0 to ltf_size - 1
+                    float _o = array.get(ltf_o, j)
+                    float _h = array.get(ltf_h, j)
+                    float _l = array.get(ltf_l, j)
+                    float _c = array.get(ltf_c, j)
+                    float _v = array.get(ltf_v, j)
+                    distribute_vol(vpRows, bot, inv_step, _o, _h, _l, _c, _v, volArr, buyArr, sellArr)
+                    ltf_v_sum += _v
             
-            for i = absStart to absEnd
-                float cHigh = high[i], float cLow = low[i], float cVol = volume[i]
-                if not na(cVol) and cHigh >= bot and cLow <= top
-                    float effHigh = math.min(cHigh, top)
-                    float effLow = math.max(cLow, bot)
-                    int bT = math.min(math.floor((effHigh - bot) / step), vpRows - 1)
-                    int bB = math.max(math.floor((effLow - bot) / step), 0)
-                    int span = bT - bB + 1
-                    if span > 0
-                        vPerB = cVol / span
-                        for b = bB to bT
-                            array.set(volArr, b, array.get(volArr, b) + vPerB)
-                        totalVol += cVol
+            // Sync fallback for any missing volume in real-time (only when it is the active live leg)
+            if isLive == 1
+                float missing_v = math.max(0, volume - ltf_v_sum)
+                if missing_v > 0
+                    distribute_vol(vpRows, bot, inv_step, open, high, low, close, missing_v, volArr, buyArr, sellArr)
             
+            float totalVol = array.sum(volArr)
             float maxV = array.max(volArr)
             int pocIdx = array.indexof(volArr, maxV)
             
@@ -126,67 +352,145 @@ draw_vp_zone(idxStart, idxEnd, priceStart, priceEnd, tStart, tEnd, isLive) =>
                         vaB -= 1
                 loopSafe += 1
 
-            // 4. DRAW HEATMAP & CURVE
-            int dur = tEnd - tStart
-            int prevX = tStart
+            // 4. DRAW HEATMAP & CURVE (INDEX-BASED, PIXEL-PERFECT ALIGNMENT)
+            int dur = idxEnd - idxStart
+            int prevX = vpAlign == "Left" ? idxStart : idxEnd
             float prevY = bot
 
             for r = 0 to vpRows - 1
-                vR = array.get(volArr, r)
-                pct = maxV == 0 ? 0 : vR / maxV
-                
-                int lenTime = math.round(dur * (vpWidth / 100.0) * pct)
-                if lenTime < (time[1]-time[0]) and vR > 0
-                    lenTime := (time[1]-time[0])
-                
-                int x_end = tStart + lenTime
+                float vR = array.get(volArr, r)
+                float b_vol = array.get(buyArr, r)
+                float s_vol = array.get(sellArr, r)
+                float r_delta = b_vol - s_vol
+
+                float pct = maxV == 0 ? 0 : vR / maxV
+
+                int lenBars = math.round(dur * (vpWidth / 100.0) * pct)
+                if lenBars < 1 and vR > 0
+                    lenBars := 1
+
+                int x_box_left  = vpAlign == "Left" ? idxStart : idxEnd - lenBars
+                int x_box_right = vpAlign == "Left" ? idxStart + lenBars : idxEnd
+                int x_curve     = vpAlign == "Left" ? idxStart + lenBars : idxEnd - lenBars
+
                 float y_bot = bot + (step * r)
                 float y_top = bot + ((r + 1) * step)
                 float y_mid = bot + (step * r) + (step * 0.5)
 
+                color base_c = use_theme_for_vp ? (vp_type == "Normal" ? col_poc : (r_delta > 0 ? col_bull : (r_delta < 0 ? col_bear : col_poc))) : colVolBase
+
                 // Heatmap Box
                 if vR > 0
                     float alpha = 98 - (pct * 78) // 20 - 98 Alpha range
-                    color heatCol = color.new(colVolBase, alpha)
-                    b = box.new(tStart, y_top, x_end, y_bot, xloc=xloc.bar_time, border_width=0, bgcolor=heatCol)
-                    if isLive
+                    color heatCol = color.new(base_c, math.round(alpha))
+                    b = box.new(x_box_left, y_top, x_box_right, y_bot, border_width=0, bgcolor=heatCol)
+                    if isLive == 1
                         array.push(liveBoxes, b)
+                    else if isLive == 2
+                        array.push(lastLegBoxes, b)
                 
-                // Curve Outline
-                curLine = line.new(prevX, prevY, x_end, y_mid, xloc=xloc.bar_time, color=colCurve, width=1)
-                if isLive
+                // Curve Outline (dynamically colored to match the heatmap row)
+                color line_c = vR > 0 ? base_c : colCurve
+                curLine = line.new(prevX, prevY, x_curve, y_mid, color=line_c, width=1)
+                if isLive == 1
                     array.push(liveLines, curLine)
+                else if isLive == 2
+                    array.push(lastLegLines, curLine)
                 
-                prevX := x_end
+                prevX := x_curve
                 prevY := y_mid
 
             // Close Curve
-            lastL = line.new(prevX, prevY, tStart, top, xloc=xloc.bar_time, color=colCurve, width=1)
-            if isLive
+            int closeX = vpAlign == "Left" ? idxStart : idxEnd
+            lastL = line.new(prevX, prevY, closeX, top, color=colCurve, width=1)
+            if isLive == 1
                 array.push(liveLines, lastL)
+            else if isLive == 2
+                array.push(lastLegLines, lastL)
             
-            // 5. DRAW LEVELS (POC, VAH, VAL)
+            // 5. DRAW LEVELS (POC, VAH, VAL AS AUTO-SIZED BOLD TEXT BOXES)
             pY = bot + (step * pocIdx) + (step/2)
             vahY = bot + (step * (vaT + 1))
             valY = bot + (step * vaB)
             
-            // POC
-            pL = line.new(tStart, pY, tEnd, pY, xloc=xloc.bar_time, color=colPoc, width=2)
-            
-            // VAH & VAL Lines
-            l_vah = line.new(tStart, vahY, tEnd, vahY, xloc=xloc.bar_time, color=colVa, style=line.style_dashed)
-            l_val = line.new(tStart, valY, tEnd, valY, xloc=xloc.bar_time, color=colVa, style=line.style_dashed)
+            // Top and bottom boundaries for level boxes (centered on the respective level)
+            float poc_top = pY + step * 0.35
+            float poc_bot = pY - step * 0.35
+            float vah_top = vahY + step * 0.35
+            float vah_bot = vahY - step * 0.35
+            float val_top = valY + step * 0.35
+            float val_bot = valY - step * 0.35
 
-            // Labels
-            lb_vah = label.new(tEnd, vahY, "VAH", xloc=xloc.bar_time, color=color.new(color.white, 100), style=label.style_none, textcolor=colVa, size=size.tiny)
-            lb_val = label.new(tEnd, valY, "VAL", xloc=xloc.bar_time, color=color.new(color.white, 100), style=label.style_none, textcolor=colVa, size=size.tiny)
+            // Generate clean label text with brackets and price
+            string poc_txt = "POC [ " + str.tostring(pY, format.mintick) + " ]"
+            string vah_txt = "VAH [ " + str.tostring(vahY, format.mintick) + " ]"
+            string val_txt = "VAL [ " + str.tostring(valY, format.mintick) + " ]"
 
-            if isLive
-                array.push(liveLines, pL)
-                array.push(liveLines, l_vah)
-                array.push(liveLines, l_val)
-                array.push(liveLabels, lb_vah)
-                array.push(liveLabels, lb_val)
+            // Colors for boxes
+            color poc_bg = color.new(final_col_poc, 92)
+            color vah_bg = color.new(col_bull, 92)
+            color val_bg = color.new(col_bear, 92)
+
+            color poc_border = final_col_poc
+            color vah_border = col_bull
+            color val_border = col_bear
+
+            // Draw level boxes spanning the entire zone width (idxStart to idxEnd) with high-clarity text
+            box_poc = box.new(idxStart, poc_top, idxEnd, poc_bot,
+                              border_color=poc_border, border_width=1, border_style=line.style_solid, bgcolor=poc_bg,
+                              text=poc_txt, text_color=poc_border, text_size=size.auto,
+                              text_halign="center")
+
+            box_vah = box.new(idxStart, vah_top, idxEnd, vah_bot,
+                              border_color=vah_border, border_width=1, border_style=line.style_dashed, bgcolor=vah_bg,
+                              text=vah_txt, text_color=vah_border, text_size=size.auto,
+                              text_halign="center")
+
+            box_val = box.new(idxStart, val_top, idxEnd, val_bot,
+                              border_color=val_border, border_width=1, border_style=line.style_dashed, bgcolor=val_bg,
+                              text=val_txt, text_color=val_border, text_size=size.auto,
+                              text_halign="center")
+
+            if isLive == 1
+                array.push(liveBoxes, box_poc)
+                array.push(liveBoxes, box_vah)
+                array.push(liveBoxes, box_val)
+            else if isLive == 2
+                array.push(lastLegBoxes, box_poc)
+                array.push(lastLegBoxes, box_vah)
+                array.push(lastLegBoxes, box_val)
+
+            // 6. DRAW HVNs and LVNs (as area boxes extending to the right boundary of the zone, with high-clarity bold text)
+            if showLvnHvn and totalVol > 0
+                float avg_vol = array.avg(volArr)
+                float thresh_lvn = maxV * lvnThreshold
+
+                for r = 1 to vpRows - 2
+                    float v_prev = array.get(volArr, r - 1)
+                    float v_curr = array.get(volArr, r)
+                    float v_next = array.get(volArr, r + 1)
+                    float node_bot = bot + (step * r)
+                    float node_top = node_bot + step
+
+                    // HVN detection
+                    if v_curr > v_prev and v_curr > v_next and v_curr > avg_vol * hvnThreshold and r != pocIdx
+                        box bhvn = box.new(idxStart, node_top, idxEnd, node_bot,
+                             border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
+                             bgcolor=colHvn, text="𝗛𝗩𝗡", text_color=white, text_size=size.tiny, text_halign="right")
+                        if isLive == 1
+                            array.push(liveBoxes, bhvn)
+                        else if isLive == 2
+                            array.push(lastLegBoxes, bhvn)
+
+                    // LVN detection
+                    if v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
+                        box blvn = box.new(idxStart, node_top, idxEnd, node_bot,
+                             border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
+                             bgcolor=colLvn, text="𝗟𝗩🇳", text_color=white, text_size=size.tiny, text_halign="right")
+                        if isLive == 1
+                            array.push(liveBoxes, blvn)
+                        else if isLive == 2
+                            array.push(lastLegBoxes, blvn)
 
 // --- ZIGZAG CORE ---
 ph = ta.pivothigh(high, length, length)
@@ -203,29 +507,73 @@ if bar_index > length and dir == 0
         levelDn := pl, levelDnIdx := lastIdx, brokenDn := false
 
 if dir == -1 
-    if not na(ph) and ph > lastP 
+    if high > lastP
+        // INSTANT REAL-TIME UPDATE to a higher high! Update the zigzag line and the last confirmed Volume Profile leg instantly
+        clear_last_leg()
+        if not na(lastLegStartIdx)
+            draw_vp_zone(lastLegStartIdx, bar_index, lastLegStartPrice, high, 2)
+
+        lastP := high, lastIdx := bar_index, lastTime := time
+        activeStartIdx := lastIdx, activeStartTime := lastTime, activeStartPrice := lastP
+        if not na(lastLine)
+            line.set_xy2(lastLine, lastIdx, lastP)
+        levelUp := high, levelUpIdx := lastIdx, brokenUp := false
+    else if not na(ph) and ph > lastP
+        // Pivot high updated to a higher high (via standard pivot confirmation)!
+        clear_last_leg()
+        if not na(lastLegStartIdx)
+            draw_vp_zone(lastLegStartIdx, bar_index[length], lastLegStartPrice, ph, 2)
+
         lastP := ph, lastIdx := bar_index[length], lastTime := time[length]
         activeStartIdx := lastIdx, activeStartTime := lastTime, activeStartPrice := lastP
         if not na(lastLine) 
             line.set_xy2(lastLine, lastIdx, lastP)
         levelUp := ph, levelUpIdx := lastIdx, brokenUp := false
     else if not na(pl) 
-        draw_vp_zone(activeStartIdx, bar_index[length], activeStartPrice, pl, activeStartTime, time[length], false)
-        lastLine := line.new(lastIdx, lastP, bar_index[length], pl, color=colDn, width=lineW)
+        // New Low pivot confirmed! Finalize the previous last leg, and start drawing the new confirmed Low leg
+        finalize_last_leg()
+        lastLegStartIdx := activeStartIdx
+        lastLegStartPrice := activeStartPrice
+        if not na(lastLegStartIdx)
+            draw_vp_zone(lastLegStartIdx, bar_index[length], lastLegStartPrice, pl, 2)
+
+        lastLine := line.new(lastIdx, lastP, bar_index[length], pl, color=final_col_bear, width=lineW)
         dir := 1, lastP := pl, lastIdx := bar_index[length], lastTime := time[length]
         activeStartIdx := lastIdx, activeStartTime := lastTime, activeStartPrice := lastP
         levelDn := pl, levelDnIdx := lastIdx, brokenDn := false
 
 else if dir == 1 
-    if not na(pl) and pl < lastP 
+    if low < lastP
+        // INSTANT REAL-TIME UPDATE to a lower low! Update the zigzag line and the last confirmed Volume Profile leg instantly
+        clear_last_leg()
+        if not na(lastLegStartIdx)
+            draw_vp_zone(lastLegStartIdx, bar_index, lastLegStartPrice, low, 2)
+
+        lastP := low, lastIdx := bar_index, lastTime := time
+        activeStartIdx := lastIdx, activeStartTime := lastTime, activeStartPrice := lastP
+        if not na(lastLine)
+            line.set_xy2(lastLine, lastIdx, lastP)
+        levelDn := low, levelDnIdx := lastIdx, brokenDn := false
+    else if not na(pl) and pl < lastP
+        // Pivot low updated to a lower low (via standard pivot confirmation)!
+        clear_last_leg()
+        if not na(lastLegStartIdx)
+            draw_vp_zone(lastLegStartIdx, bar_index[length], lastLegStartPrice, pl, 2)
+
         lastP := pl, lastIdx := bar_index[length], lastTime := time[length]
         activeStartIdx := lastIdx, activeStartTime := lastTime, activeStartPrice := lastP
         if not na(lastLine) 
             line.set_xy2(lastLine, lastIdx, lastP)
         levelDn := pl, levelDnIdx := lastIdx, brokenDn := false
     else if not na(ph) 
-        draw_vp_zone(activeStartIdx, bar_index[length], activeStartPrice, ph, activeStartTime, time[length], false)
-        lastLine := line.new(lastIdx, lastP, bar_index[length], ph, color=colUp, width=lineW)
+        // New High pivot confirmed! Finalize the previous last leg, and start drawing the new confirmed High leg
+        finalize_last_leg()
+        lastLegStartIdx := activeStartIdx
+        lastLegStartPrice := activeStartPrice
+        if not na(lastLegStartIdx)
+            draw_vp_zone(lastLegStartIdx, bar_index[length], lastLegStartPrice, ph, 2)
+
+        lastLine := line.new(lastIdx, lastP, bar_index[length], ph, color=final_col_bull, width=lineW)
         dir := -1, lastP := ph, lastIdx := bar_index[length], lastTime := time[length]
         activeStartIdx := lastIdx, activeStartTime := lastTime, activeStartPrice := lastP
         levelUp := ph, levelUpIdx := lastIdx, brokenUp := false
@@ -248,7 +596,7 @@ if barstate.islast
     clear_live()
     if not na(activeStartIdx)
         extPrice = dir == 1 ? high : low
-        l = line.new(activeStartIdx, activeStartPrice, bar_index, extPrice, xloc=xloc.bar_index, color=color.new(dir == 1 ? colUp : colDn, 50), style=line.style_dotted)
+        l = line.new(activeStartIdx, activeStartPrice, bar_index, extPrice, xloc=xloc.bar_index, color=color.new(dir == 1 ? final_col_bull : final_col_bear, 50), style=line.style_dotted)
         array.push(liveLines, l)
         
-        draw_vp_zone(activeStartIdx, bar_index, activeStartPrice, extPrice, activeStartTime, time, true)
+        draw_vp_zone(activeStartIdx, bar_index, activeStartPrice, extPrice, 1)
