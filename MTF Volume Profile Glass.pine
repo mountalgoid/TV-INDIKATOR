@@ -269,7 +269,7 @@ f_formatNumber(float number) =>
         str.tostring(number, "#")
 
 f_render_session_profile(int start_offset, int duration, int x_align_offset, bool is_current_sess) =>
-    // Gather session high and low
+    // Gather session high, low, open and close
     float session_high = high[start_offset]
     float session_low = low[start_offset]
 
@@ -277,6 +277,10 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
         for i = 0 to duration - 1
             session_high := math.max(session_high, high[start_offset - i])
             session_low := math.min(session_low, low[start_offset - i])
+
+    float session_open = open[start_offset]
+    float session_close = close[start_offset - (duration - 1)]
+    bool is_bull_candle = session_close >= session_open
 
     float range_p = session_high - session_low
     float row_h = range_p > 0 ? range_p / vp_resolution : syminfo.mintick * 10
@@ -320,6 +324,17 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
     float vah_price = session_low + (va_top + 1) * row_h
     float val_price = session_low + va_bot * row_h
     float poc_price = session_low + poc_idx * row_h + (row_h / 2)
+
+    // Draw HTF Candle on the left of the Volume Profile with a clean gap
+    color htf_candle_col = is_bull_candle ? col_bull : col_bear
+    color htf_candle_bg  = color.new(htf_candle_col, 85)
+    color htf_candle_border = color.new(htf_candle_col, 45)
+
+    box htf_body = box.new(left=bar_index + x_align_offset - 4, top=math.max(session_open, session_close), right=bar_index + x_align_offset - 2, bottom=math.min(session_open, session_close), bgcolor=htf_candle_bg, border_color=htf_candle_border, border_width=1)
+    box htf_wick = box.new(left=bar_index + x_align_offset - 3, top=session_high, right=bar_index + x_align_offset - 3, bottom=session_low, bgcolor=htf_candle_bg, border_color=htf_candle_border, border_width=1)
+
+    array.push(grid_boxes, htf_body)
+    array.push(grid_boxes, htf_wick)
 
     // Draw Glass Blocks
     float pad_y = row_h * (gap_y_perc / 100.0)
