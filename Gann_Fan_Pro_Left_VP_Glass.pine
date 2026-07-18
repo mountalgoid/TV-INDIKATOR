@@ -392,7 +392,13 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
 
     for i = 0 to actual_lookback - 1
         int idx = anchor_offset + i
-        distribute_bar_vol(vp_resolution, vp_low, inv_row_h, open[idx], high[idx], low[idx], close[idx], nz(volume[idx]), bucket_total, bucket_buy, bucket_sell)
+        // If idx is 0, we can use the latest live realtime prices and volume which updates on every tick
+        float o_price = idx == 0 ? open : open[idx]
+        float h_price = idx == 0 ? high : high[idx]
+        float l_price = idx == 0 ? low : low[idx]
+        float c_price = idx == 0 ? close : close[idx]
+        float v_val = idx == 0 ? volume : nz(volume[idx])
+        distribute_bar_vol(vp_resolution, vp_low, inv_row_h, o_price, h_price, l_price, c_price, v_val, bucket_total, bucket_buy, bucket_sell)
 
     float max_vol = array.max(bucket_total)
     float total_vol = array.sum(bucket_total)
