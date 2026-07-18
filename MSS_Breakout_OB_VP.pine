@@ -1,0 +1,650 @@
+//@version=6
+indicator("MSS Breakout with Orderblock & Volume Profile (Glass Aesthetic)", shorttitle="MSS OB VP Premium", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500, max_bars_back=2000)
+
+// ==========================================
+// 1. INPUT GROUPS & GLOBAL SETTINGS
+// ==========================================
+GlobalGroup = "Global Settings & Theme"
+color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=GlobalGroup)
+glass_opacity_mult = input.float(1.0, "Glass Opacity Multiplier", minval=0.1, maxval=2.0, step=0.1, tooltip="Adjusts overall transparency of glass visual elements.", group=GlobalGroup)
+
+// --- COLORS BASED ON THEME ---
+dark   = #000000
+white  = #c4d3ff
+green  = #179c74
+purple = #5134ff
+gray   = #62647a
+red    = #f23645
+yellow = #f3ba2f
+orange = #ff9800
+blue   = #1848cc
+brown  = #8b4513
+
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
+
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
+
+color col_poc = switch color_theme
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+
+// Safe box opacity function
+f_glass_alpha(int base_alpha) =>
+    math.min(99, math.max(0, math.round(base_alpha / glass_opacity_mult)))
+
+// ==========================================
+// 2. MARKET STRUCTURE SHIFT (MSS) SETTINGS
+// ==========================================
+MSSGroup = "Market Structure Shift (MSS)"
+pivot_left  = input.int(5, "Swing High/Low Left Strength", minval=1, group=MSSGroup)
+pivot_right = input.int(5, "Swing High/Low Right Strength", minval=1, group=MSSGroup)
+mss_trigger_source = input.string("Close Price (Confirmed)", "Breakout Detection Source", options=["Close Price (Confirmed)", "High/Low (Wick Touch)"], group=MSSGroup)
+show_mss_labels = input.bool(true, "Show MSS Labels", group=MSSGroup)
+show_mss_lines = input.bool(true, "Show MSS Breakout Lines", group=MSSGroup)
+
+// ==========================================
+// 3. ORDER BLOCK (OB) SETTINGS
+// ==========================================
+OBGroup = "Order Block (OB) Settings"
+show_obs = input.bool(true, "Show Order Blocks", group=OBGroup)
+ob_mitigation_type = input.string("Close Inside", "Mitigation Detection Mode", options=["Close Inside", "Wick Touch"], group=OBGroup)
+show_mitigated_obs = input.bool(true, "Show Mitigated OBs (Faded)", group=OBGroup)
+max_ob_count = input.int(30, "Max Active OB Boxes Retained", minval=5, maxval=100, group=OBGroup)
+
+// ==========================================
+// 4. VOLUME PROFILE (VP) SETTINGS
+// ==========================================
+VPGroup = "Volume Profile (Right Aligned)"
+show_vp = input.bool(true, "Show Right-Aligned Volume Profile", group=VPGroup)
+vp_type = input.string("Delta", "Profile View Mode", options=["Normal", "Delta"], group=VPGroup)
+vp_lookback = input.int(500, "Volume Profile Lookback Length", minval=50, maxval=2000, group=VPGroup)
+vp_rows = input.int(40, "Profile Resolution (Row Count)", minval=10, maxval=200, group=VPGroup)
+vp_width = input.int(20, "Profile Width (Bars)", minval=5, maxval=100, group=VPGroup)
+vp_h_offset = input.int(5, "Horizontal Offset (Bars)", minval=0, group=VPGroup)
+show_vp_hvn_lvn = input.bool(true, "Identify HVN & LVN", group=VPGroup)
+
+// ==========================================
+// 5. BRAND LOGO & HUD TABLE SETTINGS
+// ==========================================
+VisualsGroup = "Dashboard & Branding"
+show_hud_table = input.bool(true, "Show Dynamic HUD Table", group=VisualsGroup)
+hud_table_pos = input.string("bottom_left", "HUD Table Position", options=["top_right", "bottom_right", "bottom_left", "top_left"], group=VisualsGroup)
+show_logo = input.bool(true, "Show Breathing Brand Logo", group=VisualsGroup)
+logo_offset = input.int(85, "Brand Logo Horizontal Offset (Bars)", minval=10, group=VisualsGroup)
+
+// ==========================================
+// 6. MARKET STRUCTURE SHIFT (MSS) DETECTION
+// ==========================================
+ph = ta.pivothigh(high, pivot_left, pivot_right)
+pl = ta.pivotlow(low, pivot_left, pivot_right)
+
+var float last_sh_price = na
+var int last_sh_bar = na
+var float last_sl_price = na
+var int last_sl_bar = na
+
+if not na(ph)
+    last_sh_price := ph
+    last_sh_bar := bar_index - pivot_right
+
+if not na(pl)
+    last_sl_price := pl
+    last_sl_bar := bar_index - pivot_right
+
+var bool sh_broken = true
+var bool sl_broken = true
+
+if not na(ph)
+    sh_broken := false
+if not na(pl)
+    sl_broken := false
+
+// Evaluate crossover/crossunder in the global scope to preserve historical states correctly
+cross_bull_close = ta.crossover(close, last_sh_price)
+cross_bull_wick  = ta.crossover(high, last_sh_price)
+cross_bear_close = ta.crossunder(close, last_sl_price)
+cross_bear_wick  = ta.crossunder(low, last_sl_price)
+
+bool bull_mss = false
+bool bear_mss = false
+
+if not na(last_sh_price) and not sh_broken
+    if mss_trigger_source == "Close Price (Confirmed)" and cross_bull_close
+        bull_mss := true
+        sh_broken := true
+    else if mss_trigger_source == "High/Low (Wick Touch)" and cross_bull_wick
+        bull_mss := true
+        sh_broken := true
+
+if not na(last_sl_price) and not sl_broken
+    if mss_trigger_source == "Close Price (Confirmed)" and cross_bear_close
+        bear_mss := true
+        sl_broken := true
+    else if mss_trigger_source == "High/Low (Wick Touch)" and cross_bear_wick
+        bear_mss := true
+        sl_broken := true
+
+// Draw MSS lines & labels
+if bull_mss and show_mss_lines
+    line.new(last_sh_bar, last_sh_price, bar_index, last_sh_price, color=col_bull, width=1, style=line.style_dashed)
+if bear_mss and show_mss_lines
+    line.new(last_sl_bar, last_sl_price, bar_index, last_sl_price, color=col_bear, width=1, style=line.style_dashed)
+
+if bull_mss and show_mss_labels
+    label.new(bar_index, high, "BULL MSS", color=color.new(dark, 100), textcolor=col_bull, style=label.style_label_down, size=size.small)
+if bear_mss and show_mss_labels
+    label.new(bar_index, low, "BEAR MSS", color=color.new(dark, 100), textcolor=col_bear, style=label.style_label_up, size=size.small)
+
+// ==========================================
+// 7. ORDER BLOCK (OB) DETECTION & MANAGEMENT
+// ==========================================
+type OrderBlock
+    box bx
+    float top
+    float bottom
+    bool is_bull
+    bool is_mitigated
+    int trigger_bar
+
+var OrderBlock[] order_blocks = array.new<OrderBlock>()
+
+// Helper to partition candle volume
+f_partition_vol(float _open, float _high, float _low, float _close, float _vol) =>
+    float _b_high = math.max(_open, _close)
+    float _b_low = math.min(_open, _close)
+    float _rng = _high - _low
+
+    float _v_body = 0.0
+    float _v_lwick = 0.0
+    float _v_uwick = 0.0
+
+    if _rng > 0
+        float _body_ratio = (_b_high - _b_low) / _rng
+        _v_body := _vol * _body_ratio
+        _v_lwick := _vol * (_b_low - _low) / _rng
+        _v_uwick := _vol * (_high - _b_high) / _rng
+    else
+        _v_body := _vol
+
+    [_v_body, _v_lwick, _v_uwick, _b_high, _b_low]
+
+// Extract Order Block coordinates on MSS triggers
+if show_obs
+    if bull_mss
+        // Search for the lowest down-candle before breakout (capped to 300 bars for performance)
+        int start_search = math.min(300, math.max(1, bar_index - last_sh_bar))
+        float lowest_low_val = 1e10
+        float ob_high = na
+        float ob_low = na
+        int ob_bar_idx = na
+
+        for k = 1 to start_search
+            if close[k] < open[k] and low[k] < lowest_low_val
+                lowest_low_val := low[k]
+                ob_high := high[k]
+                ob_low := low[k]
+                ob_bar_idx := bar_index - k
+
+        // Fallback to absolute lowest in range
+        if na(ob_bar_idx)
+            lowest_low_val := 1e10
+            for k = 1 to start_search
+                if low[k] < lowest_low_val
+                    lowest_low_val := low[k]
+                    ob_high := high[k]
+                    ob_low := low[k]
+                    ob_bar_idx := bar_index - k
+
+        if not na(ob_bar_idx)
+            box _bx = box.new(ob_bar_idx, ob_high, bar_index + 10, ob_low,
+                 bgcolor=color.new(col_bull, f_glass_alpha(92)),
+                 border_color=color.new(col_bull, f_glass_alpha(60)),
+                 border_width=1,
+                 text="BULL OB",
+                 text_color=col_bull,
+                 text_size=size.auto,
+                 text_halign=text.align_right,
+                 text_valign=text.align_top)
+
+            array.push(order_blocks, OrderBlock.new(_bx, ob_high, ob_low, true, false, bar_index))
+
+    if bear_mss
+        // Search for the highest up-candle before breakout (capped to 300 bars for performance)
+        int start_search = math.min(300, math.max(1, bar_index - last_sl_bar))
+        float highest_high_val = -1e10
+        float ob_high = na
+        float ob_low = na
+        int ob_bar_idx = na
+
+        for k = 1 to start_search
+            if close[k] > open[k] and high[k] > highest_high_val
+                highest_high_val := high[k]
+                ob_high := high[k]
+                ob_low := low[k]
+                ob_bar_idx := bar_index - k
+
+        // Fallback to absolute highest in range
+        if na(ob_bar_idx)
+            highest_high_val := -1e10
+            for k = 1 to start_search
+                if high[k] > highest_high_val
+                    highest_high_val := high[k]
+                    ob_high := high[k]
+                    ob_low := low[k]
+                    ob_bar_idx := bar_index - k
+
+        if not na(ob_bar_idx)
+            box _bx = box.new(ob_bar_idx, ob_high, bar_index + 10, ob_low,
+                 bgcolor=color.new(col_bear, f_glass_alpha(92)),
+                 border_color=color.new(col_bear, f_glass_alpha(60)),
+                 border_width=1,
+                 text="BEAR OB",
+                 text_color=col_bear,
+                 text_size=size.auto,
+                 text_halign=text.align_right,
+                 text_valign=text.align_bottom)
+
+            array.push(order_blocks, OrderBlock.new(_bx, ob_high, ob_low, false, false, bar_index))
+
+// Monitor mitigation of active Order Blocks
+if show_obs and array.size(order_blocks) > 0
+    for i = 0 to array.size(order_blocks) - 1
+        OrderBlock ob = array.get(order_blocks, i)
+        if not ob.is_mitigated
+            bool is_mit = false
+            if ob.is_bull
+                if ob_mitigation_type == "Close Inside" and close < ob.bottom
+                    is_mit := true
+                else if ob_mitigation_type == "Wick Touch" and low < ob.bottom
+                    is_mit := true
+            else
+                if ob_mitigation_type == "Close Inside" and close > ob.top
+                    is_mit := true
+                else if ob_mitigation_type == "Wick Touch" and high > ob.top
+                    is_mit := true
+
+            if is_mit
+                ob.is_mitigated := true
+                if show_mitigated_obs
+                    box.set_right(ob.bx, bar_index)
+                    box.set_bgcolor(ob.bx, color.new(ob.is_bull ? col_bull : col_bear, f_glass_alpha(98)))
+                    box.set_border_color(ob.bx, color.new(ob.is_bull ? col_bull : col_bear, f_glass_alpha(94)))
+                    box.set_border_style(ob.bx, line.style_dashed)
+                    box.set_text(ob.bx, ob.is_bull ? "BULL OB [MIT]" : "BEAR OB [MIT]")
+                    box.set_text_color(ob.bx, color.new(ob.is_bull ? col_bull : col_bear, 60))
+                else
+                    box.delete(ob.bx)
+            else
+                // Extend active OBs to future
+                box.set_right(ob.bx, bar_index + 10)
+
+// Trim OB array to prevent performance lag
+if array.size(order_blocks) > max_ob_count
+    OrderBlock oldest = array.shift(order_blocks)
+    box.delete(oldest.bx)
+
+// ==========================================
+// 8. HIGH-PRECISION VOLUME PROFILE ENGINE
+// ==========================================
+var box[] vp_boxes = array.new_box()
+var line[] vp_lines = array.new_line()
+var label[] vp_labels = array.new_label()
+
+float main_poc_price = na
+
+if show_vp and barstate.islast
+    // Clear old drawings
+    if array.size(vp_boxes) > 0
+        for bx in vp_boxes
+            box.delete(bx)
+        array.clear(vp_boxes)
+    if array.size(vp_lines) > 0
+        for ln in vp_lines
+            line.delete(ln)
+        array.clear(vp_lines)
+    if array.size(vp_labels) > 0
+        for lbl in vp_labels
+            label.delete(lbl)
+        array.clear(vp_labels)
+
+    // Profile boundary discovery
+    float vp_hi = high[0]
+    float vp_lo = low[0]
+    for i = 1 to math.min(vp_lookback, bar_index) - 1
+        vp_hi := math.max(vp_hi, high[i])
+        vp_lo := math.min(vp_lo, low[i])
+
+    float vp_rng = vp_hi - vp_lo
+    if vp_rng > 0
+        float bin_size = vp_rng / vp_rows
+
+        array<float> bin_total = array.new_float(vp_rows, 0.0)
+        array<float> bin_buy = array.new_float(vp_rows, 0.0)
+        array<float> bin_sell = array.new_float(vp_rows, 0.0)
+
+        // Loop through lookback period to distribute candle volume
+        for i = 0 to math.min(vp_lookback, bar_index) - 1
+            float _o = open[i]
+            float _h = high[i]
+            float _l = low[i]
+            float _c = close[i]
+            float _v = nz(volume[i])
+
+            if _v > 0 and _h >= vp_lo and _l <= vp_hi
+                [_v_b, _v_lw, _v_uw, _bh, _bl] = f_partition_vol(_o, _h, _l, _c, _v)
+
+                // Volume buying/selling dynamics
+                float buy_r = 0.5
+                if _c > _o
+                    buy_r := 0.7
+                else if _c < _o
+                    buy_r := 0.3
+
+                float _v_b_buy = _v_b * buy_r
+                float _v_b_sell = _v_b * (1.0 - buy_r)
+                float _v_uw_buy = _v_uw * 0.2
+                float _v_uw_sell = _v_uw * 0.8
+                float _v_lw_buy = _v_lw * 0.8
+                float _v_lw_sell = _v_lw * 0.2
+
+                // Distribute body volume
+                if _bh > _bl
+                    int idx_l = math.min(vp_rows - 1, math.max(0, math.floor((_bl - vp_lo) / bin_size)))
+                    int idx_h = math.min(vp_rows - 1, math.max(0, math.floor((_bh - vp_lo) / bin_size)))
+                    int span = idx_h - idx_l + 1
+                    float val_per = _v_b / span
+                    float buy_per = _v_b_buy / span
+                    float sell_per = _v_b_sell / span
+                    for j = idx_l to idx_h
+                        array.set(bin_total, j, array.get(bin_total, j) + val_per)
+                        array.set(bin_buy, j, array.get(bin_buy, j) + buy_per)
+                        array.set(bin_sell, j, array.get(bin_sell, j) + sell_per)
+
+                // Distribute lower wick volume
+                if _bl > _l
+                    int idx_l = math.min(vp_rows - 1, math.max(0, math.floor((_l - vp_lo) / bin_size)))
+                    int idx_h = math.min(vp_rows - 1, math.max(0, math.floor((_bl - vp_lo) / bin_size)))
+                    int span = idx_h - idx_l + 1
+                    float val_per = _v_lw / span
+                    float buy_per = _v_lw_buy / span
+                    float sell_per = _v_lw_sell / span
+                    for j = idx_l to idx_h
+                        array.set(bin_total, j, array.get(bin_total, j) + val_per)
+                        array.set(bin_buy, j, array.get(bin_buy, j) + buy_per)
+                        array.set(bin_sell, j, array.get(bin_sell, j) + sell_per)
+
+                // Distribute upper wick volume
+                if _h > _bh
+                    int idx_l = math.min(vp_rows - 1, math.max(0, math.floor((_bh - vp_lo) / bin_size)))
+                    int idx_h = math.min(vp_rows - 1, math.max(0, math.floor((_h - vp_lo) / bin_size)))
+                    int span = idx_h - idx_l + 1
+                    float val_per = _v_uw / span
+                    float buy_per = _v_uw_buy / span
+                    float sell_per = _v_uw_sell / span
+                    for j = idx_l to idx_h
+                        array.set(bin_total, j, array.get(bin_total, j) + val_per)
+                        array.set(bin_buy, j, array.get(bin_buy, j) + buy_per)
+                        array.set(bin_sell, j, array.get(bin_sell, j) + sell_per)
+
+        // Calculate key metrics (POC, VAH, VAL)
+        float max_bin_vol = 0.0
+        int poc_idx = 0
+        float total_vol = array.sum(bin_total)
+
+        for j = 0 to vp_rows - 1
+            float val = array.get(bin_total, j)
+            if val > max_bin_vol
+                max_bin_vol := val
+                poc_idx := j
+
+        float va_target = total_vol * 0.70
+        float va_vol = array.get(bin_total, poc_idx)
+        int up_ptr = poc_idx
+        int dn_ptr = poc_idx
+
+        while va_vol < va_target and (up_ptr < vp_rows - 1 or dn_ptr > 0)
+            float v_u = up_ptr < vp_rows - 1 ? array.get(bin_total, up_ptr + 1) : 0.0
+            float v_d = dn_ptr > 0 ? array.get(bin_total, dn_ptr - 1) : 0.0
+            if v_u >= v_d and up_ptr < vp_rows - 1
+                up_ptr += 1
+                va_vol += v_u
+            else if dn_ptr > 0
+                dn_ptr -= 1
+                va_vol += v_d
+            else
+                break
+
+        float vah_price = vp_lo + (up_ptr + 1) * bin_size
+        float val_price = vp_lo + dn_ptr * bin_size
+        main_poc_price := vp_lo + (poc_idx + 0.5) * bin_size
+
+        // Render Profile
+        int start_x = math.min(bar_index + 400, bar_index + vp_h_offset)
+
+        for j = 0 to vp_rows - 1
+            float v_tot = array.get(bin_total, j)
+            if v_tot > 0
+                float y_bot = vp_lo + j * bin_size
+                float y_top = y_bot + bin_size
+                int b_width = int(vp_width * (v_tot / math.max(1e-9, max_bin_vol)))
+                int end_x = start_x + b_width
+
+                // Dynamic Glass opacity based on volume intensity
+                float ratio = v_tot / math.max(1e-9, max_bin_vol)
+                int trans = math.round(95 - (math.pow(ratio, 0.7) * 55))
+
+                color box_bg = na
+                string label_text = ""
+
+                if vp_type == "Delta"
+                    float _buy = array.get(bin_buy, j)
+                    float _sell = array.get(bin_sell, j)
+                    float _del = _buy - _sell
+                    color d_color = _del >= 0 ? col_bull : col_bear
+                    box_bg := color.new(d_color, f_glass_alpha(trans))
+                    label_text := (_del >= 0 ? "+" : "") + str.tostring(math.round(_del / 1000.0)) + "K"
+                else
+                    box_bg := color.new(col_poc, f_glass_alpha(trans))
+                    label_text := str.tostring(math.round(v_tot / 1000.0)) + "K"
+
+                box bx = box.new(start_x, y_top, end_x, y_bot,
+                     bgcolor=box_bg,
+                     border_color=color.new(white, f_glass_alpha(92)),
+                     border_width=1,
+                     text=label_text,
+                     text_color=white,
+                     text_size=size.auto,
+                     text_halign=text.align_center,
+                     text_valign=text.align_center)
+                array.push(vp_boxes, bx)
+
+        // Detect HVN and LVN
+        if show_vp_hvn_lvn
+            float lvn_threshold = max_bin_vol * 0.15
+            float hvn_threshold = max_bin_vol * 0.65
+
+            for j = 1 to vp_rows - 2
+                float v_tot = array.get(bin_total, j)
+                float v_prev = array.get(bin_total, j - 1)
+                float v_next = array.get(bin_total, j + 1)
+
+                float y_bot = vp_lo + j * bin_size
+                float y_top = y_bot + bin_size
+
+                if v_tot < lvn_threshold and v_tot < v_prev and v_tot < v_next
+                    box lvn_box = box.new(start_x, y_top, start_x + vp_width, y_bot,
+                         bgcolor=color.new(white, f_glass_alpha(96)),
+                         border_color=color.new(white, f_glass_alpha(80)),
+                         border_width=1,
+                         border_style=line.style_dashed,
+                         text="LVN",
+                         text_color=color.new(white, 60),
+                         text_size=size.auto,
+                         text_halign=text.align_right,
+                         text_valign=text.align_center)
+                    array.push(vp_boxes, lvn_box)
+
+                else if v_tot > hvn_threshold and v_tot > v_prev and v_tot > v_next and j != poc_idx
+                    box hvn_box = box.new(start_x, y_top, start_x + vp_width, y_bot,
+                         bgcolor=color.new(white, f_glass_alpha(96)),
+                         border_color=color.new(white, f_glass_alpha(80)),
+                         border_width=1,
+                         border_style=line.style_solid,
+                         text="HVN",
+                         text_color=color.new(white, 60),
+                         text_size=size.auto,
+                         text_halign=text.align_right,
+                         text_valign=text.align_center)
+                    array.push(vp_boxes, hvn_box)
+
+        // Draw VAH, VAL, POC boundaries
+        int end_line_x = start_x + vp_width + 15
+
+        line poc_line = line.new(start_x, main_poc_price, end_line_x, main_poc_price, color=col_poc, width=2, style=line.style_solid)
+        array.push(vp_lines, poc_line)
+        label poc_label = label.new(end_line_x, main_poc_price, "POC: " + str.tostring(main_poc_price, format.mintick), style=label.style_none, textcolor=col_poc, size=size.tiny)
+        array.push(vp_labels, poc_label)
+
+        line vah_line = line.new(start_x, vah_price, end_line_x, vah_price, color=color.new(col_poc, 50), width=1, style=line.style_dashed)
+        array.push(vp_lines, vah_line)
+        label vah_label = label.new(end_line_x, vah_price, "VAH: " + str.tostring(vah_price, format.mintick), style=label.style_none, textcolor=color.new(col_poc, 50), size=size.tiny)
+        array.push(vp_labels, vah_label)
+
+        line val_line = line.new(start_x, val_price, end_line_x, val_price, color=color.new(col_poc, 50), width=1, style=line.style_dashed)
+        array.push(vp_lines, val_line)
+        label val_label = label.new(end_line_x, val_price, "VAL: " + str.tostring(val_price, format.mintick), style=label.style_none, textcolor=color.new(col_poc, 50), size=size.tiny)
+        array.push(vp_labels, val_label)
+
+// ==========================================
+// 9. GLASS AESTHETIC HUD TABLE
+// ==========================================
+var table hud = table.new(position=hud_table_pos, columns=2, rows=5, bgcolor=color.new(dark, f_glass_alpha(80)), border_color=color.new(white, f_glass_alpha(70)), border_width=1)
+
+f_update_hud() =>
+    table.set_cell_text(hud, 0, 0, "Structure Direction", text_color=white, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+    string struct_txt = sh_broken and not sl_broken ? "BULLISH BREAKOUT" : (sl_broken and not sh_broken ? "BEARISH BREAKOUT" : "CONSOLIDATION")
+    color struct_color = sh_broken and not sl_broken ? col_bull : (sl_broken and not sh_broken ? col_bear : gray)
+    table.set_cell_text(hud, 1, 0, struct_txt, text_color=struct_color, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+
+    table.set_cell_text(hud, 0, 1, "Theme Loaded", text_color=white, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+    table.set_cell_text(hud, 1, 1, color_theme, text_color=col_poc, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+
+    table.set_cell_text(hud, 0, 2, "POC Price", text_color=white, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+    string poc_txt = not na(main_poc_price) ? str.tostring(main_poc_price, format.mintick) : "N/A"
+    table.set_cell_text(hud, 1, 2, poc_txt, text_color=col_poc, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+
+    // Active OB counts
+    int bull_cnt = 0
+    int bear_cnt = 0
+    if array.size(order_blocks) > 0
+        for i = 0 to array.size(order_blocks) - 1
+            OrderBlock ob = array.get(order_blocks, i)
+            if not ob.is_mitigated
+                if ob.is_bull
+                    bull_cnt += 1
+                else
+                    bear_cnt += 1
+
+    table.set_cell_text(hud, 0, 3, "Active Bull OBs", text_color=white, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+    table.set_cell_text(hud, 1, 3, str.tostring(bull_cnt), text_color=col_bull, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+
+    table.set_cell_text(hud, 0, 4, "Active Bear OBs", text_color=white, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+    table.set_cell_text(hud, 1, 4, str.tostring(bear_cnt), text_color=col_bear, text_size=size.small, bgcolor=color.new(dark, f_glass_alpha(90)))
+
+if show_hud_table and barstate.islast
+    f_update_hud()
+
+// Global history-referencing indicators for the branding logo (must run on every bar)
+logo_lowest_50   = ta.lowest(low, 50)
+logo_highest_50  = ta.highest(high, 50)
+logo_atr_14      = ta.atr(14)
+
+// ==========================================
+// 10. PREMIUM ANIMATED BREATHING MOUNTALGO BRAND LOGO
+// ==========================================
+if show_logo and barstate.islast
+    // Calculate sine wave for breathing transition
+    float sine_breath = math.sin(time / 1000.0)
+    int breath_trans = math.round(75 + sine_breath * 20) // transitions gracefully between 55 and 95
+    color breathing_color = color.new(col_poc, breath_trans)
+
+    // Normalized points below lowest price
+    float logo_base_raw = logo_lowest_50
+    float logo_range = logo_highest_50 - logo_base_raw
+    float h_unit = math.max(logo_atr_14 * 1.5, logo_range * 0.22)
+    float logo_base = logo_base_raw - h_unit * 0.3
+
+    float p1 = logo_base + h_unit * 0.71
+    float p2 = logo_base + h_unit * 0.43
+    float p3 = logo_base + h_unit * 0.61
+    float p4 = logo_base + h_unit * 0.32
+    float p5 = logo_base + h_unit * 1.00
+    float p6 = logo_base + h_unit * 0.71
+    float p7 = logo_base + h_unit * 0.18
+
+    // Safe Future coordinate capping for logo drawings to prevent RE10020
+    int base_x = math.min(bar_index + 450, bar_index + logo_offset)
+
+    // Create the brand visual lines
+    line.new(x1 = base_x + 4, y1 = p7, x2 = base_x + 11, y2 = p1, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 8, y1 = p7, x2 = base_x + 11, y2 = p2, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 11, y1 = p1, x2 = base_x + 13, y2 = p3, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 11, y1 = p2, x2 = base_x + 13, y2 = p4, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 13, y1 = p3, x2 = base_x + 19, y2 = p5, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 13, y1 = p4, x2 = base_x + 19, y2 = p6, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 19, y1 = p5, x2 = base_x + 24, y2 = p3, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 19, y1 = p6, x2 = base_x + 24, y2 = p4, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 24, y1 = p3, x2 = base_x + 26, y2 = p1, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 24, y1 = p4, x2 = base_x + 26, y2 = p2, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 26, y1 = p1, x2 = base_x + 36, y2 = logo_base, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 26, y1 = p2, x2 = base_x + 32, y2 = logo_base, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 2, y1 = p7, x2 = base_x + 26, y2 = p7, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 0, y1 = logo_base, x2 = base_x + 24, y2 = logo_base, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 2, y1 = p7, x2 = base_x + 0, y2 = logo_base, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 26, y1 = p7, x2 = base_x + 24, y2 = logo_base, color = breathing_color, width = 2)
+    line.new(x1 = base_x + 32, y1 = logo_base, x2 = base_x + 36, y2 = logo_base, color = breathing_color, width = 2)
+
+    // Label for the brand name
+    label.new(base_x + 40, p2, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤" + "\nMSS OB & VP Premium", style=label.style_none, textcolor=col_poc, size=size.normal, textalign=text.align_left)
+
+    // Pulse glow bubble
+    label.new(base_x + 13, p1, "●", style=label.style_none, textcolor=color.new(col_poc, 90), size=size.huge)
