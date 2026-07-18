@@ -571,16 +571,16 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
                             is_lvn := true
 
                     if is_hvn
-                        box hvn_box = box.new(left=profile_left_boundary, top=p_level_top, right=profile_spine_x, bottom=p_level_bot, bgcolor=color.new(col_bull, 0), border_color=color.new(col_bull, 0), border_width=1, border_style=line.style_solid, text="HVN", text_color=dark, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                        box hvn_box = box.new(left=profile_left_boundary, top=p_level_top, right=profile_spine_x, bottom=p_level_bot, bgcolor=color.new(col_bull, 100), border_color=color.new(col_bull, 0), border_width=1, border_style=line.style_solid, text="HVN", text_color=dark, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(container_boxes, hvn_box)
                     else if is_lvn
-                        box lvn_box = box.new(left=profile_left_boundary, top=p_level_top, right=profile_spine_x, bottom=p_level_bot, bgcolor=color.new(col_bear, 0), border_color=color.new(col_bear, 0), border_width=1, border_style=line.style_dashed, text="LVN", text_color=dark, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                        box lvn_box = box.new(left=profile_left_boundary, top=p_level_top, right=profile_spine_x, bottom=p_level_bot, bgcolor=color.new(col_bear, 100), border_color=color.new(col_bear, 0), border_width=1, border_style=line.style_dashed, text="LVN", text_color=dark, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(container_boxes, lvn_box)
 
                 string blk_text = show_block_values ? f_formatNumber(r_tot_vol) : get_alphabet_letter(box_draw_count)
                 box_draw_count += 1
                 color blk_text_color = dark
-                box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
+                box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=color.new(blk_fill, 100), border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(grid_boxes, blk)
 
     // Render Glowing Value Area Container Glass Box
@@ -591,6 +591,12 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
 
         box glass_container = box.new(left=profile_left_boundary, top=vah_price, right=profile_spine_x, bottom=val_price, bgcolor=container_bg, border_color=color.new(glass_glow_color, 45), border_width=2)
         array.push(container_boxes, glass_container)
+
+    // Create transparent VAH-to-high and VAL-to-low background boxes
+    box b_vah_top = box.new(left=profile_left_boundary, top=vp_high, right=profile_spine_x, bottom=vah_price, bgcolor=color.new(col_bear, 100), border_color=na)
+    box b_val_bot = box.new(left=profile_left_boundary, top=val_price, right=profile_spine_x, bottom=vp_low, bgcolor=color.new(col_bull, 100), border_color=na)
+    array.push(container_boxes, b_vah_top)
+    array.push(container_boxes, b_val_bot)
 
     // Projected Lines & Labels (terminating at the Gann start line)
     int end_line_bar = active_anchor_bar
