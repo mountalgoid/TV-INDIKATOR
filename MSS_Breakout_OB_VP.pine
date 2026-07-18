@@ -82,6 +82,7 @@ show_mss_lines = input.bool(true, "Show MSS Breakout Lines", group=MSSGroup)
 // ==========================================
 OBGroup = "Order Block (OB) Settings"
 show_obs = input.bool(true, "Show Order Blocks", group=OBGroup)
+ob_creation_mode = input.string("Both (Pivots & MSS)", "OB Creation Source Mode", options=["MSS Breakout Only", "Pivots Only", "Both (Pivots & MSS)"], group=OBGroup)
 ob_mitigation_type = input.string("Close Inside", "Mitigation Detection Mode", options=["Close Inside", "Wick Touch"], group=OBGroup)
 show_mitigated_obs = input.bool(true, "Show Mitigated OBs (Faded)", group=OBGroup)
 max_ob_count = input.int(30, "Max Active OB Boxes Retained", minval=5, maxval=100, group=OBGroup)
@@ -224,39 +225,97 @@ f_partition_vol(float _open, float _high, float _low, float _close, float _vol) 
 
     [_v_body, _v_lwick, _v_uwick, _b_high, _b_low]
 
-// Extract Order Block coordinates on MSS triggers
+// Extract Order Block coordinates on MSS triggers and/or Pivot confirmation
 if show_obs
-    if bull_mss
-        // Search for the lowest down-candle before breakout (capped to 300 bars for performance)
-        int start_search = math.min(300, math.max(1, bar_index - last_sh_bar))
-        float lowest_low_val = 1e10
-        float ob_high = na
-        float ob_low = na
-        int ob_bar_idx = na
+    // --- 1. MSS-BASED ORDER BLOCKS ---
+    if ob_creation_mode == "MSS Breakout Only" or ob_creation_mode == "Both (Pivots & MSS)"
+        if bull_mss
+            // Search for the lowest down-candle before breakout (capped to 300 bars for performance)
+            int start_search = math.min(300, math.max(1, bar_index - last_sh_bar))
+            float lowest_low_val = 1e10
+            float ob_high = na
+            float ob_low = na
+            int ob_bar_idx = na
 
-        for k = 1 to start_search
-            if close[k] < open[k] and low[k] < lowest_low_val
-                lowest_low_val := low[k]
-                ob_high := high[k]
-                ob_low := low[k]
-                ob_bar_idx := bar_index - k
-
-        // Fallback to absolute lowest in range
-        if na(ob_bar_idx)
-            lowest_low_val := 1e10
             for k = 1 to start_search
-                if low[k] < lowest_low_val
+                if close[k] < open[k] and low[k] < lowest_low_val
                     lowest_low_val := low[k]
                     ob_high := high[k]
                     ob_low := low[k]
                     ob_bar_idx := bar_index - k
 
-        if not na(ob_bar_idx)
+            // Fallback to absolute lowest in range
+            if na(ob_bar_idx)
+                lowest_low_val := 1e10
+                for k = 1 to start_search
+                    if low[k] < lowest_low_val
+                        lowest_low_val := low[k]
+                        ob_high := high[k]
+                        ob_low := low[k]
+                        ob_bar_idx := bar_index - k
+
+            if not na(ob_bar_idx)
+                box _bx = box.new(ob_bar_idx, ob_high, bar_index + 10, ob_low,
+                     bgcolor=color.new(col_bull, 92),
+                     border_color=color.new(col_bull, 60),
+                     border_width=1,
+                     text="BULL OB (MSS)",
+                     text_color=col_bull,
+                     text_size=size.auto,
+                     text_halign=text.align_right,
+                     text_valign=text.align_top)
+
+                array.push(order_blocks, OrderBlock.new(_bx, ob_high, ob_low, true, false, bar_index))
+
+        if bear_mss
+            // Search for the highest up-candle before breakout (capped to 300 bars for performance)
+            int start_search = math.min(300, math.max(1, bar_index - last_sl_bar))
+            float highest_high_val = -1e10
+            float ob_high = na
+            float ob_low = na
+            int ob_bar_idx = na
+
+            for k = 1 to start_search
+                if close[k] > open[k] and high[k] > highest_high_val
+                    highest_high_val := high[k]
+                    ob_high := high[k]
+                    ob_low := low[k]
+                    ob_bar_idx := bar_index - k
+
+            // Fallback to absolute highest in range
+            if na(ob_bar_idx)
+                highest_high_val := -1e10
+                for k = 1 to start_search
+                    if high[k] > highest_high_val
+                        highest_high_val := high[k]
+                        ob_high := high[k]
+                        ob_low := low[k]
+                        ob_bar_idx := bar_index - k
+
+            if not na(ob_bar_idx)
+                box _bx = box.new(ob_bar_idx, ob_high, bar_index + 10, ob_low,
+                     bgcolor=color.new(col_bear, 92),
+                     border_color=color.new(col_bear, 60),
+                     border_width=1,
+                     text="BEAR OB (MSS)",
+                     text_color=col_bear,
+                     text_size=size.auto,
+                     text_halign=text.align_right,
+                     text_valign=text.align_bottom)
+
+                array.push(order_blocks, OrderBlock.new(_bx, ob_high, ob_low, false, false, bar_index))
+
+    // --- 2. PIVOT-BASED ORDER BLOCKS ---
+    if ob_creation_mode == "Pivots Only" or ob_creation_mode == "Both (Pivots & MSS)"
+        if not na(pl)
+            int ob_bar_idx = bar_index - pivot_right
+            float ob_high = high[pivot_right]
+            float ob_low = low[pivot_right]
             box _bx = box.new(ob_bar_idx, ob_high, bar_index + 10, ob_low,
                  bgcolor=color.new(col_bull, 92),
                  border_color=color.new(col_bull, 60),
                  border_width=1,
-                 text="BULL OB",
+                 text="BULL OB (PVT)",
                  text_color=col_bull,
                  text_size=size.auto,
                  text_halign=text.align_right,
@@ -264,37 +323,15 @@ if show_obs
 
             array.push(order_blocks, OrderBlock.new(_bx, ob_high, ob_low, true, false, bar_index))
 
-    if bear_mss
-        // Search for the highest up-candle before breakout (capped to 300 bars for performance)
-        int start_search = math.min(300, math.max(1, bar_index - last_sl_bar))
-        float highest_high_val = -1e10
-        float ob_high = na
-        float ob_low = na
-        int ob_bar_idx = na
-
-        for k = 1 to start_search
-            if close[k] > open[k] and high[k] > highest_high_val
-                highest_high_val := high[k]
-                ob_high := high[k]
-                ob_low := low[k]
-                ob_bar_idx := bar_index - k
-
-        // Fallback to absolute highest in range
-        if na(ob_bar_idx)
-            highest_high_val := -1e10
-            for k = 1 to start_search
-                if high[k] > highest_high_val
-                    highest_high_val := high[k]
-                    ob_high := high[k]
-                    ob_low := low[k]
-                    ob_bar_idx := bar_index - k
-
-        if not na(ob_bar_idx)
+        if not na(ph)
+            int ob_bar_idx = bar_index - pivot_right
+            float ob_high = high[pivot_right]
+            float ob_low = low[pivot_right]
             box _bx = box.new(ob_bar_idx, ob_high, bar_index + 10, ob_low,
                  bgcolor=color.new(col_bear, 92),
                  border_color=color.new(col_bear, 60),
                  border_width=1,
-                 text="BEAR OB",
+                 text="BEAR OB (PVT)",
                  text_color=col_bear,
                  text_size=size.auto,
                  text_halign=text.align_right,
