@@ -27,7 +27,30 @@ show_htf_plot_candle = input.bool(defval = true, title = 'Show HTF Plot Candle',
 ema_length = input.int(200, title="Custom EMA Length", group=GlobalGroup)
 
 // HTF Settings
-htf_timeframe = input.timeframe("60", title="Higher TimeFrame")
+auto_htf_mode = input.bool(true, title="Auto HTF Mode", group=GlobalGroup)
+manual_htf_timeframe = input.timeframe("60", title="Manual Higher TimeFrame", group=GlobalGroup)
+
+get_auto_htf() =>
+    if timeframe.isseconds
+        "15"
+    else if timeframe.isminutes
+        int m = timeframe.multiplier
+        if m <= 2
+            "60"
+        else if m <= 4
+            "60"
+        else if m <= 14
+            "240"
+        else if m <= 30
+            "D"
+        else
+            "D"
+    else if timeframe.isdaily
+        "W"
+    else
+        "M"
+
+htf_timeframe = auto_htf_mode ? get_auto_htf() : manual_htf_timeframe
 show_volume_profile = input.bool(true, title="Show Volume Profile")
 show_poc = input.bool(true, title="Show POC")
 show_delta = input.bool(true, title="Show Delta")
@@ -375,7 +398,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 if is_large_vol
                     lv_border_color := buy_val >= (vol_val - buy_val) ? col_bull : col_bear
                     lv_border_width := 3
-                    lv_border_style := line.style_dashed
+                    lv_border_style := line.style_dotted
 
                 if is_future
                     if is_lvn
