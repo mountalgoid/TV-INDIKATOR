@@ -107,7 +107,7 @@ profile_align   = input.string("Right Aligned", "Profile Layout Alignment", opti
 vp_resolution   = input.int(20, 'Profile Resolution (Rows)', minval=5, maxval=100, group=grp_vp)
 vp_va_perc      = input.float(70.0, 'Value Area Volume %', minval=10.0, maxval=100.0, step=5.0, group=grp_vp)
 max_blocks      = input.int(10, 'Max Blocks (Horizontal Width)', minval=3, maxval=25, group=grp_vp)
-show_block_values = input.bool(true, "Show Volume Values inside Boxes", group=grp_vp, tooltip="Displays formatted volume numbers inside the volume profile boxes.")
+show_block_values = input.bool(false, "Show Volume Values inside Boxes", group=grp_vp, tooltip="Displays formatted volume numbers inside the volume profile boxes.")
 
 string grp_grid = "Grid & Glass Aesthetics"
 block_style     = input.string("Classic Glass Grid", "Block Style Mode", options=["Classic Glass Grid", "Theme Gradient", "Delta Volume"], group=grp_grid, tooltip="Classic Glass Grid matches the reference image layout. Theme Gradient maps colors using gradients. Delta Volume highlights buy/sell net delta.")
@@ -597,7 +597,7 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
                         box lvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bear, 94), border_color=color.new(col_bear, 45), border_width=1, border_style=line.style_dashed, text="LVN", text_color=col_bear, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(container_boxes, lvn_box)
 
-                string blk_text = show_block_values ? (b == 0 ? f_formatNumber(r_tot_vol) : "") : get_alphabet_letter(box_draw_count)
+                string blk_text = show_block_values ? f_formatNumber(r_tot_vol) : get_alphabet_letter(box_draw_count)
                 box_draw_count += 1
                 color blk_text_color = r == poc_idx ? (color_theme == "Gear Protocol" ? col_bear : dark) : white
                 box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
