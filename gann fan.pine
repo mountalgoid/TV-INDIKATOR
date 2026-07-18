@@ -496,11 +496,12 @@ draw_profile(bool is_live) =>
     maxVol   = array.max(volBins)
     totalVol = array.sum(volBins)
     maxWidth = int(length * width_pct)
+    pocIdx   = array.indexof(volBins, maxVol)
 
-    // 2. DRAW SPINE & OUTER PROFILE FRAME BOX WITH PREMIUM GLASS CARD LAYOUT (Dense/Pekat Background)
+    // 2. DRAW SPINE & OUTER PROFILE FRAME BOX WITH PREMIUM GLASS CARD LAYOUT (Subtle Translucent Background)
     l_spine = line.new(windowStart, lo_val, windowStart, hi_val, color=spine_col, width=4)
     b_frame = box.new(left=windowStart, bottom=lo_val, right=windowStart + length, top=hi_val,
-                      bgcolor=color.new(dark, 30), border_color=color.new(spine_col, 60), border_width=1, border_style=line.style_solid)
+                      bgcolor=color.new(dark, 95), border_color=color.new(spine_col, 60), border_width=1, border_style=line.style_solid)
     if is_live
         array.push(liveLines, l_spine)
         array.push(liveBoxes, b_frame)
@@ -521,9 +522,9 @@ draw_profile(bool is_live) =>
         else
             c_base := color.from_gradient(r, 0, rows - 1, col_bull_eff, col_bear_eff)
 
-        // 0 opacity (100% transparent) background, with a solid, sleek border for the row box
-        color c_fill_heatmap = color.new(c_base, 100)
-        color c_border_heatmap = c_base
+        // Dense/Pekat background (35 transparency = 65% opaque) and visible solid border for row box
+        color c_fill_heatmap = r == pocIdx ? color.new(col_poc_eff, 35) : color.new(c_base, 35)
+        color c_border_heatmap = r == pocIdx ? color.new(col_poc_eff, 20) : color.new(c_base, 20)
 
         // Coordinates
         currX = windowStart + int(pct * maxWidth)
@@ -536,8 +537,8 @@ draw_profile(bool is_live) =>
             if vp_type == "Delta"
                 row_txt += " | " + (r_delta >= 0 ? "+" : "") + format_vol(r_delta)
 
-            // Text color unconditionally set to dark for high contrast aesthetic transparency
-            color row_text_color = dark
+            // Dynamic contrasting text color on dense/pekat backgrounds
+            color row_text_color = r == pocIdx ? dark : white
 
             b = box.new(left=windowStart, bottom=y_bot, right=currX, top=y_top,
                         bgcolor=c_fill_heatmap, border_color=c_border_heatmap, border_width=1,
@@ -547,7 +548,6 @@ draw_profile(bool is_live) =>
                 array.push(liveBoxes, b)
 
     // ===== POC & VA LOGIC =====
-    pocIdx = array.indexof(volBins, maxVol)
     targetVA = totalVol * va_pct
     currentVA = maxVol
     hIdx = pocIdx
@@ -572,9 +572,9 @@ draw_profile(bool is_live) =>
     vahPrice = lo_val + ((hIdx + 1) * step)
     valPrice = lo_val + (lIdx * step)
 
-    // Render Glowing Value Area Container Glass Box (Dense/Pekat Background)
+    // Render Glowing Value Area Container Glass Box (Subtle Transparent Background)
     if show_va_container
-        color container_bg = color.new(col_bear_eff, 40)
+        color container_bg = color.new(col_bear_eff, 93)
         box glass_container = box.new(left=windowStart, top=vahPrice, right=windowStart + length, bottom=valPrice, bgcolor=container_bg, border_color=color.new(glass_glow_color, 45), border_width=2)
         if is_live
             array.push(liveBoxes, glass_container)
@@ -591,9 +591,9 @@ draw_profile(bool is_live) =>
             array.push(liveLines, l_vah)
             array.push(liveLines, l_val)
 
-    // Draw highly aesthetic subtle backgrounds for VAH-to-Top and VAL-to-Bottom regions (Dense/Pekat Background)
-    color top_bg = color.new(col_bear_eff, 65)
-    color bot_bg = color.new(col_bull_eff, 65)
+    // Draw highly aesthetic subtle backgrounds for VAH-to-Top and VAL-to-Bottom regions (Subtle Transparent Background)
+    color top_bg = color.new(col_bear_eff, 96)
+    color bot_bg = color.new(col_bull_eff, 96)
 
     b_vah_top = box.new(left=windowStart, top=hi_val, right=windowStart + length, bottom=vahPrice,
                         bgcolor=top_bg, border_color=na)
