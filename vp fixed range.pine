@@ -409,7 +409,8 @@ draw_profile(bool is_live) =>
     maxWidth = int(length * width_pct) 
     
     // Boundaries for right badges with added gap to prevent overlap with the next volume profile
-    boxLeft = windowStart + length - int(length * 0.12) - badge_gap
+    // Reduced width multiplier from 0.12 to 0.08 to shorten the boxes
+    boxLeft = windowStart + length - int(length * 0.08) - badge_gap
     boxRight = windowStart + length - badge_gap
 
     // 2. DRAW SPINE & OUTER PROFILE FRAME BOX (Right boundary aligned with boxLeft to prevent overlap)
