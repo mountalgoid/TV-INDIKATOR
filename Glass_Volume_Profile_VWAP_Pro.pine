@@ -586,8 +586,8 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
                 int x_left = bar_index + x_align_offset + b * block_step
                 int x_right = x_left + block_size
 
-                // Color mapping logic - Saturated/Pekat Opacity
-                color blk_fill = color.new(#ffffff, 50)
+                // Color mapping logic - Saturated/Pekat Opacity (0% transparency = 100% opaque)
+                color blk_fill = color.new(#ffffff, 0)
                 color blk_border = color.new(#ffffff, 40)
 
                 // Large volume border highlights
@@ -597,22 +597,21 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
 
                 if block_style == "Classic Glass Grid"
                     if r == poc_idx
-                        blk_fill := color.new(col_bear, 35) // High saturation pink/magenta POC blocks
+                        blk_fill := color.new(col_bear, 0) // Fully opaque POC blocks
                         blk_border := color.new(col_bear, 20)
                     else
                         // Normal gray glass block
-                        blk_fill := color.new(#ffffff, 50)
+                        blk_fill := color.new(#ffffff, 0)
                         blk_border := is_lvl_large_vol ? large_vol_dominant_c : color.new(#ffffff, 40)
                 else if block_style == "Theme Gradient"
                     float buy_ratio = r_tot_vol > 0 ? r_buy_vol / r_tot_vol : 0.5
                     color mix_base = color.from_gradient(buy_ratio, 0, 1, col_bear, col_bull)
-                    blk_fill := color.new(mix_base, 50)
+                    blk_fill := color.new(mix_base, 0)
                     blk_border := is_lvl_large_vol ? large_vol_dominant_c : color.new(mix_base, 30)
                 else if block_style == "Delta Volume"
                     color mix_base = r_delta >= 0 ? col_bull : col_bear
-                    float delta_intensity = math.max(0.1, math.min(1.0, math.abs(r_delta) / math.max(1.0, r_tot_vol)))
-                    blk_fill := color.new(mix_base, math.round(65 - delta_intensity * 40))
-                    blk_border := is_lvl_large_vol ? large_vol_dominant_c : color.new(mix_base, math.round(55 - delta_intensity * 35))
+                    blk_fill := color.new(mix_base, 0)
+                    blk_border := is_lvl_large_vol ? large_vol_dominant_c : color.new(mix_base, 35)
 
                 // Highlight HVN / LVNs uniquely as premium full-width translucent area boxes
                 if show_hvn_lvn and r != poc_idx and b == 0
@@ -627,10 +626,10 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
                             is_lvn := true
 
                     if is_hvn
-                        box hvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bull, 92), border_color=color.new(col_bull, 45), border_width=1, border_style=line.style_solid, text="HVN", text_color=col_bull, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                        box hvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bull, 92), border_color=color.new(col_bull, 45), border_width=1, border_style=line.style_solid, text="HVN", text_color=dark, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(container_boxes, hvn_box)
                     else if is_lvn
-                        box lvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bear, 94), border_color=color.new(col_bear, 45), border_width=1, border_style=line.style_dashed, text="LVN", text_color=col_bear, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                        box lvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bear, 94), border_color=color.new(col_bear, 45), border_width=1, border_style=line.style_dashed, text="LVN", text_color=dark, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(container_boxes, lvn_box)
 
                 // Display block values inside cells
@@ -643,7 +642,7 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
                     blk_text := get_alphabet_letter(box_draw_count)
 
                 box_draw_count += 1
-                color blk_text_color = r == poc_idx ? (color_theme == "Gear Protocol" ? col_bear : dark) : white
+                color blk_text_color = dark
                 box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(grid_boxes, blk)
 
