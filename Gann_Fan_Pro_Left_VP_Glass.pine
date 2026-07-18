@@ -531,26 +531,25 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
                 int x_right = profile_spine_x - b * block_step
                 int x_left = x_right - block_size
 
-                color blk_fill = color.new(#ffffff, 50)
-                color blk_border = color.new(#ffffff, 40)
+                color blk_fill = color.new(#ffffff, 0)
+                color blk_border = color.new(#ffffff, 0)
 
                 if block_style == "Classic Glass Grid"
                     if r == poc_idx
-                        blk_fill := color.new(col_bear, 35)
-                        blk_border := color.new(col_bear, 20)
+                        blk_fill := color.new(col_bear, 0)
+                        blk_border := color.new(col_bear, 0)
                     else
-                        blk_fill := color.new(#ffffff, 50)
-                        blk_border := color.new(#ffffff, 40)
+                        blk_fill := color.new(#ffffff, 0)
+                        blk_border := color.new(#ffffff, 0)
                 else if block_style == "Theme Gradient"
                     float buy_ratio = r_tot_vol > 0 ? r_buy_vol / r_tot_vol : 0.5
                     color mix_base = color.from_gradient(buy_ratio, 0, 1, col_bear, col_bull)
-                    blk_fill := color.new(mix_base, 50)
-                    blk_border := color.new(mix_base, 30)
+                    blk_fill := color.new(mix_base, 0)
+                    blk_border := color.new(mix_base, 0)
                 else if block_style == "Delta Volume"
                     color mix_base = r_delta >= 0 ? col_bull : col_bear
-                    float delta_intensity = math.max(0.1, math.min(1.0, math.abs(r_delta) / math.max(1.0, r_tot_vol)))
-                    blk_fill := color.new(mix_base, math.round(65 - delta_intensity * 40))
-                    blk_border := color.new(mix_base, math.round(55 - delta_intensity * 35))
+                    blk_fill := color.new(mix_base, 0)
+                    blk_border := color.new(mix_base, 0)
 
                 // Highlight HVN / LVNs uniquely as premium full-width translucent area boxes
                 if show_hvn_lvn and r != poc_idx and b == 0
@@ -566,15 +565,15 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
                             is_lvn := true
 
                     if is_hvn
-                        box hvn_box = box.new(left=profile_left_boundary, top=p_level_top, right=profile_spine_x, bottom=p_level_bot, bgcolor=color.new(col_bull, 92), border_color=color.new(col_bull, 45), border_width=1, border_style=line.style_solid, text="HVN", text_color=col_bull, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                        box hvn_box = box.new(left=profile_left_boundary, top=p_level_top, right=profile_spine_x, bottom=p_level_bot, bgcolor=color.new(col_bull, 0), border_color=color.new(col_bull, 0), border_width=1, border_style=line.style_solid, text="HVN", text_color=dark, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(container_boxes, hvn_box)
                     else if is_lvn
-                        box lvn_box = box.new(left=profile_left_boundary, top=p_level_top, right=profile_spine_x, bottom=p_level_bot, bgcolor=color.new(col_bear, 94), border_color=color.new(col_bear, 45), border_width=1, border_style=line.style_dashed, text="LVN", text_color=col_bear, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                        box lvn_box = box.new(left=profile_left_boundary, top=p_level_top, right=profile_spine_x, bottom=p_level_bot, bgcolor=color.new(col_bear, 0), border_color=color.new(col_bear, 0), border_width=1, border_style=line.style_dashed, text="LVN", text_color=dark, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(container_boxes, lvn_box)
 
                 string blk_text = show_block_values ? f_formatNumber(r_tot_vol) : get_alphabet_letter(box_draw_count)
                 box_draw_count += 1
-                color blk_text_color = r == poc_idx ? (color_theme == "Gear Protocol" ? col_bear : dark) : white
+                color blk_text_color = dark
                 box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(grid_boxes, blk)
 
