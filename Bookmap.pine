@@ -130,6 +130,7 @@ bool show_vp_labels = input.bool(true, "Show Text Labels", group=grp_vp)
 int  vp_lookback    = input.int(1000, "Main VP Lookback Length", minval=2, maxval=2000, group=grp_vp) 
 bool show_vp_short  = input.bool(true, "Show Short-Term VP", group=grp_vp)
 int  vp_lookback_s  = input.int(200, "Short VP Lookback Length", minval=2, maxval=1000, group=grp_vp)
+bool sync_with_main_vp = input.bool(true, "Sync Bubble with Main VP", group=grp_vp, tooltip="When enabled, the Bubble Volume lookback is automatically synchronized with the Main Volume Profile lookback, while the Short-Term Volume Profile remains independent.")
 int  vp_rows        = input.int(200, "Profile Row Count", minval=10, maxval=200, group=grp_vp)
 bool vp_use_grain   = input.bool(false, "Use Price Grain (Tick-based)", group=grp_vp)
 float vp_grain      = input.float(0.1, "Price Grain (Ticks)", minval=0.1, step=0.1, group=grp_vp)
@@ -206,6 +207,11 @@ string ladder_position_input = input.string("top_left", "Volume Ladder Position"
 float  vp_imbalance_threshold = input.float(3.0, "Delta Imbalance Ratio", minval=1.5, step=0.5)
 int    ladder_max_rows = input.int(16, "Volume Ladder Max Rows", minval=4, maxval=100)
 var table ladder_tbl = na
+
+// Synchronized Lookback Calculations
+int final_vp_lookback_s = vp_lookback_s
+int final_bubble_lookback = sync_with_main_vp ? vp_lookback : lookback
+int final_avg_plots_len = sync_with_main_vp ? vp_lookback : avg_plots_len
 
 // -----------------------------------------------------------------------------
 // 2. TREND & EMA ENGINE
@@ -504,7 +510,8 @@ if barstate.isconfirmed
     array.push(hist_buy_poc_arr, na(rt_buy_poc) ? buy_center : rt_buy_poc)
     array.push(hist_sell_poc_arr, na(rt_sell_poc) ? sell_center : rt_sell_poc)
     
-    if array.size(hist_close) >= vp_lookback
+    int max_lookback = math.max(vp_lookback, math.max(final_vp_lookback_s, final_bubble_lookback))
+    if array.size(hist_close) >= max_lookback
         array.shift(hist_buy_vol)
         array.shift(hist_sell_vol)
         array.shift(hist_high)
@@ -588,12 +595,12 @@ float p_agg_delta_pct = p_agg_total > 0 ? (p_agg_delta / p_agg_total) * 100 : 0
 // -----------------------------------------------------------------------------
 // Historical Average Buy/Sell Calculations (Global for history)
 // Use math.sum for precision and ensure it's synced with Volume Profile lookback
-float rolling_buy_vol_g   = math.sum(buy_volume, avg_plots_len)
-float rolling_buy_pvol_g  = math.sum(buy_loc * buy_volume, avg_plots_len)
+float rolling_buy_vol_g   = math.sum(buy_volume, final_avg_plots_len)
+float rolling_buy_pvol_g  = math.sum(buy_loc * buy_volume, final_avg_plots_len)
 float hist_avg_buy_g      = rolling_buy_vol_g > 0 ? rolling_buy_pvol_g / rolling_buy_vol_g : na
 
-float rolling_sell_vol_g  = math.sum(sell_volume, avg_plots_len)
-float rolling_sell_pvol_g = math.sum(sell_loc * sell_volume, avg_plots_len)
+float rolling_sell_vol_g  = math.sum(sell_volume, final_avg_plots_len)
+float rolling_sell_pvol_g = math.sum(sell_loc * sell_volume, final_avg_plots_len)
 float hist_avg_sell_g     = rolling_sell_vol_g > 0 ? rolling_sell_pvol_g / rolling_sell_vol_g : na
 
 // Normalized Slopes (%) for Prediction Analysis
@@ -606,12 +613,8 @@ float ema_slope_pct = (ema_long_val - ema_long_val[20]) / (20 * close) * 100
 // -----------------------------------------------------------------------------
 // 4. BUBBLES & IMBALANCE BOXES
 // -----------------------------------------------------------------------------
-var float max_vol_history = 0.0
-if barstate.isconfirmed
-    if total_volume > max_vol_history
-        max_vol_history := total_volume
-    else
-        max_vol_history := math.max(max_vol_history * 0.995, total_volume)
+float raw_max_vol = ta.highest(total_volume, final_bubble_lookback)
+float max_vol_history = not na(raw_max_vol) ? raw_max_vol : ta.highest(total_volume, bar_index + 1)
 
 float vol_intensity_buy  = max_vol_history > 0 ? math.pow(math.min(buy_volume / max_vol_history * sensitivity, 1.0), 0.8) : 0
 float vol_intensity_sell = max_vol_history > 0 ? math.pow(math.min(sell_volume / max_vol_history * sensitivity, 1.0), 0.8) : 0
@@ -1028,7 +1031,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             array<float> bucket_s_sell  = array.new_float(n_rows, 0.0)
             
             if show_vp_short
-                int s_hist_start = math.max(0, data_size - (vp_lookback_s - 1))
+                int s_hist_start = math.max(0, data_size - (final_vp_lookback_s - 1))
                 for i = s_hist_start to data_size - 1
                     distribute_vol(n_rows, lowest_p, inv_row_h, array.get(hist_open, i), array.get(hist_high, i), array.get(hist_low, i), array.get(hist_close, i), array.get(hist_buy_vol, i) + array.get(hist_sell_vol, i), bucket_s_total, bucket_s_buy, bucket_s_sell)
                 
