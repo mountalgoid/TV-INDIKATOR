@@ -7,6 +7,7 @@ indicator("MSS Breakout with Orderblock & Volume Profile (Glass Aesthetic)", sho
 GlobalGroup = "Global Settings & Theme"
 color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=GlobalGroup)
 glass_opacity_mult = input.float(1.0, "Glass Opacity Multiplier", minval=0.1, maxval=2.0, step=0.1, tooltip="Adjusts overall transparency of glass visual elements.", group=GlobalGroup)
+color_candles_opt  = input.string("Normal", "Candle Coloring Style", options=["Normal", "Based MSS (Smooth Gradient)"], group=GlobalGroup)
 
 // --- COLORS BASED ON THEME ---
 dark   = #000000
@@ -173,6 +174,11 @@ if bull_mss and show_mss_labels
     label.new(bar_index, high, "BULL MSS", color=color.new(dark, 100), textcolor=col_bull, style=label.style_label_down, size=size.small)
 if bear_mss and show_mss_labels
     label.new(bar_index, low, "BEAR MSS", color=color.new(dark, 100), textcolor=col_bear, style=label.style_label_up, size=size.small)
+
+// Smooth Gradient Candle Coloring based on price's position between last swing high and low
+color_ratio = not na(last_sh_price) and not na(last_sl_price) and (last_sh_price > last_sl_price) ? math.min(1.0, math.max(0.0, (close - last_sl_price) / (last_sh_price - last_sl_price))) : 0.5
+candle_col = color_candles_opt == "Based MSS (Smooth Gradient)" ? color.from_gradient(color_ratio, 0.0, 1.0, col_bear, col_bull) : na
+barcolor(candle_col, title="MSS Gradient Candle Color")
 
 // ==========================================
 // 7. ORDER BLOCK (OB) DETECTION & MANAGEMENT
