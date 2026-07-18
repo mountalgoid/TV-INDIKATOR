@@ -122,6 +122,7 @@ delta_box_width  = input.int(8, "Delta Box Width (Bars)", minval=2, maxval=20, g
 
 string grp_disp = "Display Controls"
 show_poc_line   = input.bool(true, "Show POC Projected Line", group=grp_disp)
+show_vah_val_lines = input.bool(true, "Show VAH/VAL Projected Lines", group=grp_disp)
 show_labels     = input.bool(true, "Show VAH/VAL/POC Labels", group=grp_disp)
 vp_h_offset     = input.int(12, "Horizontal Grid Offset (Bars)", minval=0, group=grp_disp)
 show_hvn_lvn    = input.bool(true, "Identify HVN and LVN", group=grp_disp)
@@ -516,8 +517,8 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
 
     // Draw HTF Candle on the left of the Volume Profile with a clean gap
     color htf_candle_col = is_bull_candle ? col_bull : col_bear
-    color htf_candle_bg  = color.new(htf_candle_col, 85)
-    color htf_candle_border = color.new(htf_candle_col, 45)
+    color htf_candle_bg  = color.new(htf_candle_col, 30) // Solid, saturated body color
+    color htf_candle_border = color.new(htf_candle_col, 15)
 
     box htf_body = box.new(left=bar_index + x_align_offset - 4, top=math.max(session_open, session_close), right=bar_index + x_align_offset - 2, bottom=math.min(session_open, session_close), bgcolor=htf_candle_bg, border_color=htf_candle_border, border_width=1)
     box htf_wick = box.new(left=bar_index + x_align_offset - 3, top=session_high, right=bar_index + x_align_offset - 3, bottom=session_low, bgcolor=htf_candle_bg, border_color=htf_candle_border, border_width=1)
@@ -620,6 +621,11 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
         if show_poc_line
             line poc_ln = line.new(bar_index + x_align_offset, poc_price, end_line_bar, poc_price, color=color.new(col_bear, 10), width=1)
             array.push(level_lines, poc_ln)
+        if show_vah_val_lines
+            line vah_ln = line.new(bar_index + x_align_offset, vah_price, end_line_bar, vah_price, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
+            line val_ln = line.new(bar_index + x_align_offset, val_price, end_line_bar, val_price, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
+            array.push(level_lines, vah_ln)
+            array.push(level_lines, val_ln)
         if show_labels
             label lbl_poc = label.new(end_line_bar, poc_price, "POC: " + str.tostring(poc_price, format.mintick) + " (" + f_formatNumber(max_vol) + ")", color=color.new(col_bear, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
             label lbl_vah = label.new(end_line_bar, vah_price, "VAH: " + str.tostring(vah_price, format.mintick), color=color.new(col_bull, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
@@ -698,7 +704,15 @@ if barstate.islast
                 int sess_dur = sess_end - sess_start + 1
                 int sess_offset = bar_index - sess_start
                 // Place each historical session cleanly over its actual chart bars
-                f_render_session_profile(sess_offset, sess_dur, -sess_offset, false)
+                if s == 0
+                    [tot, mx, poc, vah, val] = f_render_session_profile(sess_offset, sess_dur, -sess_offset, true)
+                    rt_total_vol := tot
+                    rt_max_vol := mx
+                    rt_poc_price := poc
+                    rt_vah_price := vah
+                    rt_val_price := val
+                else
+                    f_render_session_profile(sess_offset, sess_dur, -sess_offset, false)
 
 //════════════════════════════════════════════════════════════════════════
 // 7. GLASS HUD TABLE DASHBOARD
