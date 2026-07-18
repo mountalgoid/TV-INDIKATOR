@@ -497,10 +497,10 @@ draw_profile(bool is_live) =>
     totalVol = array.sum(volBins)
     maxWidth = int(length * width_pct)
 
-    // 2. DRAW SPINE & OUTER PROFILE FRAME BOX WITH PREMIUM GLASS CARD LAYOUT
+    // 2. DRAW SPINE & OUTER PROFILE FRAME BOX WITH PREMIUM GLASS CARD LAYOUT (Dense/Pekat Background)
     l_spine = line.new(windowStart, lo_val, windowStart, hi_val, color=spine_col, width=4)
     b_frame = box.new(left=windowStart, bottom=lo_val, right=windowStart + length, top=hi_val,
-                      bgcolor=color.new(dark, 95), border_color=color.new(spine_col, 60), border_width=1, border_style=line.style_solid)
+                      bgcolor=color.new(dark, 30), border_color=color.new(spine_col, 60), border_width=1, border_style=line.style_solid)
     if is_live
         array.push(liveLines, l_spine)
         array.push(liveBoxes, b_frame)
@@ -572,9 +572,9 @@ draw_profile(bool is_live) =>
     vahPrice = lo_val + ((hIdx + 1) * step)
     valPrice = lo_val + (lIdx * step)
 
-    // Render Glowing Value Area Container Glass Box
+    // Render Glowing Value Area Container Glass Box (Dense/Pekat Background)
     if show_va_container
-        color container_bg = color.new(col_bear_eff, 93)
+        color container_bg = color.new(col_bear_eff, 40)
         box glass_container = box.new(left=windowStart, top=vahPrice, right=windowStart + length, bottom=valPrice, bgcolor=container_bg, border_color=color.new(glass_glow_color, 45), border_width=2)
         if is_live
             array.push(liveBoxes, glass_container)
@@ -591,9 +591,9 @@ draw_profile(bool is_live) =>
             array.push(liveLines, l_vah)
             array.push(liveLines, l_val)
 
-    // Draw highly aesthetic subtle backgrounds for VAH-to-Top and VAL-to-Bottom regions
-    color top_bg = color.new(col_bear_eff, 96)
-    color bot_bg = color.new(col_bull_eff, 96)
+    // Draw highly aesthetic subtle backgrounds for VAH-to-Top and VAL-to-Bottom regions (Dense/Pekat Background)
+    color top_bg = color.new(col_bear_eff, 65)
+    color bot_bg = color.new(col_bull_eff, 65)
 
     b_vah_top = box.new(left=windowStart, top=hi_val, right=windowStart + length, bottom=vahPrice,
                         bgcolor=top_bg, border_color=na)
