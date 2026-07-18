@@ -337,6 +337,7 @@ var float rt_max_vol = 0.0
 var float rt_poc_price = na
 var float rt_vah_price = na
 var float rt_val_price = na
+var float rt_total_delta_vol = 0.0
 
 if barstate.islast
     f_cleanup_drawings()
@@ -408,6 +409,7 @@ if barstate.islast
     rt_poc_price := m * bar_index + c + poc_det
     rt_vah_price := m * bar_index + c + vah_det
     rt_val_price := m * bar_index + c + val_det
+    rt_total_delta_vol := total_delta_vol
 
     // Dynamic Alignment Setup
     int x_align_offset = profile_align == "Overlay on Channel" ? -(bar_index - start_idx) : vp_h_offset
@@ -507,7 +509,7 @@ if barstate.islast
                         array.push(live_lines, hvn_top)
                         array.push(live_lines, hvn_bot)
                         array.push(live_fills, linefill.new(hvn_top, hvn_bot, color=color.new(col_bull, 92)))
-                        float mid_x = (profile_left + profile_right) / 2.0
+                        int mid_x = int(math.round((profile_left + profile_right) / 2.0))
                         label hvn_lbl = label.new(mid_x, m * mid_x + c + P_bot + step/2.0, "HVN", color=color.new(white, 100), textcolor=col_bull, style=label.style_none, size=size.tiny)
                         array.push(live_labels, hvn_lbl)
                     else if is_lvn
@@ -516,7 +518,7 @@ if barstate.islast
                         array.push(live_lines, lvn_top)
                         array.push(live_lines, lvn_bot)
                         array.push(live_fills, linefill.new(lvn_top, lvn_bot, color=color.new(col_bear, 94)))
-                        float mid_x = (profile_left + profile_right) / 2.0
+                        int mid_x = int(math.round((profile_left + profile_right) / 2.0))
                         label lvn_lbl = label.new(mid_x, m * mid_x + c + P_bot + step/2.0, "LVN", color=color.new(white, 100), textcolor=col_bear, style=label.style_none, size=size.tiny)
                         array.push(live_labels, lvn_lbl)
 
@@ -539,7 +541,7 @@ if barstate.islast
                 box_draw_count += 1
                 color blk_text_color = r == poc_idx ? (color_theme == "Gear Protocol" ? col_bear : dark) : white
 
-                float x_mid = (x_left + x_right) / 2.0
+                int x_mid = int(math.round((x_left + x_right) / 2.0))
                 float y_mid = m * x_mid + c + (P_bot_padded + P_top_padded) / 2.0
                 label txt_lbl = label.new(x_mid, y_mid, text=blk_text, color=color.new(white, 100), textcolor=blk_text_color, style=label.style_none, size=size.auto)
                 array.push(live_labels, txt_lbl)
@@ -635,7 +637,7 @@ if barstate.islast
             array.push(live_lines, b_side_l)
             array.push(live_lines, b_side_r)
             array.push(live_fills, linefill.new(b_top_l, b_bot_l, color=buy_col_theme))
-            float mid_x = (buy_box_left + buy_box_right) / 2.0
+            int mid_x = int(math.round((buy_box_left + buy_box_right) / 2.0))
             label b_lbl = label.new(mid_x, m * mid_x + c + (Y_bot + Y_top) / 2.0, str_buy_val, color=color.new(white, 100), textcolor=white, style=label.style_none, size=size.tiny)
             array.push(live_labels, b_lbl)
 
@@ -650,7 +652,7 @@ if barstate.islast
             array.push(live_lines, s_side_l)
             array.push(live_lines, s_side_r)
             array.push(live_fills, linefill.new(s_top_l, s_bot_l, color=sell_col_theme))
-            float mid_x = (sell_box_left + sell_box_right) / 2.0
+            int mid_x = int(math.round((sell_box_left + sell_box_right) / 2.0))
             label s_lbl = label.new(mid_x, m * mid_x + c + (Y_bot + Y_top) / 2.0, str_sell_val, color=color.new(white, 100), textcolor=white, style=label.style_none, size=size.tiny)
             array.push(live_labels, s_lbl)
 
@@ -665,7 +667,7 @@ if barstate.islast
             array.push(live_lines, d_side_l)
             array.push(live_lines, d_side_r)
             array.push(live_fills, linefill.new(d_top_l, d_bot_l, color=delta_col_theme))
-            float mid_x = (delta_box_left + delta_box_right) / 2.0
+            int mid_x = int(math.round((delta_box_left + delta_box_right) / 2.0))
             label d_lbl = label.new(mid_x, m * mid_x + c + (Y_bot + Y_top) / 2.0, str_delta_val, color=color.new(white, 100), textcolor=white, style=label.style_none, size=size.tiny)
             array.push(live_labels, d_lbl)
 
@@ -708,7 +710,7 @@ if show_table and barstate.islast
     f_set_cell(info_table, 1, 6, str.tostring(rt_val_price, format.mintick), f_get_hud_table_bg(1, 6, 2, 8, col_bull, col_bear, dark), col_bear)
 
     f_set_cell(info_table, 0, 7, "Net Buy/Sell Delta", f_get_hud_table_bg(0, 7, 2, 8, col_bull, col_bear, dark), white)
-    f_set_cell(info_table, 1, 7, (total_delta_vol >= 0 ? "+" : "") + f_formatNumber(total_delta_vol), f_get_hud_table_bg(1, 7, 2, 8, col_bull, col_bear, dark), total_delta_vol >= 0 ? col_bull : col_bear)
+    f_set_cell(info_table, 1, 7, (rt_total_delta_vol >= 0 ? "+" : "") + f_formatNumber(rt_total_delta_vol), f_get_hud_table_bg(1, 7, 2, 8, col_bull, col_bear, dark), rt_total_delta_vol >= 0 ? col_bull : col_bear)
 
 //═══════════════════════════════════════════════════════════════════════════════
 // 8. LOGO GRADIENT ENHANCED (BREATHING MOUNTALGO BRAND SYSTEM)
