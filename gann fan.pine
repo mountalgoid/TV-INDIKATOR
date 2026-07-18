@@ -505,9 +505,6 @@ draw_profile(bool is_live) =>
         array.push(liveLines, l_spine)
         array.push(liveBoxes, b_frame)
 
-    prevX = windowStart
-    prevY = lo_val
-
     // 3. DRAW PROFILE ROWS
     for r = 0 to rows - 1
         v = array.get(volBins, r)
@@ -524,17 +521,16 @@ draw_profile(bool is_live) =>
         else
             c_base := color.from_gradient(r, 0, rows - 1, col_bull_eff, col_bear_eff)
 
-        // Fully transparent profile box background and border for 0 opacity clean design
+        // 0 opacity (100% transparent) background, with a solid, sleek border for the row box
         color c_fill_heatmap = color.new(c_base, 100)
-        color c_border_heatmap = color.new(c_base, 100)
+        color c_border_heatmap = c_base
 
         // Coordinates
         currX = windowStart + int(pct * maxWidth)
         y_bot = lo_val + (r * step)
         y_top = lo_val + ((r + 1) * step)
-        currY_center = lo_val + (r * step) + (step * 0.5)
 
-        // Draw Fill with volume text & clean borders
+        // Draw discrete Row Box for high-accuracy wireframe histogram visualization
         if currX > windowStart
             string row_txt = format_vol(v)
             if vp_type == "Delta"
@@ -544,24 +540,11 @@ draw_profile(bool is_live) =>
             color row_text_color = dark
 
             b = box.new(left=windowStart, bottom=y_bot, right=currX, top=y_top,
-                        bgcolor=c_fill_heatmap, border_color=c_border_heatmap, border_width=0,
+                        bgcolor=c_fill_heatmap, border_color=c_border_heatmap, border_width=1,
                         text=row_txt, text_color=row_text_color, text_size=size.auto,
                         text_halign=text.align_left, text_valign=text.align_center)
             if is_live
                 array.push(liveBoxes, b)
-
-        // Draw Outline curve
-        l = line.new(prevX, prevY, currX, currY_center, color=c_base, width=2)
-        if is_live
-            array.push(liveLines, l)
-
-        prevX := currX
-        prevY := currY_center
-
-    // Draw Top Cap
-    l_top = line.new(prevX, prevY, windowStart, hi_val, color=col_bear_eff, width=2)
-    if is_live
-        array.push(liveLines, l_top)
 
     // ===== POC & VA LOGIC =====
     pocIdx = array.indexof(volBins, maxVol)
