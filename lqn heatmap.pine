@@ -8,6 +8,7 @@ type LiqZone
     line t_ln
     line b_ln
     linefill f_id
+    box va_bx
     float level
     float step
     int strength
@@ -93,6 +94,14 @@ float lev1 = input.float(25.0, "Leverage 1", group=grp_liq)
 float lev2 = input.float(50.0, "Leverage 2", group=grp_liq)
 float lev3 = input.float(100.0, "Leverage 3", group=grp_liq)
 
+// Value Area (VA) Settings
+string grp_va    = "Value Area Settings"
+bool show_va      = input.bool(true, "Show Value Area Highlights", group=grp_va)
+float va_percent  = input.float(70.0, "Value Area Volume/Strength (%)", minval=10.0, maxval=100.0, step=5.0, group=grp_va)
+color va_color_in = input.color(color.new(#179c74, 90), "Long VA Box Background", group=grp_va)
+color va_color_sh = input.color(color.new(#f23645, 90), "Short VA Box Background", group=grp_va)
+color va_border   = input.color(color.new(#ffffff, 50), "VA Box Border Color", group=grp_va)
+
 // -----------------------------------------------------------------------------
 // 2. LIQUIDATION HEATMAP ENGINE
 // -----------------------------------------------------------------------------
@@ -172,6 +181,8 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
                 else
                     line.set_x2(z.t_ln, bar_index)
                     line.set_x2(z.b_ln, bar_index)
+                    if not na(z.va_bx)
+                        box.set_right(z.va_bx, bar_index)
                     array.push(liq_lines_hist, z.t_ln)
                     array.push(liq_lines_hist, z.b_ln)
                     array.push(liq_fills_hist, z.f_id)
@@ -179,6 +190,7 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
                     z.t_ln := line.new(bar_index, z.level + z.step/2, bar_index + 10, z.level + z.step/2, color=na, width=1)
                     z.b_ln := line.new(bar_index, z.level - z.step/2, bar_index + 10, z.level - z.step/2, color=na, width=1)
                     z.f_id := linefill.new(z.t_ln, z.b_ln, color=c)
+                    z.va_bx := na
                 found := true
                 break
     if not found
@@ -186,7 +198,7 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
         l_t = line.new(bar_idx, grid_price + liq_step/2, bar_index + 10, grid_price + liq_step/2, color=na, width=1)
         l_b = line.new(bar_idx, grid_price - liq_step/2, bar_index + 10, grid_price - liq_step/2, color=na, width=1)
         f = linefill.new(l_t, l_b, color=c)
-        array.push(liq_zones, LiqZone.new(l_t, l_b, f, grid_price, liq_step, 1, is_long, true))
+        array.push(liq_zones, LiqZone.new(l_t, l_b, f, na, grid_price, liq_step, 1, is_long, true))
 
 if show_liq_heatmap
     if liq_style == "Precise (Boxes)"
@@ -216,6 +228,8 @@ if show_liq_heatmap
                     if swept and bar_index > line.get_x1(z.t_ln)
                         line.set_x2(z.t_ln, bar_index)
                         line.set_x2(z.b_ln, bar_index)
+                        if not na(z.va_bx)
+                            box.set_right(z.va_bx, bar_index)
                         z.active := false
                         array.push(liq_lines_hist, z.t_ln)
                         array.push(liq_lines_hist, z.b_ln)
@@ -225,6 +239,8 @@ if show_liq_heatmap
                 if not remove and line.get_x1(z.t_ln) < bar_index - 300
                     line.delete(z.t_ln)
                     line.delete(z.b_ln)
+                    if not na(z.va_bx)
+                        box.delete(z.va_bx)
                     remove := true
                 
                 if remove
@@ -237,6 +253,76 @@ if show_liq_heatmap
                     array.remove(liq_lines_hist, i)
         if array.size(liq_fills_hist) > 250
             linefill.delete(array.shift(liq_fills_hist))
+
+        // ---------------------------------------------------------------------
+        // VALUE AREA CALCULATION AND RENDERING FOR PRECISE (BOXES) MODE
+        // ---------------------------------------------------------------------
+        if show_va and array.size(liq_zones) > 0
+            // Calculate total strength across all active liquidation zones
+            float total_strength = 0.0
+            int active_count = 0
+            for i = 0 to array.size(liq_zones) - 1
+                LiqZone z = array.get(liq_zones, i)
+                if z.active
+                    total_strength += z.strength
+                    active_count += 1
+
+            if total_strength > 0 and active_count > 0
+                // Collect strengths of active zones and sort them descending to find the threshold strength
+                float[] strengths = array.new_float(0)
+                for i = 0 to array.size(liq_zones) - 1
+                    LiqZone z = array.get(liq_zones, i)
+                    if z.active
+                        array.push(strengths, z.strength)
+                array.sort(strengths, order.descending)
+
+                // Find target cumulative strength based on va_percent
+                float target_va_sum = total_strength * (va_percent / 100.0)
+                float current_sum = 0.0
+                float threshold_strength = 0.0
+                for i = 0 to array.size(strengths) - 1
+                    current_sum += array.get(strengths, i)
+                    if current_sum >= target_va_sum
+                        threshold_strength := array.get(strengths, i)
+                        break
+
+                // Draw/Update/Delete Value Area highlight boxes
+                for i = 0 to array.size(liq_zones) - 1
+                    LiqZone z = array.get(liq_zones, i)
+                    if z.active
+                        if z.strength >= threshold_strength
+                            // In Value Area: Draw or update the transparent box
+                            int x1 = line.get_x1(z.t_ln)
+                            int x2 = bar_index + 10
+                            float y_top = z.level + z.step/2
+                            float y_bot = z.level - z.step/2
+                            color bg_color = z.is_long_liq ? va_color_in : va_color_sh
+
+                            if na(z.va_bx)
+                                z.va_bx := box.new(x1, y_top, x2, y_bot,
+                                                   bgcolor=bg_color,
+                                                   border_color=va_border,
+                                                   border_style=line.style_solid,
+                                                   border_width=1)
+                            else
+                                box.set_left(z.va_bx, x1)
+                                box.set_right(z.va_bx, x2)
+                                box.set_top(z.va_bx, y_top)
+                                box.set_bottom(z.va_bx, y_bot)
+                                box.set_bgcolor(z.va_bx, bg_color)
+                                box.set_border_color(z.va_bx, va_border)
+                        else
+                            // Outside Value Area: delete any existing box
+                            if not na(z.va_bx)
+                                box.delete(z.va_bx)
+                                z.va_bx := na
+        else
+            // If show_va is toggled off, make sure any active boxes are cleaned up
+            for i = 0 to array.size(liq_zones) - 1
+                LiqZone z = array.get(liq_zones, i)
+                if not na(z.va_bx)
+                    box.delete(z.va_bx)
+                    z.va_bx := na
     else
         // Smooth (Plots) mode
         if not na(ph)
