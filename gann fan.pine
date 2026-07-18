@@ -713,17 +713,8 @@ draw_profile(bool is_live) =>
     [totalVol, maxVol, pocPrice, vahPrice, valPrice]
 
 // ===== EXECUTION LOGIC =====
-// 1. Jika Window Berakhir (Historical): Gambar permanen (false)
-if isWindowEnd
-    [tot, mx, poc, vah, val] = draw_profile(false)
-    rt_total_vol := tot
-    rt_max_vol := mx
-    rt_poc_price := poc
-    rt_vah_price := vah
-    rt_val_price := val
-
-// 2. Jika Bar Terakhir (Realtime): Gambar sementara (true)
-if barstate.islast and not isWindowEnd
+// Only calculate and draw on the last bar to prevent chart scaling/squeezing and enable perfectly responsive real-time zooming
+if barstate.islast
     [tot, mx, poc, vah, val] = draw_profile(true)
     rt_total_vol := tot
     rt_max_vol := mx
