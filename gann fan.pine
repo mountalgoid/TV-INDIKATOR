@@ -111,6 +111,7 @@ rows            = input.int(50, "Smoothness (Rows)", minval=10, group=grp_vp)
 width_pct       = input.float(0.4, "Width %", step=0.01, group=grp_vp)
 va_pct          = input.float(0.70, "Value Area %", step=0.05, group=grp_vp)
 vp_type         = input.string("Normal", "Profile View Type", options=["Normal", "Delta"], group=grp_vp)
+show_va_container = input.bool(true, "Show Value Area Glass Container", group=grp_vp)
 
 string grp_candle   = "Candle Settings"
 show_candles = input.bool(true, "Show Custom Candles", group=grp_candle)
@@ -126,6 +127,8 @@ string grp_disp = "Display Controls"
 show_poc_line   = input.bool(true, "Show POC Projected Line", group=grp_disp)
 show_vah_val_lines = input.bool(true, "Show VAH/VAL Projected Lines", group=grp_disp)
 show_labels     = input.bool(true, "Show VAH/VAL/POC Labels", group=grp_disp)
+show_large_vol  = input.bool(true, "Show Large Volume Levels", group=grp_disp)
+large_vol_mult  = input.float(1.5, "Large Volume Multiplier", minval=1.0, step=0.1, group=grp_disp)
 show_table      = input.bool(true, "Show Glass HUD Table", group=grp_disp)
 hud_position    = input.string("bottom_left", "HUD Table Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_disp)
 show_logo       = input.bool(true, "Show Animated Logo", group="Logo Settings")
@@ -494,10 +497,10 @@ draw_profile(bool is_live) =>
     totalVol = array.sum(volBins)
     maxWidth = int(length * width_pct)
 
-    // 2. DRAW SPINE & OUTER PROFILE FRAME BOX
+    // 2. DRAW SPINE & OUTER PROFILE FRAME BOX WITH PREMIUM GLASS CARD LAYOUT
     l_spine = line.new(windowStart, lo_val, windowStart, hi_val, color=spine_col, width=4)
     b_frame = box.new(left=windowStart, bottom=lo_val, right=windowStart + length, top=hi_val,
-                      bgcolor=na, border_color=color.new(spine_col, 60), border_width=1, border_style=line.style_solid)
+                      bgcolor=color.new(dark, 95), border_color=color.new(spine_col, 60), border_width=1, border_style=line.style_solid)
     if is_live
         array.push(liveLines, l_spine)
         array.push(liveBoxes, b_frame)
@@ -585,6 +588,13 @@ draw_profile(bool is_live) =>
     pocPrice = lo_val + (pocIdx * step) + (step * 0.5)
     vahPrice = lo_val + ((hIdx + 1) * step)
     valPrice = lo_val + (lIdx * step)
+
+    // Render Glowing Value Area Container Glass Box
+    if show_va_container
+        color container_bg = color.new(col_bear_eff, 93)
+        box glass_container = box.new(left=windowStart, top=vahPrice, right=windowStart + length, bottom=valPrice, bgcolor=container_bg, border_color=color.new(glass_glow_color, 45), border_width=2)
+        if is_live
+            array.push(liveBoxes, glass_container)
 
     // Draw solid levels lines
     if show_poc_line
@@ -675,6 +685,34 @@ draw_profile(bool is_live) =>
                                     text_halign=text.align_center, text_valign=text.align_center)
                 if is_live
                     array.push(liveBoxes, b_lvn)
+
+    // ===== LARGE VOLUME LEVEL IDENTIFICATION =====
+    if show_large_vol and totalVol > 0
+        float avg_profile_vol = array.avg(volBins)
+        for r = 0 to rows - 1
+            float v_curr = array.get(volBins, r)
+            if v_curr > avg_profile_vol * large_vol_mult
+                float center_p = lo_val + (r * step) + (step * 0.5)
+                float y_bot = lo_val + (r * step)
+                float y_top = lo_val + ((r + 1) * step)
+
+                // Determine dominant color at this level
+                float r_buy = array.get(buyBins, r)
+                float r_sell = array.get(sellBins, r)
+                color dominant_c = r_buy >= r_sell ? col_bull_eff : col_bear_eff
+
+                // Draw bold dotted horizontal line from windowStart to boxLeft
+                line lg_vol_ln = line.new(windowStart, center_p, boxLeft, center_p, color=dominant_c, width=3, style=line.style_dotted)
+                if is_live
+                    array.push(liveLines, lg_vol_ln)
+
+                // Draw right-hand badge with text 'LG VOL' and level price
+                box lg_vol_b = box.new(left=boxLeft, top=y_top, right=boxRight, bottom=y_bot,
+                                       border_color=dominant_c, border_width=1, border_style=line.style_solid,
+                                       bgcolor=badge_bg, text="LG VOL\n" + str.tostring(center_p, format.mintick), text_color=dominant_c, text_size=size.auto,
+                                       text_halign=text.align_center, text_valign=text.align_center)
+                if is_live
+                    array.push(liveBoxes, lg_vol_b)
 
     // ===== AUTOMATIC GANN FAN ANCHOR AND DIRECTION LOGIC =====
     // Anchoring automatically at the absolute pivot point (lowest low / highest high) of the current profile segment
