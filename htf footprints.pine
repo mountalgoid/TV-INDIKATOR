@@ -27,7 +27,30 @@ show_htf_plot_candle = input.bool(defval = true, title = 'Show HTF Plot Candle',
 ema_length = input.int(200, title="Custom EMA Length", group=GlobalGroup)
 
 // HTF Settings
-htf_timeframe = input.timeframe("60", title="Higher TimeFrame")
+auto_htf_mode = input.bool(true, title="Auto HTF Mode", group=GlobalGroup)
+manual_htf_timeframe = input.timeframe("60", title="Manual Higher TimeFrame", group=GlobalGroup)
+
+get_auto_htf() =>
+    if timeframe.isseconds
+        "15"
+    else if timeframe.isminutes
+        int m = timeframe.multiplier
+        if m <= 2
+            "60"
+        else if m <= 4
+            "60"
+        else if m <= 14
+            "240"
+        else if m <= 30
+            "D"
+        else
+            "D"
+    else if timeframe.isdaily
+        "W"
+    else
+        "M"
+
+htf_timeframe = auto_htf_mode ? get_auto_htf() : manual_htf_timeframe
 show_volume_profile = input.bool(true, title="Show Volume Profile")
 show_poc = input.bool(true, title="Show POC")
 show_delta = input.bool(true, title="Show Delta")
@@ -36,6 +59,9 @@ box_width = input.float(0.8, title="Profile Width Ratio", minval=0.1, maxval=10.
 rt_offset = 2 // input.int(2, title="Realtime Profile Offset (Bars)", minval=1, maxval=20)
 levels_count = input.int(20, title="Volume Profile Levels", minval=5, maxval=100)
 value_area_pct = 70 // input.int(70, title="Value Area %", minval=10, maxval=100)
+profile_gap = input.int(2, title="Gap Between Candle & Profile (Bars)", minval=0, maxval=10, group=GlobalGroup)
+show_large_vol = input.bool(true, "Identify Large Volume Levels", group=GlobalGroup)
+large_vol_mult = input.float(1.5, "Large Vol Multiplier (vs Avg)", minval=1.0, step=0.1, group=GlobalGroup)
 show_lvn = input.bool(true, title="Show LVN (Low Volume Nodes)", group=GlobalGroup)
 lvn_threshold = input.int(15, title="LVN Threshold (%)", minval=1, maxval=50, group=GlobalGroup)
 show_hvn = input.bool(true, title="Show HVN (High Volume Nodes)", group=GlobalGroup)
@@ -266,6 +292,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
     int axis_x = start_idx
 
+    int profile_axis_x = axis_x + profile_gap
+
     if show_htf_plot_candle
         color htf_candle_color = s_close >= s_open ? col_bull : col_bear
         color body_color = htf_candle_color
@@ -283,6 +311,18 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
             line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
             line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=20)
 
+    // Draw Frame Boundary Box between Candle & Volume Profile
+    if profile_gap > 0
+        int frame_left = axis_x
+        int frame_right = profile_axis_x
+        color frame_border_col = color.new(col_poc, 60)
+        color frame_bg_col = color.new(dark, 92)
+        if is_future
+            bx_frame = box.new(frame_left, s_high, frame_right, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            array.push(future_boxes, bx_frame)
+        else
+            box.new(frame_left, s_high, frame_right, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+
     // 2. Draw Volume Profile Boxes
     if show_volume_profile
         int total_width = math.max(1, end_idx - start_idx)
@@ -290,10 +330,16 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         
         color axis_col = color.new(gray, 70)
         if is_future
-            bx_axis = box.new(axis_x, s_high, axis_x, s_low, border_color=axis_col, bgcolor=na)
+            bx_axis = box.new(profile_axis_x, s_high, profile_axis_x, s_low, border_color=axis_col, bgcolor=na)
             array.push(future_boxes, bx_axis)
         else
-            box.new(axis_x, s_high, axis_x, s_low, border_color=axis_col, bgcolor=na)
+            box.new(profile_axis_x, s_high, profile_axis_x, s_low, border_color=axis_col, bgcolor=na)
+
+        // Calculate average level volume for large volume nodes
+        float total_profile_vol = 0.0
+        for i = 0 to levels_count - 1
+            total_profile_vol += array.get(vol_dist, i)
+        float avg_level_vol = total_profile_vol / levels_count
 
         for i = 0 to levels_count - 1
             vol_val = array.get(vol_dist, i)
@@ -306,8 +352,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 float width_ratio = max_vol > 0 ? vol_val / max_vol : 0
                 int line_len = math.max(1, math.round(width_ratio * total_width * box_width))
                 
-                int x1 = axis_x
-                int x2 = axis_x + line_len
+                int x1 = profile_axis_x
+                int x2 = profile_axis_x + line_len
                 
                 bool in_va = i >= va_down and i <= va_up
                 float buy_r = buy_val / vol_val
@@ -344,21 +390,31 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     if vol_val > v_prev and vol_val > v_next and vol_val > max_vol * (hvn_threshold / 100.0)
                         is_hvn := true
 
+                // Large Volume Identification
+                bool is_large_vol = show_large_vol and vol_val > avg_level_vol * large_vol_mult
+                color lv_border_color = na
+                int lv_border_width = 0
+                string lv_border_style = line.style_solid
+                if is_large_vol
+                    lv_border_color := buy_val >= (vol_val - buy_val) ? col_bull : col_bear
+                    lv_border_width := 3
+                    lv_border_style := line.style_dotted
+
                 if is_future
                     if is_lvn
-                        bx_lvn = box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
+                        bx_lvn = box.new(profile_axis_x, level_high, profile_axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
                         array.push(future_boxes, bx_lvn)
                     if is_hvn
-                        bx_hvn = box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
+                        bx_hvn = box.new(profile_axis_x, level_high, profile_axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
                         array.push(future_boxes, bx_hvn)
-                    bx_vol = box.new(x1, level_high, x2, level_low, border_color=na, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+                    bx_vol = box.new(x1, level_high, x2, level_low, border_color=lv_border_color, border_width=lv_border_width, border_style=lv_border_style, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                     array.push(future_boxes, bx_vol)
                 else
                     if is_lvn
-                        box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
+                        box.new(profile_axis_x, level_high, profile_axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
                     if is_hvn
-                        box.new(axis_x, level_high, axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
-                    box.new(x1, level_high, x2, level_low, border_color=na, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+                        box.new(profile_axis_x, level_high, profile_axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
+                    box.new(x1, level_high, x2, level_low, border_color=lv_border_color, border_width=lv_border_width, border_style=lv_border_style, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
 
         // 3. Draw Extended POC & VAH/VAL Boxes
         float poc_price = s_low + (step * (poc_idx + 0.5))
@@ -367,17 +423,17 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         
         if is_future
             int end_x = end_idx
-            bx_p = box.new(axis_x, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 60), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_p = box.new(profile_axis_x, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 60), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_p)
             
-            bx_vh = box.new(axis_x, vah_price + step/16, end_x, vah_price - step/16, border_color=color_vah, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vh = box.new(profile_axis_x, vah_price + step/16, end_x, vah_price - step/16, border_color=color_vah, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vh)
-            bx_vl = box.new(axis_x, val_price + step/16, end_x, val_price - step/16, border_color=color_val, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vl = box.new(profile_axis_x, val_price + step/16, end_x, val_price - step/16, border_color=color_val, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vl)
         else
-            box.new(start_idx, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(start_idx, vah_price + step/16, end_idx, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(start_idx, val_price + step/16, end_idx, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            box.new(profile_axis_x, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            box.new(profile_axis_x, vah_price + step/16, end_idx, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            box.new(profile_axis_x, val_price + step/16, end_idx, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
 
 
     [s_high, s_low, s_open, s_close, s_vol, s_buy_vol, s_sell_vol, float(poc_idx), max_vol]
