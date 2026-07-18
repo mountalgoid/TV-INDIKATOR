@@ -318,11 +318,12 @@ if show_liq_heatmap
                                 z.va_bx := na
         else
             // If show_va is toggled off, make sure any active boxes are cleaned up
-            for i = 0 to array.size(liq_zones) - 1
-                LiqZone z = array.get(liq_zones, i)
-                if not na(z.va_bx)
-                    box.delete(z.va_bx)
-                    z.va_bx := na
+            if array.size(liq_zones) > 0
+                for i = 0 to array.size(liq_zones) - 1
+                    LiqZone z = array.get(liq_zones, i)
+                    if not na(z.va_bx)
+                        box.delete(z.va_bx)
+                        z.va_bx := na
     else
         // Smooth (Plots) mode
         if not na(ph)
