@@ -115,6 +115,8 @@ gap_y_perc      = input.float(12.0, "Vertical Block Gap (%)", minval=0.0, maxval
 border_width_in = input.int(1, "Block Border Width", minval=0, maxval=3, group=grp_grid)
 show_va_box     = input.bool(true, "Show Glass Value Area Container", group=grp_grid, tooltip="Draws a translucent glowing container spanning VAH to VAL.")
 va_trans_in     = input.int(85, "Value Area Transparency", minval=30, maxval=98, group=grp_grid)
+show_stats_boxes = input.bool(true, "Show Session Stats Boxes", group=grp_grid, tooltip="Draws total Buy, Sell, and Delta Volume statistics boxes above and below the profile frame.")
+delta_box_width  = input.int(8, "Delta Box Width (Bars)", minval=2, maxval=20, group=grp_grid, tooltip="Fixed horizontal width (in bars) for the Delta Volume box.")
 
 string grp_disp = "Display Controls"
 show_poc_line   = input.bool(true, "Show POC Projected Line", group=grp_disp)
@@ -300,6 +302,9 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
 
     float max_vol = array.max(bucket_total)
     float total_vol = array.sum(bucket_total)
+    float total_buy_vol = array.sum(bucket_buy)
+    float total_sell_vol = array.sum(bucket_sell)
+    float total_delta_vol = total_buy_vol - total_sell_vol
     int poc_idx = array.indexof(bucket_total, max_vol)
 
     // Value Area Identification (VAH/VAL)
@@ -327,14 +332,81 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
     float val_price = session_low + va_bot * row_h
     float poc_price = session_low + poc_idx * row_h + (row_h / 2)
 
+    // Calculate vertical height offset/margins for stats boxes using session ATR or range fraction
+    float stats_box_h = row_h * 1.5 // Standard aesthetic thickness corresponding to 1.5 rows high
+
     // Draw Beautiful Glass Card Frame boundaries around the entire Volume Profile session
-    int profile_right_boundary = bar_index + x_align_offset + max_blocks * block_step - (block_step - block_size)
-    box session_frame = box.new(left=bar_index + x_align_offset - 5, top=session_high, right=profile_right_boundary, bottom=session_low, bgcolor=color.new(dark, 94), border_color=color.new(white, 80), border_width=1)
+    int profile_left_coordinate = bar_index + x_align_offset
+    int profile_right_boundary = profile_left_coordinate + max_blocks * block_step - (block_step - block_size)
+    box session_frame = box.new(left=profile_left_coordinate - 5, top=session_high, right=profile_right_boundary, bottom=session_low, bgcolor=color.new(dark, 94), border_color=color.new(white, 80), border_width=1)
     array.push(container_boxes, session_frame)
+
+    // Calculate dynamic horizontal boundary segments for top and bottom stats boxes
+    int buy_box_left   = profile_left_coordinate
+    int buy_box_right  = buy_box_left
+    int sell_box_left  = buy_box_left
+    int sell_box_right = buy_box_left
+    int delta_box_left  = profile_right_boundary - delta_box_width
+    int delta_box_right = profile_right_boundary
+
+    int remaining_width = math.max(0, delta_box_left - buy_box_left)
+    float total_buysell_sum = total_buy_vol + total_sell_vol
+    if total_buysell_sum > 0
+        int computed_buy_w = math.round(remaining_width * (total_buy_vol / total_buysell_sum))
+        buy_box_right  := buy_box_left + computed_buy_w
+        sell_box_left  := buy_box_right
+        sell_box_right := delta_box_left
+    else
+        // Fallback split if volume is 0
+        int half_w = math.round(remaining_width * 0.5)
+        buy_box_right  := buy_box_left + half_w
+        sell_box_left  := buy_box_right
+        sell_box_right := delta_box_left
 
     // Draw Thick Glowing Vertical Spine Line at the left of the Volume Profile
     line left_spine = line.new(bar_index + x_align_offset, session_low, bar_index + x_align_offset, session_high, color=color.new(white, 40), width=3)
     array.push(level_lines, left_spine)
+
+    // Render Stats Boxes Above and Below the session boundaries if enabled
+    if show_stats_boxes
+        color buy_col_theme  = color.new(col_bull, 85)
+        color sell_col_theme = color.new(col_bear, 85)
+        color delta_col_theme = total_delta_vol >= 0 ? color.new(col_bull, 85) : color.new(col_bear, 85)
+        color border_theme_c = color.new(white, 70)
+
+        // Strings to display inside the panels
+        string str_buy_val   = "Buy: " + f_formatNumber(total_buy_vol)
+        string str_sell_val  = "Sell: " + f_formatNumber(total_sell_vol)
+        string str_delta_val = "Δ: " + (total_delta_vol >= 0 ? "+" : "") + f_formatNumber(total_delta_vol)
+
+        if total_delta_vol < 0
+            // TOP Stats Boxes (Negative Delta)
+            float top_box_y1 = session_high + stats_box_h
+            float top_box_y2 = session_high
+
+            if buy_box_right > buy_box_left
+                box top_buy_b = box.new(left=buy_box_left, top=top_box_y1, right=buy_box_right, bottom=top_box_y2, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                array.push(container_boxes, top_buy_b)
+            if sell_box_right > sell_box_left
+                box top_sell_b = box.new(left=sell_box_left, top=top_box_y1, right=sell_box_right, bottom=top_box_y2, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                array.push(container_boxes, top_sell_b)
+            if delta_box_right > delta_box_left
+                box top_delta_b = box.new(left=delta_box_left, top=top_box_y1, right=delta_box_right, bottom=top_box_y2, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                array.push(container_boxes, top_delta_b)
+        else
+            // BOTTOM Stats Boxes (Positive or Neutral Delta)
+            float btm_box_y1 = session_low
+            float btm_box_y2 = session_low - stats_box_h
+
+            if buy_box_right > buy_box_left
+                box btm_buy_b = box.new(left=buy_box_left, top=btm_box_y1, right=buy_box_right, bottom=btm_box_y2, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                array.push(container_boxes, btm_buy_b)
+            if sell_box_right > sell_box_left
+                box btm_sell_b = box.new(left=sell_box_left, top=btm_box_y1, right=sell_box_right, bottom=btm_box_y2, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                array.push(container_boxes, btm_sell_b)
+            if delta_box_right > delta_box_left
+                box btm_delta_b = box.new(left=delta_box_left, top=btm_box_y1, right=delta_box_right, bottom=btm_box_y2, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                array.push(container_boxes, btm_delta_b)
 
     // Draw HTF Candle on the left of the Volume Profile with a clean gap
     color htf_candle_col = is_bull_candle ? col_bull : col_bear
