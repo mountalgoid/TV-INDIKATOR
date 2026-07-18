@@ -374,7 +374,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 string lv_border_style = line.style_solid
                 if is_large_vol
                     lv_border_color := buy_val >= (vol_val - buy_val) ? col_bull : col_bear
-                    lv_border_width := 1
+                    lv_border_width := 3
                     lv_border_style := line.style_dashed
 
                 if is_future
