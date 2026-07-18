@@ -1,8 +1,8 @@
 //𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤
 //@version=6
 //═══════════════════════════════════════════════════════════════════════════════
-indicator(title            = "MTF Volume Profile Glass Pro 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤"
-  , shorttitle             = "MTF VP Glass Pro"
+indicator(title            = "MTF Volume Profile Grid 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤"
+  , shorttitle             = "MTF VP Grid"
   , overlay                = true
   , max_bars_back          = 4000
   , max_lines_count        = 500
