@@ -643,7 +643,7 @@ if show_logo and barstate.islast
     Line1b6 := line.new(x1 = bar_index + logo_offset + 26, y1 = point7b, x2 = bar_index + logo_offset + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
     Line1b7 := line.new(x1 = bar_index + logo_offset + 32, y1 = logo_base, x2 = bar_index + logo_offset + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
 
-    label l = label.new(bar_index + logo_offset + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤\nMTF VP GLASS PRO", style=label.style_none, textcolor=col_poc, size=size.normal, text_align=text.align_left)
+    label l = label.new(bar_index + logo_offset + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤\nMTF VP GLASS PRO", style=label.style_none, textcolor=col_poc, size=size.normal)
     array.push(brand_labels, l)
 
     label glow1 = label.new(bar_index + logo_offset + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
