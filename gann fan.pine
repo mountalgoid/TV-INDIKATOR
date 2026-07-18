@@ -586,13 +586,6 @@ draw_profile(bool is_live) =>
     vahPrice = lo_val + ((hIdx + 1) * step)
     valPrice = lo_val + (lIdx * step)
 
-    // Update real-time metric states
-    rt_total_vol := totalVol
-    rt_max_vol := maxVol
-    rt_poc_price := pocPrice
-    rt_vah_price := vahPrice
-    rt_val_price := valPrice
-
     // Draw solid levels lines
     if show_poc_line
         l_poc = line.new(windowStart, pocPrice, windowStart + length, pocPrice, color=col_poc_eff, width=3, style=line.style_solid)
@@ -717,14 +710,26 @@ draw_profile(bool is_live) =>
     if show_ray_8x1
         f_draw_gann_ray_clipped(active_anchor_bar, active_anchor_price, fan_length, active_scale, active_anchor_dir, 8.0, "8x1", active_gann_color, gann_style, gann_width, lo_val, hi_val, is_live ? liveLines : na, is_live ? liveLabels : na)
 
+    [totalVol, maxVol, pocPrice, vahPrice, valPrice]
+
 // ===== EXECUTION LOGIC =====
 // 1. Jika Window Berakhir (Historical): Gambar permanen (false)
 if isWindowEnd
-    draw_profile(false)
+    [tot, mx, poc, vah, val] = draw_profile(false)
+    rt_total_vol := tot
+    rt_max_vol := mx
+    rt_poc_price := poc
+    rt_vah_price := vah
+    rt_val_price := val
 
 // 2. Jika Bar Terakhir (Realtime): Gambar sementara (true)
 if barstate.islast and not isWindowEnd
-    draw_profile(true)
+    [tot, mx, poc, vah, val] = draw_profile(true)
+    rt_total_vol := tot
+    rt_max_vol := mx
+    rt_poc_price := poc
+    rt_vah_price := vah
+    rt_val_price := val
 
 //════════════════════════════════════════════════════════════════════════
 // 8. GLASS HUD TABLE DASHBOARD
