@@ -128,7 +128,7 @@ show_logo       = input.bool(true, "Show Animated Logo", group="Logo Settings")
 logo_offset_input = input.int(85, "Logo Offset", group="Logo Settings")
 
 //════════════════════════════════════════════════════════════════════════
-// 3. SLANTED LINEAR REGRESSION CHANNEL MATH
+// 3. SLANTED LINEAR REGRESSION CHANNEL MATH (Using Relative Coordinates to avoid float overflow and support zooming)
 //════════════════════════════════════════════════════════════════════════
 float sumX = 0.0
 float sumY = 0.0
@@ -138,9 +138,8 @@ int start_idx = bar_index - length + 1
 
 if barstate.islast
     for i = 0 to length - 1
-        int idx = start_idx + i
         float y_val = close[length - 1 - i]
-        float x_val = float(idx)
+        float x_val = float(i)
         sumX += x_val
         sumY += y_val
         sumXSqr += x_val * x_val
@@ -150,14 +149,13 @@ float denom = length * sumXSqr - sumX * sumX
 float m = denom != 0 ? (length * sumXY - sumX * sumY) / denom : 0.0
 float c = denom != 0 ? (sumY - m * sumX) / length : close
 
-// Calculate detrended high and low over the lookback window
+// Calculate detrended high and low over the lookback window using relative x values
 float max_detrended = -1e10
 float min_detrended = 1e10
 
 if barstate.islast
     for i = 0 to length - 1
-        int idx = start_idx + i
-        float y_center = m * idx + c
+        float y_center = m * i + c
         float h_detrended = high[length - 1 - i] - y_center
         float l_detrended = low[length - 1 - i] - y_center
         max_detrended := math.max(max_detrended, h_detrended)
@@ -349,14 +347,13 @@ if barstate.islast
 
     // Distribute historical channel bars (index 1 to length - 1, meaning excluding index 0 / live bar)
     for i = 0 to length - 2
-        int idx = start_idx + i
-        float y_center = m * idx + c
+        float y_center = m * i + c
         distribute_vol_detrended(vp_resolution, min_detrended, inv_step, open[length - 1 - i], high[length - 1 - i], low[length - 1 - i], close[length - 1 - i], y_center, nz(volume[length - 1 - i]), bucket_total, bucket_buy, bucket_sell)
 
     // Distribute the live bar using precise LTF 1m data (index 0)
     int ltf_count = not na(ltf_v) ? array.size(ltf_v) : 0
     float ltf_v_total = 0.0
-    float y_live_center = m * bar_index + c
+    float y_live_center = m * (bar_index - start_idx) + c
     if ltf_count > 0
         for j = 0 to ltf_count - 1
             float _o = array.get(ltf_o, j)
@@ -406,9 +403,9 @@ if barstate.islast
 
     rt_total_vol := total_vol
     rt_max_vol := max_vol
-    rt_poc_price := m * bar_index + c + poc_det
-    rt_vah_price := m * bar_index + c + vah_det
-    rt_val_price := m * bar_index + c + val_det
+    rt_poc_price := m * (bar_index - start_idx) + c + poc_det
+    rt_vah_price := m * (bar_index - start_idx) + c + vah_det
+    rt_val_price := m * (bar_index - start_idx) + c + val_det
     rt_total_delta_vol := total_delta_vol
 
     // Dynamic Alignment Setup
@@ -417,18 +414,18 @@ if barstate.islast
     int profile_right = profile_left + max_blocks * block_step - (block_step - block_size)
 
     // Draw Slanted Channel Median and Outer boundary guidelines
-    line median_ln = line.new(start_idx, m * start_idx + c, bar_index, m * bar_index + c, color=color.new(white, 60), style=line.style_dashed, width=1)
-    line top_boundary_ln = line.new(start_idx, m * start_idx + c + max_detrended, bar_index, m * bar_index + c + max_detrended, color=color.new(col_bear, 50), style=line.style_solid, width=1)
-    line bot_boundary_ln = line.new(start_idx, m * start_idx + c + min_detrended, bar_index, m * bar_index + c + min_detrended, color=color.new(col_bull, 50), style=line.style_solid, width=1)
+    line median_ln = line.new(start_idx, m * 0 + c, bar_index, m * (bar_index - start_idx) + c, color=color.new(white, 60), style=line.style_dashed, width=1)
+    line top_boundary_ln = line.new(start_idx, m * 0 + c + max_detrended, bar_index, m * (bar_index - start_idx) + c + max_detrended, color=color.new(col_bear, 50), style=line.style_solid, width=1)
+    line bot_boundary_ln = line.new(start_idx, m * 0 + c + min_detrended, bar_index, m * (bar_index - start_idx) + c + min_detrended, color=color.new(col_bull, 50), style=line.style_solid, width=1)
     array.push(live_lines, median_ln)
     array.push(live_lines, top_boundary_ln)
     array.push(live_lines, bot_boundary_ln)
 
     // Outer slanted container lines & linefill to form the glassy background container
-    line cont_left_border = line.new(profile_left - 5, m * (profile_left - 5) + c + min_detrended, profile_left - 5, m * (profile_left - 5) + c + max_detrended, color=color.new(white, 80), width=1)
-    line cont_right_border = line.new(profile_right, m * profile_right + c + min_detrended, profile_right, m * profile_right + c + max_detrended, color=color.new(white, 80), width=1)
-    line cont_top_border = line.new(profile_left - 5, m * (profile_left - 5) + c + max_detrended, profile_right, m * profile_right + c + max_detrended, color=color.new(white, 80), width=1)
-    line cont_bot_border = line.new(profile_left - 5, m * (profile_left - 5) + c + min_detrended, profile_right, m * profile_right + c + min_detrended, color=color.new(white, 80), width=1)
+    line cont_left_border = line.new(profile_left - 5, m * (profile_left - 5 - start_idx) + c + min_detrended, profile_left - 5, m * (profile_left - 5 - start_idx) + c + max_detrended, color=color.new(white, 80), width=1)
+    line cont_right_border = line.new(profile_right, m * (profile_right - start_idx) + c + min_detrended, profile_right, m * (profile_right - start_idx) + c + max_detrended, color=color.new(white, 80), width=1)
+    line cont_top_border = line.new(profile_left - 5, m * (profile_left - 5 - start_idx) + c + max_detrended, profile_right, m * (profile_right - start_idx) + c + max_detrended, color=color.new(white, 80), width=1)
+    line cont_bot_border = line.new(profile_left - 5, m * (profile_left - 5 - start_idx) + c + min_detrended, profile_right, m * (profile_right - start_idx) + c + min_detrended, color=color.new(white, 80), width=1)
     array.push(live_lines, cont_left_border)
     array.push(live_lines, cont_right_border)
     array.push(live_lines, cont_top_border)
@@ -436,7 +433,7 @@ if barstate.islast
     array.push(live_fills, linefill.new(cont_top_border, cont_bot_border, color=color.new(dark, 94)))
 
     // Draw Left Slanted Spine
-    line left_spine = line.new(profile_left, m * profile_left + c + min_detrended, profile_left, m * profile_left + c + max_detrended, color=color.new(white, 40), width=3)
+    line left_spine = line.new(profile_left, m * (profile_left - start_idx) + c + min_detrended, profile_left, m * (profile_left - start_idx) + c + max_detrended, color=color.new(white, 40), width=3)
     array.push(live_lines, left_spine)
 
     // Render Slanted Blocks
@@ -462,7 +459,7 @@ if barstate.islast
                 if r_tot_vol > avg_vol * large_vol_mult
                     color line_col = r_buy_vol >= r_sell_vol ? col_bull : col_bear
                     float center_det = P_bot + step / 2.0
-                    line lg_vol_ln = line.new(profile_left, m * profile_left + c + center_det, profile_right, m * profile_right + c + center_det, color=line_col, width=3, style=line.style_dotted)
+                    line lg_vol_ln = line.new(profile_left, m * (profile_left - start_idx) + c + center_det, profile_right, m * (profile_right - start_idx) + c + center_det, color=line_col, width=3, style=line.style_dotted)
                     array.push(live_lines, lg_vol_ln)
 
             for b = 0 to num_blocks_to_draw - 1
@@ -504,31 +501,31 @@ if barstate.islast
                             is_lvn := true
 
                     if is_hvn
-                        line hvn_top = line.new(profile_left, m * profile_left + c + P_top, profile_right, m * profile_right + c + P_top, color=color.new(col_bull, 45), width=1)
-                        line hvn_bot = line.new(profile_left, m * profile_left + c + P_bot, profile_right, m * profile_right + c + P_bot, color=color.new(col_bull, 45), width=1)
+                        line hvn_top = line.new(profile_left, m * (profile_left - start_idx) + c + P_top, profile_right, m * (profile_right - start_idx) + c + P_top, color=color.new(col_bull, 45), width=1)
+                        line hvn_bot = line.new(profile_left, m * (profile_left - start_idx) + c + P_bot, profile_right, m * (profile_right - start_idx) + c + P_bot, color=color.new(col_bull, 45), width=1)
                         array.push(live_lines, hvn_top)
                         array.push(live_lines, hvn_bot)
                         array.push(live_fills, linefill.new(hvn_top, hvn_bot, color=color.new(col_bull, 92)))
                         int mid_x = int(math.round((profile_left + profile_right) / 2.0))
-                        label hvn_lbl = label.new(mid_x, m * mid_x + c + P_bot + step/2.0, "HVN", color=color.new(white, 100), textcolor=col_bull, style=label.style_none, size=size.tiny)
+                        label hvn_lbl = label.new(mid_x, m * (mid_x - start_idx) + c + P_bot + step/2.0, "HVN", color=color.new(white, 100), textcolor=col_bull, style=label.style_none, size=size.tiny)
                         array.push(live_labels, hvn_lbl)
                     else if is_lvn
-                        line lvn_top = line.new(profile_left, m * profile_left + c + P_top, profile_right, m * profile_right + c + P_top, color=color.new(col_bear, 45), width=1, style=line.style_dashed)
-                        line lvn_bot = line.new(profile_left, m * profile_left + c + P_bot, profile_right, m * profile_right + c + P_bot, color=color.new(col_bear, 45), width=1, style=line.style_dashed)
+                        line lvn_top = line.new(profile_left, m * (profile_left - start_idx) + c + P_top, profile_right, m * (profile_right - start_idx) + c + P_top, color=color.new(col_bear, 45), width=1, style=line.style_dashed)
+                        line lvn_bot = line.new(profile_left, m * (profile_left - start_idx) + c + P_bot, profile_right, m * (profile_right - start_idx) + c + P_bot, color=color.new(col_bear, 45), width=1, style=line.style_dashed)
                         array.push(live_lines, lvn_top)
                         array.push(live_lines, lvn_bot)
                         array.push(live_fills, linefill.new(lvn_top, lvn_bot, color=color.new(col_bear, 94)))
                         int mid_x = int(math.round((profile_left + profile_right) / 2.0))
-                        label lvn_lbl = label.new(mid_x, m * mid_x + c + P_bot + step/2.0, "LVN", color=color.new(white, 100), textcolor=col_bear, style=label.style_none, size=size.tiny)
+                        label lvn_lbl = label.new(mid_x, m * (mid_x - start_idx) + c + P_bot + step/2.0, "LVN", color=color.new(white, 100), textcolor=col_bear, style=label.style_none, size=size.tiny)
                         array.push(live_labels, lvn_lbl)
 
                 float P_top_padded = P_top - pad_y
                 float P_bot_padded = P_bot + pad_y
 
-                line top_ln = line.new(x_left, m * x_left + c + P_top_padded, x_right, m * x_right + c + P_top_padded, color=blk_border, width=border_width_in)
-                line bot_ln = line.new(x_left, m * x_left + c + P_bot_padded, x_right, m * x_right + c + P_bot_padded, color=blk_border, width=border_width_in)
-                line side_l = line.new(x_left, m * x_left + c + P_bot_padded, x_left, m * x_left + c + P_top_padded, color=blk_border, width=border_width_in)
-                line side_r = line.new(x_right, m * x_right + c + P_bot_padded, x_right, m * x_right + c + P_top_padded, color=blk_border, width=border_width_in)
+                line top_ln = line.new(x_left, m * (x_left - start_idx) + c + P_top_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=blk_border, width=border_width_in)
+                line bot_ln = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_bot_padded, color=blk_border, width=border_width_in)
+                line side_l = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_left, m * (x_left - start_idx) + c + P_top_padded, color=blk_border, width=border_width_in)
+                line side_r = line.new(x_right, m * (x_right - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=blk_border, width=border_width_in)
 
                 array.push(live_lines, top_ln)
                 array.push(live_lines, bot_ln)
@@ -542,16 +539,16 @@ if barstate.islast
                 color blk_text_color = r == poc_idx ? (color_theme == "Gear Protocol" ? col_bear : dark) : white
 
                 int x_mid = int(math.round((x_left + x_right) / 2.0))
-                float y_mid = m * x_mid + c + (P_bot_padded + P_top_padded) / 2.0
+                float y_mid = m * (x_mid - start_idx) + c + (P_bot_padded + P_top_padded) / 2.0
                 label txt_lbl = label.new(x_mid, y_mid, text=blk_text, color=color.new(white, 100), textcolor=blk_text_color, style=label.style_none, size=size.auto)
                 array.push(live_labels, txt_lbl)
 
     // Glowing slanted Value Area Container
     if show_va_box
-        line va_top_ln = line.new(profile_left, m * profile_left + c + vah_det, profile_right, m * profile_right + c + vah_det, color=color.new(glass_glow_color, 45), width=2)
-        line va_bot_ln = line.new(profile_left, m * profile_left + c + val_det, profile_right, m * profile_right + c + val_det, color=color.new(glass_glow_color, 45), width=2)
-        line va_side_l = line.new(profile_left, m * profile_left + c + val_det, profile_left, m * profile_left + c + vah_det, color=color.new(glass_glow_color, 45), width=2)
-        line va_side_r = line.new(profile_right, m * profile_right + c + val_det, profile_right, m * profile_right + c + vah_det, color=color.new(glass_glow_color, 45), width=2)
+        line va_top_ln = line.new(profile_left, m * (profile_left - start_idx) + c + vah_det, profile_right, m * (profile_right - start_idx) + c + vah_det, color=color.new(glass_glow_color, 45), width=2)
+        line va_bot_ln = line.new(profile_left, m * (profile_left - start_idx) + c + val_det, profile_right, m * (profile_right - start_idx) + c + val_det, color=color.new(glass_glow_color, 45), width=2)
+        line va_side_l = line.new(profile_left, m * (profile_left - start_idx) + c + val_det, profile_left, m * (profile_left - start_idx) + c + vah_det, color=color.new(glass_glow_color, 45), width=2)
+        line va_side_r = line.new(profile_right, m * (profile_right - start_idx) + c + val_det, profile_right, m * (profile_right - start_idx) + c + vah_det, color=color.new(glass_glow_color, 45), width=2)
 
         array.push(live_lines, va_top_ln)
         array.push(live_lines, va_bot_ln)
@@ -566,20 +563,20 @@ if barstate.islast
     // Project VAH/VAL/POC Lines to the right
     int end_line_bar = profile_right + 15
     if show_poc_line
-        line poc_ln = line.new(profile_left, m * profile_left + c + poc_det, end_line_bar, m * end_line_bar + c + poc_det, color=color.new(col_bear, 10), width=1)
+        line poc_ln = line.new(profile_left, m * (profile_left - start_idx) + c + poc_det, end_line_bar, m * (end_line_bar - start_idx) + c + poc_det, color=color.new(col_bear, 10), width=1)
         array.push(live_lines, poc_ln)
         if show_labels
-            label lbl_poc = label.new(end_line_bar, m * end_line_bar + c + poc_det, "POC: " + str.tostring(m * end_line_bar + c + poc_det, format.mintick) + " (" + f_formatNumber(max_vol) + ")", color=color.new(col_bear, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
+            label lbl_poc = label.new(end_line_bar, m * (end_line_bar - start_idx) + c + poc_det, "POC: " + str.tostring(m * (end_line_bar - start_idx) + c + poc_det, format.mintick) + " (" + f_formatNumber(max_vol) + ")", color=color.new(col_bear, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
             array.push(live_labels, lbl_poc)
 
     if show_vah_val_lines
-        line vah_ln = line.new(profile_left, m * profile_left + c + vah_det, end_line_bar, m * end_line_bar + c + vah_det, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
-        line val_ln = line.new(profile_left, m * profile_left + c + val_det, end_line_bar, m * end_line_bar + c + val_det, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
+        line vah_ln = line.new(profile_left, m * (profile_left - start_idx) + c + vah_det, end_line_bar, m * (end_line_bar - start_idx) + c + vah_det, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
+        line val_ln = line.new(profile_left, m * (profile_left - start_idx) + c + val_det, end_line_bar, m * (end_line_bar - start_idx) + c + val_det, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
         array.push(live_lines, vah_ln)
         array.push(live_lines, val_ln)
         if show_labels
-            label lbl_vah = label.new(end_line_bar, m * end_line_bar + c + vah_det, "VAH: " + str.tostring(m * end_line_bar + c + vah_det, format.mintick), color=color.new(col_bull, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
-            label lbl_val = label.new(end_line_bar, m * end_line_bar + c + val_det, "VAL: " + str.tostring(m * end_line_bar + c + val_det, format.mintick), color=color.new(col_bear, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
+            label lbl_vah = label.new(end_line_bar, m * (end_line_bar - start_idx) + c + vah_det, "VAH: " + str.tostring(m * (end_line_bar - start_idx) + c + vah_det, format.mintick), color=color.new(col_bull, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
+            label lbl_val = label.new(end_line_bar, m * (end_line_bar - start_idx) + c + val_det, "VAL: " + str.tostring(m * (end_line_bar - start_idx) + c + val_det, format.mintick), color=color.new(col_bear, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
             array.push(live_labels, lbl_vah)
             array.push(live_labels, lbl_val)
 
@@ -628,47 +625,47 @@ if barstate.islast
 
         // Render Buy Stats Box
         if buy_box_right > buy_box_left
-            line b_top_l = line.new(buy_box_left, m * buy_box_left + c + Y_top, buy_box_right, m * buy_box_right + c + Y_top, color=border_theme_c, width=1)
-            line b_bot_l = line.new(buy_box_left, m * buy_box_left + c + Y_bot, buy_box_right, m * buy_box_right + c + Y_bot, color=border_theme_c, width=1)
-            line b_side_l = line.new(buy_box_left, m * buy_box_left + c + Y_bot, buy_box_left, m * buy_box_left + c + Y_top, color=border_theme_c, width=1)
-            line b_side_r = line.new(buy_box_right, m * buy_box_right + c + Y_bot, buy_box_right, m * buy_box_right + c + Y_top, color=border_theme_c, width=1)
+            line b_top_l = line.new(buy_box_left, m * (buy_box_left - start_idx) + c + Y_top, buy_box_right, m * (buy_box_right - start_idx) + c + Y_top, color=border_theme_c, width=1)
+            line b_bot_l = line.new(buy_box_left, m * (buy_box_left - start_idx) + c + Y_bot, buy_box_right, m * (buy_box_right - start_idx) + c + Y_bot, color=border_theme_c, width=1)
+            line b_side_l = line.new(buy_box_left, m * (buy_box_left - start_idx) + c + Y_bot, buy_box_left, m * (buy_box_left - start_idx) + c + Y_top, color=border_theme_c, width=1)
+            line b_side_r = line.new(buy_box_right, m * (buy_box_right - start_idx) + c + Y_bot, buy_box_right, m * (buy_box_right - start_idx) + c + Y_top, color=border_theme_c, width=1)
             array.push(live_lines, b_top_l)
             array.push(live_lines, b_bot_l)
             array.push(live_lines, b_side_l)
             array.push(live_lines, b_side_r)
             array.push(live_fills, linefill.new(b_top_l, b_bot_l, color=buy_col_theme))
             int mid_x = int(math.round((buy_box_left + buy_box_right) / 2.0))
-            label b_lbl = label.new(mid_x, m * mid_x + c + (Y_bot + Y_top) / 2.0, str_buy_val, color=color.new(white, 100), textcolor=white, style=label.style_none, size=size.tiny)
+            label b_lbl = label.new(mid_x, m * (mid_x - start_idx) + c + (Y_bot + Y_top) / 2.0, str_buy_val, color=color.new(white, 100), textcolor=white, style=label.style_none, size=size.tiny)
             array.push(live_labels, b_lbl)
 
         // Render Sell Stats Box
         if sell_box_right > sell_box_left
-            line s_top_l = line.new(sell_box_left, m * sell_box_left + c + Y_top, sell_box_right, m * sell_box_right + c + Y_top, color=border_theme_c, width=1)
-            line s_bot_l = line.new(sell_box_left, m * sell_box_left + c + Y_bot, sell_box_right, m * sell_box_right + c + Y_bot, color=border_theme_c, width=1)
-            line s_side_l = line.new(sell_box_left, m * sell_box_left + c + Y_bot, sell_box_left, m * sell_box_left + c + Y_top, color=border_theme_c, width=1)
-            line s_side_r = line.new(sell_box_right, m * sell_box_right + c + Y_bot, sell_box_right, m * sell_box_right + c + Y_top, color=border_theme_c, width=1)
+            line s_top_l = line.new(sell_box_left, m * (sell_box_left - start_idx) + c + Y_top, sell_box_right, m * (sell_box_right - start_idx) + c + Y_top, color=border_theme_c, width=1)
+            line s_bot_l = line.new(sell_box_left, m * (sell_box_left - start_idx) + c + Y_bot, sell_box_right, m * (sell_box_right - start_idx) + c + Y_bot, color=border_theme_c, width=1)
+            line s_side_l = line.new(sell_box_left, m * (sell_box_left - start_idx) + c + Y_bot, sell_box_left, m * (sell_box_left - start_idx) + c + Y_top, color=border_theme_c, width=1)
+            line s_side_r = line.new(sell_box_right, m * (sell_box_right - start_idx) + c + Y_bot, sell_box_right, m * (sell_box_right - start_idx) + c + Y_top, color=border_theme_c, width=1)
             array.push(live_lines, s_top_l)
             array.push(live_lines, s_bot_l)
             array.push(live_lines, s_side_l)
             array.push(live_lines, s_side_r)
             array.push(live_fills, linefill.new(s_top_l, s_bot_l, color=sell_col_theme))
             int mid_x = int(math.round((sell_box_left + sell_box_right) / 2.0))
-            label s_lbl = label.new(mid_x, m * mid_x + c + (Y_bot + Y_top) / 2.0, str_sell_val, color=color.new(white, 100), textcolor=white, style=label.style_none, size=size.tiny)
+            label s_lbl = label.new(mid_x, m * (mid_x - start_idx) + c + (Y_bot + Y_top) / 2.0, str_sell_val, color=color.new(white, 100), textcolor=white, style=label.style_none, size=size.tiny)
             array.push(live_labels, s_lbl)
 
         // Render Delta Stats Box
         if delta_box_right > delta_box_left
-            line d_top_l = line.new(delta_box_left, m * delta_box_left + c + Y_top, delta_box_right, m * delta_box_right + c + Y_top, color=border_theme_c, width=1)
-            line d_bot_l = line.new(delta_box_left, m * delta_box_left + c + Y_bot, delta_box_right, m * delta_box_right + c + Y_bot, color=border_theme_c, width=1)
-            line d_side_l = line.new(delta_box_left, m * delta_box_left + c + Y_bot, delta_box_left, m * delta_box_left + c + Y_top, color=border_theme_c, width=1)
-            line d_side_r = line.new(delta_box_right, m * delta_box_right + c + Y_bot, delta_box_right, m * delta_box_right + c + Y_top, color=border_theme_c, width=1)
+            line d_top_l = line.new(delta_box_left, m * (delta_box_left - start_idx) + c + Y_top, delta_box_right, m * (delta_box_right - start_idx) + c + Y_top, color=border_theme_c, width=1)
+            line d_bot_l = line.new(delta_box_left, m * (delta_box_left - start_idx) + c + Y_bot, delta_box_right, m * (delta_box_right - start_idx) + c + Y_bot, color=border_theme_c, width=1)
+            line d_side_l = line.new(delta_box_left, m * (delta_box_left - start_idx) + c + Y_bot, delta_box_left, m * (delta_box_left - start_idx) + c + Y_top, color=border_theme_c, width=1)
+            line d_side_r = line.new(delta_box_right, m * (delta_box_right - start_idx) + c + Y_bot, delta_box_right, m * (delta_box_right - start_idx) + c + Y_top, color=border_theme_c, width=1)
             array.push(live_lines, d_top_l)
             array.push(live_lines, d_bot_l)
             array.push(live_lines, d_side_l)
             array.push(live_lines, d_side_r)
             array.push(live_fills, linefill.new(d_top_l, d_bot_l, color=delta_col_theme))
             int mid_x = int(math.round((delta_box_left + delta_box_right) / 2.0))
-            label d_lbl = label.new(mid_x, m * mid_x + c + (Y_bot + Y_top) / 2.0, str_delta_val, color=color.new(white, 100), textcolor=white, style=label.style_none, size=size.tiny)
+            label d_lbl = label.new(mid_x, m * (mid_x - start_idx) + c + (Y_bot + Y_top) / 2.0, str_delta_val, color=color.new(white, 100), textcolor=white, style=label.style_none, size=size.tiny)
             array.push(live_labels, d_lbl)
 
 
