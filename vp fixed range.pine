@@ -101,6 +101,8 @@ grp_hl       = "HVN / LVN Settings"
 show_lvn_hvn = input.bool(true, "Show HVN and LVN", group=grp_hl)
 hvn_threshold= input.float(1.5, "HVN Volume Multiplier", minval=1.0, step=0.25, group=grp_hl)
 lvn_threshold= input.float(0.1, "LVN Volume Threshold (%)", minval=0.01, maxval=0.5, step=0.01, group=grp_hl)
+show_large_vol = input.bool(true, "Show Large Volume Levels", group=grp_hl)
+large_vol_mult = input.float(1.5, "Large Volume Multiplier", minval=1.0, step=0.25, group=grp_hl)
 
 // ===== WINDOW LOGIC =====
 windowStart = int(bar_index / length) * length
@@ -555,22 +557,42 @@ draw_profile(bool is_live) =>
         array.push(liveBoxes, b_vah)
         array.push(liveBoxes, b_val)
 
-    // ===== HVN / LVN IDENTIFICATION & DRAWING =====
-    // Style and place HVN and LVN badges directly at the right boundary of the volume profile
-    if show_lvn_hvn and totalVol > 0
+    // ===== HVN / LVN / LARGE VOLUME IDENTIFICATION & DRAWING =====
+    // Style and place HVN, LVN and Large Volume badges directly at the right boundary of the volume profile
+    if totalVol > 0
         float avg_profile_vol = array.avg(volBins)
         float thresh_lvn = maxVol * lvn_threshold
 
-        for r = 1 to rows - 2
-            float v_prev = array.get(volBins, r - 1)
+        for r = 0 to rows - 1
+            float v_prev = (r > 0) ? array.get(volBins, r - 1) : 0.0
             float v_curr = array.get(volBins, r)
-            float v_next = array.get(volBins, r + 1)
+            float v_next = (r < rows - 1) ? array.get(volBins, r + 1) : 0.0
             
             float y_bot = lo_val + (r * step)
             float y_top = lo_val + ((r + 1) * step)
+            float y_mid = lo_val + (r * step) + (step * 0.5)
+
+            // Large Volume Detection
+            if show_large_vol and v_curr > avg_profile_vol * large_vol_mult
+                float r_buy = array.get(buyBins, r)
+                float r_sell = array.get(sellBins, r)
+                color dominant_col = r_buy >= r_sell ? col_bull_eff : col_bear_eff
+
+                // Draw bold dotted horizontal line spanning the profile width
+                line l_lgvol = line.new(windowStart, y_mid, boxLeft, y_mid, color=dominant_col, width=3, style=line.style_dotted)
+
+                // Draw box badge styled like VAH/VAL/POC with dominant color theme
+                box b_lgvol = box.new(left=boxLeft, top=y_mid + box_height_half, right=boxRight, bottom=y_mid - box_height_half,
+                                      border_color=dominant_col, border_width=1, border_style=line.style_solid,
+                                      bgcolor=dominant_col, text="LG VOL\n" + str.tostring(y_mid, format.mintick), text_color=dark, text_size=size.auto,
+                                      text_halign=text.align_center, text_valign=text.align_center)
+
+                if is_live
+                    array.push(liveLines, l_lgvol)
+                    array.push(liveBoxes, b_lgvol)
 
             // HVN detection (Local Maxima above threshold multiplier of average volume) - Rendered as elegant right badges
-            if v_curr > v_prev and v_curr > v_next and v_curr > avg_profile_vol * hvn_threshold and r != pocIdx
+            if show_lvn_hvn and r > 0 and r < rows - 1 and v_curr > v_prev and v_curr > v_next and v_curr > avg_profile_vol * hvn_threshold and r != pocIdx
                 color hvn_border_c = col_bull_eff
                 box b_hvn = box.new(left=boxLeft, top=y_top, right=boxRight, bottom=y_bot,
                                     border_color=hvn_border_c, border_width=1, border_style=line.style_solid,
@@ -580,7 +602,7 @@ draw_profile(bool is_live) =>
                     array.push(liveBoxes, b_hvn)
 
             // LVN detection (Local Minima below threshold volume) - Rendered as elegant right badges
-            if v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
+            if show_lvn_hvn and r > 0 and r < rows - 1 and v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
                 color lvn_border_c = col_bear_eff
                 box b_lvn = box.new(left=boxLeft, top=y_top, right=boxRight, bottom=y_bot,
                                     border_color=lvn_border_c, border_width=1, border_style=line.style_solid,
