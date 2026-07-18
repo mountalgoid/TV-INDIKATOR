@@ -8,6 +8,7 @@ rows         = input.int(50, "Smoothness (Rows)", minval=10, group=grp_gen)
 width_pct    = input.float(0.4, "Width %", step=0.01, group=grp_gen)
 va_pct       = input.float(0.70, "Value Area %", step=0.05, group=grp_gen)
 vp_type      = input.string("Normal", "Profile View Type", options=["Normal", "Delta"], group=grp_gen)
+badge_gap    = input.int(3, "Right Badge Gap", minval=0, group=grp_gen, tooltip="Gap to prevent right badges from overlapping with the next volume profile")
 
 // ===== CANDLE SETTINGS =====
 grp_candle   = "Candle Settings"
@@ -407,9 +408,13 @@ draw_profile(bool is_live) =>
     totalVol = array.sum(volBins)
     maxWidth = int(length * width_pct) 
     
-    // 2. DRAW SPINE & OUTER PROFILE FRAME BOX
+    // Boundaries for right badges with added gap to prevent overlap with the next volume profile
+    boxLeft = windowStart + length - int(length * 0.12) - badge_gap
+    boxRight = windowStart + length - badge_gap
+
+    // 2. DRAW SPINE & OUTER PROFILE FRAME BOX (Right boundary aligned with boxLeft to prevent overlap)
     l_spine = line.new(windowStart, lo_val, windowStart, hi_val, color=spine_col, width=4)
-    b_frame = box.new(left=windowStart, bottom=lo_val, right=windowStart + length, top=hi_val,
+    b_frame = box.new(left=windowStart, bottom=lo_val, right=boxLeft, top=hi_val,
                       bgcolor=na, border_color=color.new(spine_col, 60), border_width=1, border_style=line.style_solid)
     if is_live
         array.push(liveLines, l_spine)
@@ -500,32 +505,28 @@ draw_profile(bool is_live) =>
     vahPrice = lo_val + ((hIdx + 1) * step)
     valPrice = lo_val + (lIdx * step)
 
-    // Draw solid levels lines
-    l_poc = line.new(windowStart, pocPrice, windowStart + length, pocPrice, color=col_poc_eff, width=3, style=line.style_solid)
-    l_vah = line.new(windowStart, vahPrice, windowStart + length, vahPrice, color=col_va_eff, style=line.style_solid, width=1)
-    l_val = line.new(windowStart, valPrice, windowStart + length, valPrice, color=col_va_eff, style=line.style_solid, width=1)
+    // Draw solid levels lines (Aligned endpoints with boxLeft to prevent overlap)
+    l_poc = line.new(windowStart, pocPrice, boxLeft, pocPrice, color=col_poc_eff, width=3, style=line.style_solid)
+    l_vah = line.new(windowStart, vahPrice, boxLeft, vahPrice, color=col_va_eff, style=line.style_solid, width=1)
+    l_val = line.new(windowStart, valPrice, boxLeft, valPrice, color=col_va_eff, style=line.style_solid, width=1)
     
     if is_live
         array.push(liveLines, l_poc)
         array.push(liveLines, l_vah)
         array.push(liveLines, l_val)
 
-    // Draw transparent backgrounds for VAH-to-Top and VAL-to-Bottom regions
+    // Draw transparent backgrounds for VAH-to-Top and VAL-to-Bottom regions (Right boundary aligned with boxLeft)
     color top_bg = color.new(col_bear_eff, 90)
     color bot_bg = color.new(col_bull_eff, 90)
 
-    b_vah_top = box.new(left=windowStart, top=hi_val, right=windowStart + length, bottom=vahPrice,
+    b_vah_top = box.new(left=windowStart, top=hi_val, right=boxLeft, bottom=vahPrice,
                         bgcolor=top_bg, border_color=na)
-    b_val_bot = box.new(left=windowStart, top=valPrice, right=windowStart + length, bottom=lo_val,
+    b_val_bot = box.new(left=windowStart, top=valPrice, right=boxLeft, bottom=lo_val,
                         bgcolor=bot_bg, border_color=na)
 
     if is_live
         array.push(liveBoxes, b_vah_top)
         array.push(liveBoxes, b_val_bot)
-
-    // Boundaries for right badges
-    boxLeft = windowStart + length
-    boxRight = windowStart + length + int(length * 0.12)
     box_height_half = step * 0.4
     color badge_bg = color.new(#0c0d12, 15) // Deep contrast background
 
