@@ -103,9 +103,11 @@ HTFtime_opt     = input.string("1H", 'Manual HTF Timeframe', tooltip="Only works
 
 string grp_vp   = "Volume Profile Grid Settings"
 profile_mode    = input.string("Current Session", "Profile Mode", options=["Current Session", "Previous Session", "Both (Current & Previous)", "Session Staircase"], group=grp_vp)
+profile_align   = input.string("Right Aligned", "Profile Layout Alignment", options=["Right Aligned", "Overlay on Session"], group=grp_vp, tooltip="Overlay on Session attaches/sticks the profile directly onto the chart layout at the start of each session, while Right Aligned shifts it cleanly to the right side.")
 vp_resolution   = input.int(20, 'Profile Resolution (Rows)', minval=5, maxval=100, group=grp_vp)
 vp_va_perc      = input.float(70.0, 'Value Area Volume %', minval=10.0, maxval=100.0, step=5.0, group=grp_vp)
 max_blocks      = input.int(10, 'Max Blocks (Horizontal Width)', minval=3, maxval=25, group=grp_vp)
+show_block_values = input.bool(true, "Show Volume Values inside Boxes", group=grp_vp, tooltip="Displays formatted volume numbers inside the volume profile boxes.")
 
 string grp_grid = "Grid & Glass Aesthetics"
 block_style     = input.string("Classic Glass Grid", "Block Style Mode", options=["Classic Glass Grid", "Theme Gradient", "Delta Volume"], group=grp_grid, tooltip="Classic Glass Grid matches the reference image layout. Theme Gradient maps colors using gradients. Delta Volume highlights buy/sell net delta.")
@@ -563,7 +565,9 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
                         box lvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bear, 94), border_color=color.new(col_bear, 45), border_width=1, border_style=line.style_dashed, text="LVN", text_color=col_bear, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(container_boxes, lvn_box)
 
-                box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in)
+                string blk_text = (show_block_values and b == 0) ? f_formatNumber(r_tot_vol) : ""
+                color blk_text_color = r == poc_idx ? (color_theme == "Gear Protocol" ? col_bear : dark) : white
+                box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(grid_boxes, blk)
 
     // Render Glowing Value Area Container Glass Box
@@ -609,7 +613,8 @@ if barstate.islast
             int cur_start = array.get(session_start_indices, num_sessions - 1)
             int cur_dur = bar_index - cur_start + 1
             int cur_offset = bar_index - cur_start
-            [tot, mx, poc, vah, val] = f_render_session_profile(cur_offset, cur_dur, vp_h_offset, true)
+            int align_cur = profile_align == "Overlay on Session" ? -cur_offset : vp_h_offset
+            [tot, mx, poc, vah, val] = f_render_session_profile(cur_offset, cur_dur, align_cur, true)
             rt_total_vol := tot
             rt_max_vol := mx
             rt_poc_price := poc
@@ -622,7 +627,8 @@ if barstate.islast
                 int prev_end = array.get(session_start_indices, num_sessions - 1) - 1
                 int prev_dur = prev_end - prev_start + 1
                 int prev_offset = bar_index - prev_start
-                [tot, mx, poc, vah, val] = f_render_session_profile(prev_offset, prev_dur, vp_h_offset, true)
+                int align_prev = profile_align == "Overlay on Session" ? -prev_offset : vp_h_offset
+                [tot, mx, poc, vah, val] = f_render_session_profile(prev_offset, prev_dur, align_prev, true)
                 rt_total_vol := tot
                 rt_max_vol := mx
                 rt_poc_price := poc
@@ -630,19 +636,20 @@ if barstate.islast
                 rt_val_price := val
 
         if profile_mode == "Both (Current & Previous)"
-            // Render Previous Session on the left side (vp_h_offset) closer to history
+            // Render Previous Session on the left side closer to history
             if num_sessions >= 2
                 int prev_start = array.get(session_start_indices, num_sessions - 2)
                 int prev_end = array.get(session_start_indices, num_sessions - 1) - 1
                 int prev_dur = prev_end - prev_start + 1
                 int prev_offset = bar_index - prev_start
-                f_render_session_profile(prev_offset, prev_dur, vp_h_offset, false)
+                int align_prev = profile_align == "Overlay on Session" ? -prev_offset : vp_h_offset
+                f_render_session_profile(prev_offset, prev_dur, align_prev, false)
 
-            // Render Current Session on the right side (align_cur = vp_h_offset + max_blocks * block_step + 4)
+            // Render Current Session on the right side
             int cur_start = array.get(session_start_indices, num_sessions - 1)
             int cur_dur = bar_index - cur_start + 1
             int cur_offset = bar_index - cur_start
-            int align_cur = vp_h_offset + max_blocks * block_step + 4
+            int align_cur = profile_align == "Overlay on Session" ? -cur_offset : (vp_h_offset + max_blocks * block_step + 4)
             [tot, mx, poc, vah, val] = f_render_session_profile(cur_offset, cur_dur, align_cur, true)
             rt_total_vol := tot
             rt_max_vol := mx
