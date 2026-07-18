@@ -379,11 +379,8 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
 
     // --- 3. VOLUME PROFILE CALCULATION (Ending exactly at active_anchor_bar) ---
     int actual_lookback = math.min(lookback, active_anchor_bar + 1)
-    float vp_high = high[anchor_offset]
-    float vp_low = low[anchor_offset]
-    for i = 0 to actual_lookback - 1
-        vp_high := math.max(vp_high, high[anchor_offset + i])
-        vp_low := math.min(vp_low, low[anchor_offset + i])
+    float vp_high = gann_high
+    float vp_low = gann_low
 
     float range_p = vp_high - vp_low
     float row_h = range_p > 0 ? range_p / vp_resolution : syminfo.mintick * 10
