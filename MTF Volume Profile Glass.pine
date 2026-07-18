@@ -121,6 +121,8 @@ show_poc_line   = input.bool(true, "Show POC Projected Line", group=grp_disp)
 show_labels     = input.bool(true, "Show VAH/VAL/POC Labels", group=grp_disp)
 vp_h_offset     = input.int(12, "Horizontal Grid Offset (Bars)", minval=0, group=grp_disp)
 show_hvn_lvn    = input.bool(true, "Identify HVN and LVN", group=grp_disp)
+show_large_vol  = input.bool(true, "Show Large Volume Levels", group=grp_disp)
+large_vol_mult  = input.float(1.5, "Large Volume Multiplier", minval=1.0, step=0.1, group=grp_disp)
 show_table      = input.bool(true, "Show Glass HUD Table", group=grp_disp)
 hud_position    = input.string("bottom_left", "HUD Table Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_disp)
 show_logo       = input.bool(true, "Show Animated Logo", group="Logo Settings")
@@ -361,6 +363,15 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
             int num_blocks_to_draw = math.round((r_tot_vol / max_vol) * max_blocks)
             num_blocks_to_draw := math.max(1, math.min(max_blocks, num_blocks_to_draw))
 
+            // Identify Large Volume levels dynamically
+            if show_large_vol
+                float avg_vol = total_vol / vp_resolution
+                if r_tot_vol > avg_vol * large_vol_mult
+                    color line_col = r_buy_vol >= r_sell_vol ? col_bull : col_bear
+                    float center_p = p_level_bot + row_h / 2
+                    line lg_vol_ln = line.new(bar_index + x_align_offset, center_p, profile_right_boundary, center_p, color=line_col, width=3, style=line.style_dotted)
+                    array.push(level_lines, lg_vol_ln)
+
             for b = 0 to num_blocks_to_draw - 1
                 int x_left = bar_index + x_align_offset + b * block_step
                 int x_right = x_left + block_size
@@ -388,8 +399,8 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
                     blk_fill := color.new(mix_base, math.round(95 - delta_intensity * 40))
                     blk_border := color.new(mix_base, math.round(75 - delta_intensity * 45))
 
-                // Highlight HVN / LVNs uniquely
-                if show_hvn_lvn and r != poc_idx
+                // Highlight HVN / LVNs uniquely as premium full-width translucent area boxes
+                if show_hvn_lvn and r != poc_idx and b == 0
                     float avg_vol = total_vol / vp_resolution
                     bool is_hvn = false
                     bool is_lvn = false
@@ -402,9 +413,11 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
                             is_lvn := true
 
                     if is_hvn
-                        blk_border := color.new(col_bull, 20)
+                        box hvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bull, 92), border_color=color.new(col_bull, 45), border_width=1, border_style=line.style_solid, text="HVN", text_color=col_bull, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                        array.push(container_boxes, hvn_box)
                     else if is_lvn
-                        blk_border := color.new(col_bear, 40)
+                        box lvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bear, 94), border_color=color.new(col_bear, 45), border_width=1, border_style=line.style_dashed, text="LVN", text_color=col_bear, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                        array.push(container_boxes, lvn_box)
 
                 box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in)
                 array.push(grid_boxes, blk)
@@ -448,7 +461,7 @@ if barstate.islast
     int num_sessions = array.size(session_start_indices)
 
     if num_sessions >= 1
-        if profile_mode == "Current Session" or profile_mode == "Both (Current & Previous)"
+        if profile_mode == "Current Session"
             int cur_start = array.get(session_start_indices, num_sessions - 1)
             int cur_dur = bar_index - cur_start + 1
             int cur_offset = bar_index - cur_start
@@ -459,14 +472,39 @@ if barstate.islast
             rt_vah_price := vah
             rt_val_price := val
 
-        if profile_mode == "Previous Session" or profile_mode == "Both (Current & Previous)"
+        if profile_mode == "Previous Session"
             if num_sessions >= 2
                 int prev_start = array.get(session_start_indices, num_sessions - 2)
                 int prev_end = array.get(session_start_indices, num_sessions - 1) - 1
                 int prev_dur = prev_end - prev_start + 1
                 int prev_offset = bar_index - prev_start
-                int align_prev = vp_h_offset + max_blocks * block_step + 4
-                f_render_session_profile(prev_offset, prev_dur, align_prev, false)
+                [tot, mx, poc, vah, val] = f_render_session_profile(prev_offset, prev_dur, vp_h_offset, true)
+                rt_total_vol := tot
+                rt_max_vol := mx
+                rt_poc_price := poc
+                rt_vah_price := vah
+                rt_val_price := val
+
+        if profile_mode == "Both (Current & Previous)"
+            // Render Previous Session on the left side (vp_h_offset) closer to history
+            if num_sessions >= 2
+                int prev_start = array.get(session_start_indices, num_sessions - 2)
+                int prev_end = array.get(session_start_indices, num_sessions - 1) - 1
+                int prev_dur = prev_end - prev_start + 1
+                int prev_offset = bar_index - prev_start
+                f_render_session_profile(prev_offset, prev_dur, vp_h_offset, false)
+
+            // Render Current Session on the right side (align_cur = vp_h_offset + max_blocks * block_step + 4)
+            int cur_start = array.get(session_start_indices, num_sessions - 1)
+            int cur_dur = bar_index - cur_start + 1
+            int cur_offset = bar_index - cur_start
+            int align_cur = vp_h_offset + max_blocks * block_step + 4
+            [tot, mx, poc, vah, val] = f_render_session_profile(cur_offset, cur_dur, align_cur, true)
+            rt_total_vol := tot
+            rt_max_vol := mx
+            rt_poc_price := poc
+            rt_vah_price := vah
+            rt_val_price := val
 
         if profile_mode == "Session Staircase"
             int max_s = math.min(3, num_sessions - 1)
