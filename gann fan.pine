@@ -97,7 +97,6 @@ manual_price    = input.float(0.0, "Manual Anchor Price (0 for Auto)", group=grp
 manual_dir      = input.string("Bullish", "Manual Fan Direction", options=["Bullish", "Bearish"], group=grp_gann)
 gann_scale_mode = input.string("Auto", "Gann Scale Mode", options=["Auto", "Manual"], group=grp_gann)
 manual_scale    = input.float(1.0, "Manual Scale (Points per bar)", group=grp_gann)
-gann_length     = input.int(150, "Gann Fan Ray Length (Bars)", minval=10, maxval=2000, group=grp_gann)
 gann_style      = input.string("Solid", "Gann Ray Line Style", options=["Solid", "Dashed", "Dotted"], group=grp_gann)
 gann_width      = input.int(1, "Gann Ray Line Width", minval=1, maxval=5, group=grp_gann)
 
@@ -112,7 +111,8 @@ show_ray_4x1    = input.bool(true, "Show 4x1 Ray", group=grp_gann)
 show_ray_8x1    = input.bool(true, "Show 8x1 Ray", group=grp_gann)
 
 string grp_vp   = "Volume Profile Grid Settings"
-lookback        = input.int(200, "Lookback Window Length (Bars)", minval=10, maxval=3000, group=grp_vp, tooltip="The historical range ending at the Gann Fan anchor bar to calculate the volume profile.")
+gann_length     = input.int(150, "Gann Fan Ray Length (Bars)", minval=10, maxval=2000, group=grp_gann)
+lookback        = gann_length
 vp_resolution   = input.int(25, 'Profile Resolution (Rows)', minval=5, maxval=100, group=grp_vp)
 vp_va_perc      = input.float(70.0, 'Value Area Volume %', minval=10.0, maxval=100.0, step=5.0, group=grp_vp)
 max_blocks      = input.int(10, 'Max Blocks (Horizontal Width)', minval=3, maxval=25, group=grp_vp)
@@ -144,6 +144,9 @@ show_logo       = input.bool(true, "Show Animated Logo", group="Logo Settings")
 string grp_ltf_c  = "LTF Candle Plotting Settings"
 show_ltf_candle   = input.bool(true, "Show LTF Plot Candles", group=grp_ltf_c)
 ltf_candle_style  = input.string("Regular Theme Candles", "LTF Candle Plot Style", options=["Regular Theme Candles", "Custom Glass Candles"], group=grp_ltf_c)
+
+// ===== LTF PRECISION ENGINE =====
+[ltf_o_series, ltf_h_series, ltf_l_series, ltf_c_series, ltf_v_series] = request.security_lower_tf(syminfo.tickerid, "1", [open, high, low, close, volume])
 
 //════════════════════════════════════════════════════════════════════════
 // 4. PRECISION VOLUME PARTITIONING
@@ -295,7 +298,7 @@ int active_anchor_bar = gann_mode == "Manual Anchor" ? (bar_index - manual_offse
 float active_anchor_price = gann_mode == "Manual Anchor" ? (manual_price == 0.0 ? close[manual_offset] : manual_price) : anchor_price
 int active_anchor_dir = gann_mode == "Manual Anchor" ? (manual_dir == "Bullish" ? 1 : -1) : anchor_dir
 
-float auto_scale = (ta.highest(high, 100) - ta.lowest(low, 100)) / 100
+float auto_scale = (ta.highest(high, 100) - ta.lowest(low, 100)) / 200
 float active_scale = gann_scale_mode == "Auto" ? auto_scale : manual_scale
 
 // Execute profile renders and Gann Fan drawing on the last bar
@@ -395,7 +398,27 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
 
     for i = 0 to actual_lookback - 1
         int idx = anchor_offset + i
-        distribute_bar_vol(vp_resolution, vp_low, inv_row_h, open[idx], high[idx], low[idx], close[idx], nz(volume[idx]), bucket_total, bucket_buy, bucket_sell)
+
+        // Safe check for lower timeframe array existence
+        float[] o_arr = ltf_o_series[idx]
+        float[] h_arr = ltf_h_series[idx]
+        float[] l_arr = ltf_l_series[idx]
+        float[] c_arr = ltf_c_series[idx]
+        float[] v_arr = ltf_v_series[idx]
+
+        bool has_ltf = not na(v_arr) and array.size(v_arr) > 0
+
+        if has_ltf
+            int ltf_sz = array.size(v_arr)
+            for j = 0 to ltf_sz - 1
+                float l_o = array.get(o_arr, j)
+                float l_h = array.get(h_arr, j)
+                float l_l = array.get(l_arr, j)
+                float l_c = array.get(c_arr, j)
+                float l_v = array.get(v_arr, j)
+                distribute_bar_vol(vp_resolution, vp_low, inv_row_h, l_o, l_h, l_l, l_c, l_v, bucket_total, bucket_buy, bucket_sell)
+        else
+            distribute_bar_vol(vp_resolution, vp_low, inv_row_h, open[idx], high[idx], low[idx], close[idx], nz(volume[idx]), bucket_total, bucket_buy, bucket_sell)
 
     float max_vol = array.max(bucket_total)
     float total_vol = array.sum(bucket_total)
@@ -440,7 +463,7 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
     int profile_left_boundary = profile_spine_x - max_blocks * block_step
 
     // Bounding Frame Box
-    box session_frame = box.new(left=profile_left_boundary - 5, top=vp_high, right=profile_spine_x, bottom=vp_low, bgcolor=color.new(dark, 94), border_color=color.new(white, 80), border_width=1)
+    box session_frame = box.new(left=profile_left_boundary - 5, top=vp_high, right=profile_spine_x, bottom=vp_low, bgcolor=color.new(dark, 100), border_color=color.new(white, 80), border_width=1)
     array.push(container_boxes, session_frame)
 
     // Vertical Spine Line
@@ -534,26 +557,25 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
                 int x_right = profile_spine_x - b * block_step
                 int x_left = x_right - block_size
 
-                color blk_fill = color.new(#ffffff, 50)
-                color blk_border = color.new(#ffffff, 40)
+                color blk_fill = color.new(white, 100)
+                color blk_border = color.new(#ffffff, 100)
 
                 if block_style == "Classic Glass Grid"
                     if r == poc_idx
-                        blk_fill := color.new(col_bear, 35) 
-                        blk_border := color.new(col_bear, 20)
+                        blk_fill := color.new(col_bear, 100)
+                        blk_border := color.new(col_bear, 100)
                     else
-                        blk_fill := color.new(#ffffff, 50)
-                        blk_border := color.new(#ffffff, 40)
+                        blk_fill := color.new(white, 100)
+                        blk_border := color.new(#ffffff, 100)
                 else if block_style == "Theme Gradient"
                     float buy_ratio = r_tot_vol > 0 ? r_buy_vol / r_tot_vol : 0.5
                     color mix_base = color.from_gradient(buy_ratio, 0, 1, col_bear, col_bull)
-                    blk_fill := color.new(mix_base, 50)
-                    blk_border := color.new(mix_base, 30)
+                    blk_fill := color.new(mix_base, 100)
+                    blk_border := color.new(mix_base, 100)
                 else if block_style == "Delta Volume"
                     color mix_base = r_delta >= 0 ? col_bull : col_bear
-                    float delta_intensity = math.max(0.1, math.min(1.0, math.abs(r_delta) / math.max(1.0, r_tot_vol)))
-                    blk_fill := color.new(mix_base, math.round(65 - delta_intensity * 40))
-                    blk_border := color.new(mix_base, math.round(55 - delta_intensity * 35))
+                    blk_fill := color.new(mix_base, 100)
+                    blk_border := color.new(mix_base, 100)
 
                 // Highlight HVN / LVNs uniquely as premium full-width translucent area boxes
                 if show_hvn_lvn and r != poc_idx and b == 0
@@ -577,7 +599,7 @@ if barstate.islast and not na(active_anchor_bar) and not na(active_anchor_price)
 
                 string blk_text = show_block_values ? f_formatNumber(r_tot_vol) : get_alphabet_letter(box_draw_count)
                 box_draw_count += 1
-                color blk_text_color = r == poc_idx ? (color_theme == "Gear Protocol" ? col_bear : dark) : white
+                color blk_text_color = dark
                 box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(grid_boxes, blk)
 
