@@ -8,6 +8,7 @@ rows         = input.int(50, "Smoothness (Rows)", minval=10, group=grp_gen)
 width_pct    = input.float(0.4, "Width %", step=0.01, group=grp_gen)
 va_pct       = input.float(0.70, "Value Area %", step=0.05, group=grp_gen)
 vp_type      = input.string("Normal", "Profile View Type", options=["Normal", "Delta"], group=grp_gen)
+badge_gap    = input.int(3, "Right Badge Gap", minval=0, group=grp_gen, tooltip="Gap to prevent right badges from overlapping with the next volume profile")
 
 // ===== CANDLE SETTINGS =====
 grp_candle   = "Candle Settings"
@@ -523,9 +524,9 @@ draw_profile(bool is_live) =>
         array.push(liveBoxes, b_vah_top)
         array.push(liveBoxes, b_val_bot)
 
-    // Boundaries for right badges
-    boxLeft = windowStart + length
-    boxRight = windowStart + length + int(length * 0.12)
+    // Boundaries for right badges with added gap to prevent overlap with the next volume profile
+    boxLeft = windowStart + length - int(length * 0.12) - badge_gap
+    boxRight = windowStart + length - badge_gap
     box_height_half = step * 0.4
     color badge_bg = color.new(#0c0d12, 15) // Deep contrast background
 
