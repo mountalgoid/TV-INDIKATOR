@@ -1,0 +1,567 @@
+//@version=6
+indicator("Polynomial/Linear Regression Volume Profile Glass 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="Reg VP Glass", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500, max_bars_back=3000)
+
+// -----------------------------------------------------------------------------
+// 1. INPUTS & CONFIGURATION
+// -----------------------------------------------------------------------------
+string grp_reg   = "Regression Configuration"
+regression_mode  = input.string("Polynomial (Degree 2)", "Regression Curve Mode", options=["Linear (Degree 1)", "Polynomial (Degree 2)"], group=grp_reg)
+reg_lookback     = input.int(120, "Regression Lookback Window", minval=20, maxval=300, group=grp_reg, tooltip="Number of historical bars to calculate the regression fit.")
+step_size        = input.int(3, "Line Segment Step Size", minval=1, maxval=10, group=grp_reg, tooltip="Step size for drawing curved lines to optimize performance and prevent drawing limits.")
+
+string grp_vp    = "Volume Profile Settings"
+vp_bars_count    = input.int(40, "Profile Width (Bars)", minval=10, maxval=100, group=grp_vp, tooltip="Number of rightmost bars included in the volume profile.")
+max_width_bars   = input.int(15, "Max Bar Length (Bars)", minval=5, maxval=50, group=grp_vp, tooltip="Maximum horizontal length of a volume bar.")
+box_height_factor= input.float(0.08, "Volume Bar Thickness", minval=0.01, maxval=0.5, step=0.01, group=grp_vp, tooltip="Vertical thickness of each volume profile bar.")
+show_poc_label   = input.bool(true, "Show POC Right Badge", group=grp_vp)
+show_block_val   = input.bool(false, "Show Volume Values inside Profile", group=grp_vp)
+
+string grp_theme = "Visual Themes & Aesthetics"
+color_theme      = input.string('DEX Deep', 'Select Color Theme', options=['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=grp_theme)
+show_fill        = input.bool(true, "Fill Regression Channel (Value Area)", group=grp_theme)
+fill_trans       = input.int(94, "Channel Fill Transparency", minval=50, maxval=99, group=grp_theme)
+
+string grp_hud   = "HUD Dashboard Settings"
+show_hud         = input.bool(true, "Show Metrics HUD Table", group=grp_hud)
+hud_position     = input.string("top_right", "HUD Table Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_hud)
+show_logo        = input.bool(true, "Show Animated Logo", group="Logo Settings")
+
+// -----------------------------------------------------------------------------
+// 2. THEME SYSTEM COLOR DEFINITIONS
+// -----------------------------------------------------------------------------
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
+color Transparent_Color = color.new(white, 100)
+
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
+
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
+
+color col_poc = switch color_theme
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+
+// -----------------------------------------------------------------------------
+// 3. PERSISTENT DRAWINGS CLEANUP
+// -----------------------------------------------------------------------------
+var line[] reg_lines      = array.new_line()
+var linefill[] reg_fills  = array.new<linefill>()
+var box[] vp_boxes        = array.new_box()
+var label[] vp_labels     = array.new_label()
+
+cleanup_drawings() =>
+    while array.size(reg_lines) > 0
+        line.delete(array.pop(reg_lines))
+    while array.size(reg_fills) > 0
+        linefill.delete(array.pop(reg_fills))
+    while array.size(vp_boxes) > 0
+        box.delete(array.pop(vp_boxes))
+    while array.size(vp_labels) > 0
+        label.delete(array.pop(vp_labels))
+
+// -----------------------------------------------------------------------------
+// 4. CURVE ALGEBRA & SOLVER (Cramer's Rule Implementation)
+// -----------------------------------------------------------------------------
+// Parameterized Volume Partitioning to avoid current-bar global reference bugs
+calc_vol_partition(float op, float hi, float lo, float cl, float vol) =>
+    float range_size = hi - lo
+    float b_vol = 0.0
+    float s_vol = 0.0
+
+    if range_size > 0
+        float b_high = math.max(op, cl)
+        float b_low  = math.min(op, cl)
+        float body_size = b_high - b_low
+        float upper_wick = hi - b_high
+        float lower_wick = b_low - lo
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (op + cl) / 2
+        float body_pos = (b_center - lo) / range_size
+        float br_b = cl > op ? math.min(0.9, 0.6 + body_pos * 0.3) : (cl < op ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+        b_vol := vol * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := vol * (w_body * (1.0 - br_b) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := vol * 0.5
+        s_vol := vol * 0.5
+    [b_vol, s_vol]
+
+// Formatter helper
+f_formatNumber(float number) =>
+    float abs_number = math.abs(number)
+    if abs_number >= 1000000
+        str.tostring(number / 1000000, "#.##") + "M"
+    else if abs_number >= 1000
+        str.tostring(number / 1000, "#.#") + "K"
+    else
+        str.tostring(number, "#")
+
+// 3x3 Determinant Helper for Cramer's Rule solver
+det3x3(float a11, float a12, float a13,
+       float a21, float a22, float a23,
+       float a31, float a32, float a33) =>
+    a11 * (a22 * a33 - a23 * a32) -
+    a12 * (a21 * a33 - a23 * a31) +
+    a13 * (a21 * a32 - a22 * a31)
+
+// Solver for Degree 1 (Linear): y = a0 + a1 * t
+solve_linear(int n) =>
+    float sum_t = 0.0
+    float sum_t2 = 0.0
+    float sum_y = 0.0
+    float sum_ty = 0.0
+
+    for i = 0 to n - 1
+        float t = i - (n - 1)
+        float y = close[n - 1 - i]
+        sum_t  += t
+        sum_t2 += t * t
+        sum_y  += y
+        sum_ty += t * y
+
+    float denom = n * sum_t2 - sum_t * sum_t
+    float a0 = 0.0
+    float a1 = 0.0
+    if denom != 0
+        a0 := (sum_y * sum_t2 - sum_t * sum_ty) / denom
+        a1 := (n * sum_ty - sum_t * sum_y) / denom
+    [a0, a1, 0.0]
+
+// Solver for Degree 2 (Quadratic): y = a0 + a1 * t + a2 * t^2
+solve_quadratic(int n) =>
+    float sum_t  = 0.0
+    float sum_t2 = 0.0
+    float sum_t3 = 0.0
+    float sum_t4 = 0.0
+    float sum_y  = 0.0
+    float sum_ty = 0.0
+    float sum_t2y= 0.0
+
+    for i = 0 to n - 1
+        float t = i - (n - 1)
+        float y = close[n - 1 - i]
+        float t2 = t * t
+        sum_t   += t
+        sum_t2  += t2
+        sum_t3  += t2 * t
+        sum_t4  += t2 * t2
+        sum_y   += y
+        sum_ty  += t * y
+        sum_t2y += t2 * y
+
+    // System of Equations:
+    // [  n       sum_t   sum_t2 ] [ a0 ]   [ sum_y   ]
+    // [ sum_t   sum_t2  sum_t3 ] [ a1 ] = [ sum_ty  ]
+    // [ sum_t2  sum_t3  sum_t4 ] [ a2 ]   [ sum_t2y ]
+    float D = det3x3(n, sum_t, sum_t2,
+                     sum_t, sum_t2, sum_t3,
+                     sum_t2, sum_t3, sum_t4)
+
+    float a0 = 0.0
+    float a1 = 0.0
+    float a2 = 0.0
+
+    if D != 0
+        a0 := det3x3(sum_y, sum_t, sum_t2,
+                     sum_ty, sum_t2, sum_t3,
+                     sum_t2y, sum_t3, sum_t4) / D
+        a1 := det3x3(n, sum_y, sum_t2,
+                     sum_t, sum_ty, sum_t3,
+                     sum_t2, sum_t2y, sum_t4) / D
+        a2 := det3x3(n, sum_t, sum_y,
+                     sum_t, sum_t2, sum_ty,
+                     sum_t2, sum_t3, sum_t2y) / D
+
+    [a0, a1, a2]
+
+// Execute profile calculations on the last bar
+var float direction_bias = 0.0
+var float current_poc_level = na
+var float current_poc_vol = na
+var float current_chan_high = na
+var float current_chan_low = na
+var string direction_str = "Neutral"
+
+if barstate.islast
+    cleanup_drawings()
+
+    // Fit curve coefficients
+    float a0 = 0.0
+    float a1 = 0.0
+    float a2 = 0.0
+
+    if regression_mode == "Linear (Degree 1)"
+        [c0, c1, c2] = solve_linear(reg_lookback)
+        a0 := c0
+        a1 := c1
+        a2 := c2
+    else
+        [c0, c1, c2] = solve_quadratic(reg_lookback)
+        a0 := c0
+        a1 := c1
+        a2 := c2
+
+    // Calculate regression fitted curves and standard deviation residuals
+    float sum_sq_residuals = 0.0
+    array<float> fitted_y = array.new_float(reg_lookback)
+
+    for i = 0 to reg_lookback - 1
+        float t = i - (reg_lookback - 1)
+        float fit = a0 + a1 * t + a2 * t * t
+        array.set(fitted_y, i, fit)
+        float residual = close[reg_lookback - 1 - i] - fit
+        sum_sq_residuals += math.pow(residual, 2)
+
+    float sd = math.sqrt(sum_sq_residuals / reg_lookback)
+
+    // Direction bias defined by derivative/slope at t = 0 (current bar)
+    // f'(t) = a1 + 2 * a2 * t. At t = 0, slope is exactly a1.
+    direction_bias := a1
+    direction_str := a1 > 0 ? "Bullish ↗" : "Bearish ↘"
+
+    // -------------------------------------------------------------------------
+    // 5. CHANNEL DRAWING WITH STEP OPTIMIZATION AND CONTINUOUS LINEFILL
+    // -------------------------------------------------------------------------
+    line l_center_prev = na
+    line l_p1_prev = na
+    line l_p2_prev = na
+    line l_p3_prev = na
+    line l_m1_prev = na
+    line l_m2_prev = na
+    line l_m3_prev = na
+
+    for i = 0 to reg_lookback - 1 by step_size
+        int idx = math.min(reg_lookback - 1, i)
+        float t = idx - (reg_lookback - 1)
+        int bar_x = bar_index - (reg_lookback - 1 - idx)
+
+        float yc = array.get(fitted_y, idx)
+        float yp1 = yc + 1 * sd
+        float yp2 = yc + 2 * sd
+        float yp3 = yc + 3 * sd
+        float ym1 = yc - 1 * sd
+        float ym2 = yc - 2 * sd
+        float ym3 = yc - 3 * sd
+
+        if idx > 0
+            int prev_idx = math.max(0, idx - step_size)
+            int bar_x_prev = bar_index - (reg_lookback - 1 - prev_idx)
+            float yc_prev = array.get(fitted_y, prev_idx)
+
+            color base_line_col = a1 > 0 ? col_bull : col_bear
+
+            line lc = line.new(bar_x_prev, yc_prev, bar_x, yc, color=base_line_col, width=2)
+            line lp1 = line.new(bar_x_prev, yc_prev + 1 * sd, bar_x, yp1, color=color.new(white, 40), width=1, style=line.style_dashed)
+            line lp2 = line.new(bar_x_prev, yc_prev + 2 * sd, bar_x, yp2, color=color.new(white, 60), width=1, style=line.style_dashed)
+            line lp3 = line.new(bar_x_prev, yc_prev + 3 * sd, bar_x, yp3, color=color.new(white, 80), width=1, style=line.style_dotted)
+            line lm1 = line.new(bar_x_prev, yc_prev - 1 * sd, bar_x, ym1, color=color.new(white, 40), width=1, style=line.style_dashed)
+            line lm2 = line.new(bar_x_prev, yc_prev - 2 * sd, bar_x, ym2, color=color.new(white, 60), width=1, style=line.style_dashed)
+            line lm3 = line.new(bar_x_prev, yc_prev - 3 * sd, bar_x, ym3, color=color.new(white, 80), width=1, style=line.style_dotted)
+
+            array.push(reg_lines, lc)
+            array.push(reg_lines, lp1)
+            array.push(reg_lines, lp2)
+            array.push(reg_lines, lp3)
+            array.push(reg_lines, lm1)
+            array.push(reg_lines, lm2)
+            array.push(reg_lines, lm3)
+
+            // Continuous segment filling for value area
+            if show_fill
+                color fill_color = a1 > 0 ? color.new(col_bull, fill_trans) : color.new(col_bear, fill_trans)
+                linefill.new(lp1, lm1, color=fill_color)
+
+        if idx == reg_lookback - 1
+            current_chan_high := yp3
+            current_chan_low := ym3
+
+            // Right edge indicators
+            label.new(bar_x + 2, yp3, "Channel High (+3 SD): " + str.tostring(yp3, format.mintick), color=color.new(dark, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
+            label.new(bar_x + 2, yp2, "+2 SD", color=color.new(dark, 100), textcolor=color.new(white, 50), size=size.tiny, style=label.style_label_left)
+            label.new(bar_x + 2, yp1, "+1 SD", color=color.new(dark, 100), textcolor=color.new(white, 40), size=size.tiny, style=label.style_label_left)
+            label.new(bar_x + 2, ym1, "-1 SD", color=color.new(dark, 100), textcolor=color.new(white, 40), size=size.tiny, style=label.style_label_left)
+            label.new(bar_x + 2, ym2, "-2 SD", color=color.new(dark, 100), textcolor=color.new(white, 50), size=size.tiny, style=label.style_label_left)
+            label.new(bar_x + 2, ym3, "Channel Low (-3 SD): " + str.tostring(ym3, format.mintick), color=color.new(dark, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
+
+    // -------------------------------------------------------------------------
+    // 6. CURVED/SLANTED VOLUME PROFILE
+    // -------------------------------------------------------------------------
+    float max_bar_vol = 0.0
+    int poc_k = 0
+
+    // Pre-calculate max volume inside the volume profile boundaries
+    for k = 0 to vp_bars_count - 1
+        int idx = reg_lookback - vp_bars_count + k
+        if idx >= 0 and idx < reg_lookback
+            float v = nz(volume[reg_lookback - 1 - (reg_lookback - 1 - idx)])
+            if v > max_bar_vol
+                max_bar_vol := v
+                poc_k := k
+
+    // Render curved/slanted volume profile aligning with the regression curve
+    for k = 0 to vp_bars_count - 1
+        int idx = reg_lookback - vp_bars_count + k
+        if idx >= 0 and idx < reg_lookback
+            int bar_x = bar_index - (reg_lookback - 1 - idx)
+            float yc = array.get(fitted_y, idx)
+
+            // Fixed reference variables to correct historical state calculation
+            float h_op = open[reg_lookback - 1 - idx]
+            float h_hi = high[reg_lookback - 1 - idx]
+            float h_lo = low[reg_lookback - 1 - idx]
+            float h_cl = close[reg_lookback - 1 - idx]
+            float v = nz(volume[reg_lookback - 1 - idx])
+
+            if v > 0
+                [b_vol, s_vol] = calc_vol_partition(h_op, h_hi, h_lo, h_cl, v)
+                bool is_bull_dom = b_vol >= s_vol
+
+                int length_bars = math.round((v / max_bar_vol) * max_width_bars)
+                length_bars := math.max(1, length_bars)
+
+                float h_half = sd * box_height_factor
+                float top_y = yc + h_half
+                float bottom_y = yc - h_half
+
+                color blk_color = is_bull_dom ? color.new(col_bull, 60) : color.new(col_bear, 60)
+                color border_col = is_bull_dom ? color.new(col_bull, 40) : color.new(col_bear, 40)
+
+                bool is_poc = k == poc_k
+                if is_poc
+                    blk_color := color.new(col_bear, 25)
+                    border_col := color.new(col_bear, 10)
+                    current_poc_level := yc
+                    current_poc_vol := v
+
+                string block_txt = show_block_val ? f_formatNumber(v) : ""
+
+                box blk = box.new(left=bar_x, top=top_y, right=bar_x + length_bars, bottom=bottom_y,
+                                  bgcolor=blk_color, border_color=border_col, border_width=1,
+                                  text=block_txt, text_color=white, text_size=size.auto,
+                                  text_halign=text.align_center, text_valign=text.align_center)
+                array.push(vp_boxes, blk)
+
+                if is_poc and show_poc_label
+                    label poc_badge = label.new(x=bar_x + length_bars, y=yc,
+                                                text="<- POC Vol: " + f_formatNumber(v),
+                                                color=color.new(col_bear, 10), textcolor=dark,
+                                                style=label.style_label_left, size=size.tiny,
+                                                text_formatting=text.format_bold)
+                    array.push(vp_labels, poc_badge)
+
+// -----------------------------------------------------------------------------
+// 7. GLASS HUD TABLE DASHBOARD
+// -----------------------------------------------------------------------------
+var table hud_table = na
+if show_hud and barstate.islast
+    string pos = switch hud_position
+        "top_left"     => position.top_left
+        "top_right"    => position.top_right
+        "bottom_left"  => position.bottom_left
+        "bottom_right" => position.bottom_right
+        => position.top_right
+
+    hud_table := table.new(pos, 2, 5, bgcolor=color.new(dark, 85), border_width=1, border_color=color.new(col_poc, 90), frame_color=color.new(brown, 40), frame_width=1)
+
+    table.merge_cells(hud_table, 0, 0, 1, 0)
+    table.cell(hud_table, 0, 0, "REGRESSION VP MATRIX", bgcolor=color.new(brown, 75), text_color=white, text_size=size.small, text_formatting=text.format_bold)
+
+    color dir_color = direction_bias > 0 ? col_bull : col_bear
+    table.cell(hud_table, 0, 1, "Direction", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud_table, 1, 1, direction_str, bgcolor=color.new(dark, 90), text_color=dir_color, text_formatting=text.format_bold, text_size=size.small, text_halign=text.align_right)
+
+    table.cell(hud_table, 0, 2, "POC Level", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud_table, 1, 2, str.tostring(current_poc_level, format.mintick), bgcolor=color.new(dark, 90), text_color=col_poc, text_size=size.small, text_halign=text.align_right)
+
+    table.cell(hud_table, 0, 3, "POC Volume", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud_table, 1, 3, f_formatNumber(nz(current_poc_vol)), bgcolor=color.new(dark, 90), text_color=col_poc, text_size=size.small, text_halign=text.align_right)
+
+    table.cell(hud_table, 0, 4, "Channel High/Low", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(hud_table, 1, 4, "H: " + str.tostring(current_chan_high, format.mintick) + "\nL: " + str.tostring(current_chan_low, format.mintick), bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_right)
+
+// -----------------------------------------------------------------------------
+// 8. LOGO GRADIENT ENHANCED (BREATHING MOUNTALGO BRAND SYSTEM)
+// -----------------------------------------------------------------------------
+color bull_c1 = col_bull
+color bull_c2 = col_bear
+color bear_c1 = col_bull
+color bear_c2 = col_bear
+
+bool  trend_check = ta.ema(close, 2) > ta.ema(open, 2)
+color c_start     = trend_check ? bull_c1 : bear_c1
+color c_end       = trend_check ? bull_c2 : bear_c2
+
+float time_cycle = timenow / 1000
+float breathe    = (math.sin(time_cycle * 3) + 1) / 2
+
+int LG_Line_Widthb = 1
+int periodb        = 200
+
+float logo_base_raw = ta.lowest(low, periodb)
+float logo_range    = ta.highest(high, periodb) - logo_base_raw
+var float h_unit    = na
+
+float target_h = math.max(ta.atr(periodb) * 1.5, logo_range * 0.22)
+h_unit := na(h_unit) ? target_h : h_unit * 0.98 + target_h * 0.02
+float logo_base = logo_base_raw - h_unit * 0.2
+
+float point1b  = logo_base + h_unit * 0.71
+float point2b  = logo_base + h_unit * 0.43
+float point3b  = logo_base + h_unit * 0.61
+float point4b  = logo_base + h_unit * 0.32
+float point5b  = logo_base + h_unit * 1.00
+float point6b  = logo_base + h_unit * 0.71
+float point7b  = logo_base + h_unit * 0.18
+float point8b  = logo_base + h_unit * 0.21
+float point9b  = logo_base + h_unit * 0.71
+float point1b0 = logo_base + h_unit * 0.86
+
+var line Line1b  = na
+var line Line2b  = na
+var line Line3b  = na
+var line Line4b  = na
+var line Line5b  = na
+var line Line6b  = na
+var line Line7b  = na
+var line Line8b  = na
+var line Line9b  = na
+var line Line1b0 = na
+var line Line1b1 = na
+var line Line1b2 = na
+var line Line1b3 = na
+var line Line1b4 = na
+var line Line1b5 = na
+var line Line1b6 = na
+var line Line1b7 = na
+var line Line1b8 = na
+var label[] brand_labels = array.new<label>()
+
+if barstate.islast
+    line.delete(Line1b)
+    line.delete(Line2b)
+    line.delete(Line3b)
+    line.delete(Line4b)
+    line.delete(Line5b)
+    line.delete(Line6b)
+    line.delete(Line7b)
+    line.delete(Line8b)
+    line.delete(Line9b)
+    line.delete(Line1b0)
+    line.delete(Line1b1)
+    line.delete(Line1b2)
+    line.delete(Line1b3)
+    line.delete(Line1b4)
+    line.delete(Line1b5)
+    line.delete(Line1b6)
+    line.delete(Line1b7)
+    line.delete(Line1b8)
+    while array.size(brand_labels) > 0
+        label.delete(array.pop(brand_labels))
+
+get_adv_color(step) =>
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15)
+    if dynamic_ratio > 1
+        dynamic_ratio := 1
+    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+
+get_fade_alpha(float x_rel) =>
+    float dist = math.abs(x_rel - 32)
+    float ratio = dist / 32.0
+    math.round(80 * (1 - ratio))
+
+int logo_offset = 35
+
+if show_logo and barstate.islast
+    color c_head_sync = get_adv_color(1)
+
+    Line1b := line.new(x1 = bar_index + logo_offset + 4, y1 = point7b, x2 = bar_index + logo_offset + 11, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line2b := line.new(x1 = bar_index + logo_offset + 8, y1 = point7b, x2 = bar_index + logo_offset + 11, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, get_fade_alpha(7.5)))
+
+    Line3b := line.new(x1 = bar_index + logo_offset + 11, y1 = point1b, x2 = bar_index + logo_offset + 13, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line4b := line.new(x1 = bar_index + logo_offset + 11, y1 = point2b, x2 = bar_index + logo_offset + 13, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), get_fade_alpha(12.0)))
+
+    Line5b := line.new(x1 = bar_index + logo_offset + 13, y1 = point3b, x2 = bar_index + logo_offset + 19, y2 = point5b, color = col_poc, width = LG_Line_Widthb)
+    Line6b := line.new(x1 = bar_index + logo_offset + 13, y1 = point4b, x2 = bar_index + logo_offset + 19, y2 = point6b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), get_fade_alpha(16.0)))
+
+    Line7b := line.new(x1 = bar_index + logo_offset + 19, y1 = point5b, x2 = bar_index + logo_offset + 24, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line8b := line.new(x1 = bar_index + logo_offset + 19, y1 = point6b, x2 = bar_index + logo_offset + 24, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), get_fade_alpha(21.5)))
+
+    Line9b := line.new(x1 = bar_index + logo_offset + 24, y1 = point3b, x2 = bar_index + logo_offset + 26, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line1b0 := line.new(x1 = bar_index + logo_offset + 24, y1 = point4b, x2 = bar_index + logo_offset + 26, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), get_fade_alpha(25.0)))
+
+    Line1b1 := line.new(x1 = bar_index + logo_offset + 26, y1 = point1b, x2 = bar_index + logo_offset + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b2 := line.new(x1 = bar_index + logo_offset + 26, y1 = point2b, x2 = bar_index + logo_offset + 32, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), get_fade_alpha(31.0)))
+
+    Line1b3 := line.new(x1 = bar_index + logo_offset + 2, y1 = point7b, x2 = bar_index + logo_offset + 26, y2 = point7b, color = col_poc, width = LG_Line_Widthb)
+    Line1b4 := line.new(x1 = bar_index + logo_offset + 0, y1 = logo_base, x2 = bar_index + logo_offset + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, get_fade_alpha(13.0)))
+
+    Line1b5 := line.new(x1 = bar_index + logo_offset + 2, y1 = point7b, x2 = bar_index + logo_offset + 0, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b6 := line.new(x1 = bar_index + logo_offset + 26, y1 = point7b, x2 = bar_index + logo_offset + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b7 := line.new(x1 = bar_index + logo_offset + 32, y1 = logo_base, x2 = bar_index + logo_offset + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    label l = label.new(bar_index + logo_offset + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤\nREGRESSION VP GLASS PRO", style=label.style_none, textcolor=col_poc, size=size.normal)
+    array.push(brand_labels, l)
+
+    label glow1 = label.new(bar_index + logo_offset + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
+    label glow2 = label.new(bar_index + logo_offset + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc, size=size.huge)
+    array.push(brand_labels, glow1)
+    array.push(brand_labels, glow2)
