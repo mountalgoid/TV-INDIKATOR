@@ -537,7 +537,7 @@ if show_table and barstate.islast
     // Table Header
     string header_txt = "[MarkitTick] Sloped Profile   OANDA:" + str.tostring(syminfo.ticker) + " • " + str.tostring(timeframe.period)
     table.merge_cells(info_table, 0, 0, 1, 0)
-    table.cell(info_table, 0, 0, header_txt, bgcolor=color.new(#1a237e, 50), text_color=white, text_size=size.small, text_format=text.format_bold)
+    table.cell(info_table, 0, 0, header_txt, bgcolor=color.new(#1a237e, 50), text_color=white, text_size=size.small, text_formatting=text.format_bold)
 
     // 1. LinReg Slope
     string slope_dir = m >= 0 ? "▲ Bullish" : "▼ Bearish"
