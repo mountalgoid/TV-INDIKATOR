@@ -748,6 +748,9 @@ if barstate.islast
                                                   style=label.style_label_right, size=size.tiny)
                         array.push(vp_labels, val_lbl)
 
+    // Dynamic Level Lines parameters based on alignment and extension options
+    int draw_span = extend_levels ? reg_lookback : vp_bars_count
+
     // Render POC slanted/curved line
     if show_poc_label
         float yc_poc = ym3 + (poc_row_idx + 0.5) * row_step
