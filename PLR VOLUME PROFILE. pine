@@ -12,10 +12,19 @@ step_size        = input.int(3, "Line Segment Step Size", minval=1, maxval=10, g
 string grp_vp    = "Volume Profile Settings"
 vp_bars_count    = input.int(40, "Profile Width (Bars)", minval=10, maxval=100, group=grp_vp, tooltip="Number of rightmost bars included in the volume profile.")
 max_width_bars   = input.int(15, "Max Bar Length (Bars)", minval=5, maxval=50, group=grp_vp, tooltip="Maximum horizontal length of a volume bar.")
-volume_line_width = input.int(3, "Volume Line Width", minval=1, maxval=10, group=grp_vp, tooltip="Line width of each volume profile bar.")
+volume_line_width = input.int(1, "Volume Line Width", minval=1, maxval=10, group=grp_vp, tooltip="Line width of each volume profile bar.")
 box_height_factor = input.float(0.08, "Volume Bar Thickness", minval=0.01, maxval=0.5, step=0.01, group=grp_vp, tooltip="Vertical thickness of each volume profile bar.")
+gap_factor       = input.float(0.15, "Vertical Bar Gap", minval=0.0, maxval=0.5, step=0.05, group=grp_vp, tooltip="Vertical spacing/gap between individual curved volume profile rows.")
+vp_mode_view     = input.string("Normal", "Profile View Mode", options=["Normal", "Delta"], group=grp_vp, tooltip="View mode. 'Normal' draws a single dominant volume block. 'Delta' draws stacked buy and sell blocks.")
 show_poc_label   = input.bool(true, "Show POC Right Badge", group=grp_vp)
 show_block_val   = input.bool(false, "Show Volume Values inside Profile", group=grp_vp)
+
+string grp_levels = "VAH/VAL & HVN/LVN Level Detection"
+show_vah_val     = input.bool(true, "Identify VAH/VAL Levels", group=grp_levels)
+vp_val_percent   = input.int(70, "Value Area Volume %", minval=10, maxval=100, group=grp_levels, tooltip="Percentage of total volume to include in the Value Area (Standard is 70%).")
+show_hvn_lvn     = input.bool(true, "Identify HVN/LVN Levels", group=grp_levels)
+show_large_vol   = input.bool(true, "Identify Large Volume Levels", group=grp_levels)
+large_vol_mult   = input.float(1.5, "Large Volume Multiplier", minval=1.0, step=0.1, group=grp_levels, tooltip="Threshold multiplier of average row volume for Large Volume levels.")
 
 string grp_theme = "Visual Themes & Aesthetics"
 color_theme      = input.string('DEX Deep', 'Select Color Theme', options=['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=grp_theme)
@@ -457,7 +466,7 @@ if barstate.islast
             int hist_offset = reg_lookback - 1 - idx
             float b_vol = nz(array.get(bar_buy_vol_arr, array.size(bar_buy_vol_arr) - 1 - hist_offset))
             float s_vol = nz(array.get(bar_sell_vol_arr, array.size(bar_sell_vol_arr) - 1 - hist_offset))
-            
+
             float h_op = open[hist_offset]
             float h_hi = high[hist_offset]
             float h_lo = low[hist_offset]
@@ -483,6 +492,27 @@ if barstate.islast
         if row_tot > max_row_vol
             max_row_vol := row_tot
             poc_row_idx := r
+
+    // Calculate Value Area (VAH/VAL) indices using standard 70% volume expansion
+    float total_profile_vol = array.sum(row_buy_vol) + array.sum(row_sell_vol)
+    int va_high_idx = poc_row_idx
+    int va_low_idx = poc_row_idx
+    float target_va_vol = total_profile_vol * (vp_val_percent / 100.0)
+    float current_va_vol = array.get(row_buy_vol, poc_row_idx) + array.get(row_sell_vol, poc_row_idx)
+
+    while current_va_vol < target_va_vol
+        float up_vol = (va_high_idx < vp_bars_count - 1) ? (array.get(row_buy_vol, va_high_idx + 1) + array.get(row_sell_vol, va_high_idx + 1)) : 0.0
+        float down_vol = (va_low_idx > 0) ? (array.get(row_buy_vol, va_low_idx - 1) + array.get(row_sell_vol, va_low_idx - 1)) : 0.0
+        if up_vol == 0.0 and down_vol == 0.0
+            break
+        if up_vol >= down_vol
+            current_va_vol += up_vol
+            va_high_idx += 1
+        else
+            current_va_vol += down_vol
+            va_low_idx -= 1
+
+    float avg_row_vol = total_profile_vol / vp_bars_count
 
     // Render slanted/curved glass blocks following the regression curvature
     for r = 0 to vp_bars_count - 1
@@ -516,67 +546,99 @@ if barstate.islast
             if sell_length_bars == 0.0 and s_vol > 0
                 sell_length_bars := 0.2
 
-            // Stacking: Sell on the right (closest to right_x), Buy on the left (extending left)
-            int sell_end_x = right_x
-            int sell_start_x = math.round(right_x - sell_length_bars)
-            int buy_end_x = sell_start_x
-            int buy_start_x = math.round(sell_start_x - buy_length_bars)
+            // Apply customizable bar thickness with spacing/gap factor
+            float h_half = (row_step / 2) * (1.0 - gap_factor) * (box_height_factor / 0.08)
 
-            // Evaluate polynomial/linear curvature at each boundary point
-            float t_sell = -sell_length_bars
-            float curve_sell = a1 * t_sell + a2 * t_sell * t_sell
+            if vp_mode_view == "Delta"
+                // Delta View Mode: stacked buy and sell blocks
+                int sell_end_x = right_x
+                int sell_start_x = math.round(right_x - sell_length_bars)
+                int buy_end_x = sell_start_x
+                int buy_start_x = math.round(sell_start_x - buy_length_bars)
 
-            float t_buy = -(sell_length_bars + buy_length_bars)
-            float curve_buy = a1 * t_buy + a2 * t_buy * t_buy
+                // Evaluate polynomial/linear curvature at each boundary point
+                float t_sell = -sell_length_bars
+                float curve_sell = a1 * t_sell + a2 * t_sell * t_sell
 
-            // Apply customizable bar thickness
-            float h_half = (row_step / 2) * (box_height_factor / 0.08)
+                float t_buy = -(sell_length_bars + buy_length_bars)
+                float curve_buy = a1 * t_buy + a2 * t_buy * t_buy
 
-            // Sell boundaries
-            float sell_top_right = y_center_relative + h_half
-            float sell_bot_right = y_center_relative - h_half
-            float sell_top_left  = y_center_relative + curve_sell + h_half
-            float sell_bot_left  = y_center_relative + curve_sell - h_half
+                // Sell boundaries
+                float sell_top_right = y_center_relative + h_half
+                float sell_bot_right = y_center_relative - h_half
+                float sell_top_left  = y_center_relative + curve_sell + h_half
+                float sell_bot_left  = y_center_relative + curve_sell - h_half
 
-            // Buy boundaries
-            float buy_top_right = y_center_relative + curve_sell + h_half
-            float buy_bot_right = y_center_relative + curve_sell - h_half
-            float buy_top_left  = y_center_relative + curve_buy + h_half
-            float buy_bot_left  = y_center_relative + curve_buy - h_half
+                // Buy boundaries
+                float buy_top_right = y_center_relative + curve_sell + h_half
+                float buy_bot_right = y_center_relative + curve_sell - h_half
+                float buy_top_left  = y_center_relative + curve_buy + h_half
+                float buy_bot_left  = y_center_relative + curve_buy - h_half
 
-            // Draw Sell lines & fill
-            color s_line_col = is_poc ? color.new(col_poc, 30) : color.new(col_bear, 20)
-            color s_fill_col = is_poc ? color.new(col_poc, 50) : color.new(col_bear, 60)
+                // Draw Sell lines & fill
+                color s_line_col = is_poc ? color.new(col_poc, 30) : color.new(col_bear, 20)
+                color s_fill_col = is_poc ? color.new(col_poc, 50) : color.new(col_bear, 60)
 
-            line sell_top_line = line.new(x1=sell_start_x, y1=sell_top_left, x2=sell_end_x, y2=sell_top_right,
-                                          color=s_line_col, width=volume_line_width, style=line.style_solid)
-            line sell_bot_line = line.new(x1=sell_start_x, y1=sell_bot_left, x2=sell_end_x, y2=sell_bot_right,
-                                          color=s_line_col, width=volume_line_width, style=line.style_solid)
-            array.push(vp_lines, sell_top_line)
-            array.push(vp_lines, sell_bot_line)
+                line sell_top_line = line.new(x1=sell_start_x, y1=sell_top_left, x2=sell_end_x, y2=sell_top_right,
+                                              color=s_line_col, width=volume_line_width, style=line.style_solid)
+                line sell_bot_line = line.new(x1=sell_start_x, y1=sell_bot_left, x2=sell_end_x, y2=sell_bot_right,
+                                              color=s_line_col, width=volume_line_width, style=line.style_solid)
+                array.push(vp_lines, sell_top_line)
+                array.push(vp_lines, sell_bot_line)
+                linefill.new(sell_top_line, sell_bot_line, color=s_fill_col)
 
-            linefill.new(sell_top_line, sell_bot_line, color=s_fill_col)
+                // Draw Buy lines & fill
+                color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
+                color b_fill_col = is_poc ? color.new(col_poc, 30) : color.new(col_bull, 60)
 
-            // Draw Buy lines & fill
-            color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
-            color b_fill_col = is_poc ? color.new(col_poc, 30) : color.new(col_bull, 60)
+                line buy_top_line = line.new(x1=buy_start_x, y1=buy_top_left, x2=buy_end_x, y2=buy_top_right,
+                                             color=b_line_col, width=volume_line_width, style=line.style_solid)
+                line buy_bot_line = line.new(x1=buy_start_x, y1=buy_bot_left, x2=buy_end_x, y2=buy_bot_right,
+                                             color=b_line_col, width=volume_line_width, style=line.style_solid)
+                array.push(vp_lines, buy_top_line)
+                array.push(vp_lines, buy_bot_line)
+                linefill.new(buy_top_line, buy_bot_line, color=b_fill_col)
 
-            line buy_top_line = line.new(x1=buy_start_x, y1=buy_top_left, x2=buy_end_x, y2=buy_top_right,
-                                         color=b_line_col, width=volume_line_width, style=line.style_solid)
-            line buy_bot_line = line.new(x1=buy_start_x, y1=buy_bot_left, x2=buy_end_x, y2=buy_bot_right,
-                                         color=b_line_col, width=volume_line_width, style=line.style_solid)
-            array.push(vp_lines, buy_top_line)
-            array.push(vp_lines, buy_bot_line)
+                // Label text drawing
+                if show_block_val
+                    float y_center_left = y_center_relative + curve_buy
+                    label val_lbl = label.new(x=buy_start_x, y=y_center_left, text=f_formatNumber(total_vol),
+                                              color=color.new(dark, 100), textcolor=white,
+                                              style=label.style_label_right, size=size.tiny)
+                    array.push(vp_labels, val_lbl)
 
-            linefill.new(buy_top_line, buy_bot_line, color=b_fill_col)
+            else
+                // Normal View Mode: single dominant volume block
+                int total_end_x = right_x
+                int total_start_x = math.round(right_x - total_length_bars)
 
-            // Label text drawing
-            if show_block_val
-                float y_center_left = y_center_relative + curve_buy
-                label val_lbl = label.new(x=buy_start_x, y=y_center_left, text=f_formatNumber(total_vol),
-                                          color=color.new(dark, 100), textcolor=white,
-                                          style=label.style_label_right, size=size.tiny)
-                array.push(vp_labels, val_lbl)
+                float t_tot = -total_length_bars
+                float curve_tot = a1 * t_tot + a2 * t_tot * t_tot
+
+                float top_right = y_center_relative + h_half
+                float bot_right = y_center_relative - h_half
+                float top_left  = y_center_relative + curve_tot + h_half
+                float bot_left  = y_center_relative + curve_tot - h_half
+
+                bool is_bull_dom = b_vol >= s_vol
+                color line_col = is_poc ? color.new(col_poc, 0) : (is_bull_dom ? color.new(col_bull, 20) : color.new(col_bear, 20))
+                color fill_col = is_poc ? color.new(col_poc, 30) : (is_bull_dom ? color.new(col_bull, 60) : color.new(col_bear, 60))
+
+                line top_line = line.new(x1=total_start_x, y1=top_left, x2=total_end_x, y2=top_right,
+                                         color=line_col, width=volume_line_width, style=line.style_solid)
+                line bot_line = line.new(x1=total_start_x, y1=bot_left, x2=total_end_x, y2=bot_right,
+                                         color=line_col, width=volume_line_width, style=line.style_solid)
+                array.push(vp_lines, top_line)
+                array.push(vp_lines, bot_line)
+                linefill.new(top_line, bot_line, color=fill_col)
+
+                // Label text drawing
+                if show_block_val
+                    float y_center_left = y_center_relative + curve_tot
+                    label val_lbl = label.new(x=total_start_x, y=y_center_left, text=f_formatNumber(total_vol),
+                                              color=color.new(dark, 100), textcolor=white,
+                                              style=label.style_label_right, size=size.tiny)
+                    array.push(vp_labels, val_lbl)
 
             if is_poc and show_poc_label
                 label poc_badge = label.new(x=right_x + 1, y=y_center_relative,
@@ -585,6 +647,67 @@ if barstate.islast
                                             style=label.style_label_left, size=size.tiny,
                                             text_formatting=text.format_bold)
                 array.push(vp_labels, poc_badge)
+
+    // Helper for rendering full-width slanted indicator level lines (VAH, VAL, HVN, LVN, Large Vol)
+    draw_slanted_level_line(int r, string name, color col, string line_style) =>
+        float yc_r = ym3 + (r + 0.5) * row_step
+        // We render the line across the lookback range from (right_x - vp_bars_count) to right_x
+        line_style_val = switch line_style
+            "Dashed" => line.style_dashed
+            "Dotted" => line.style_dotted
+            => line.style_solid
+
+        line prev_seg = na
+        for step = 0 to vp_bars_count by step_size
+            int offset = math.min(vp_bars_count, step)
+            int x_curr = right_x - (vp_bars_count - offset)
+            float t_curr = - (vp_bars_count - offset)
+            float y_curr = yc_r + a1 * t_curr + a2 * t_curr * t_curr
+
+            if offset > 0
+                int prev_offset = math.max(0, offset - step_size)
+                int x_prev = right_x - (vp_bars_count - prev_offset)
+                float t_prev = - (vp_bars_count - prev_offset)
+                float y_prev = yc_r + a1 * t_prev + a2 * t_prev * t_prev
+
+                line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
+                                    color=col, width=2, style=line_style_val)
+                array.push(vp_lines, seg)
+
+            if offset == vp_bars_count
+                label lbl = label.new(x=right_x + 1, y=y_curr, text=name,
+                                      color=color.new(dark, 100), textcolor=col,
+                                      style=label.style_label_left, size=size.tiny,
+                                      text_formatting=text.format_bold)
+                array.push(vp_labels, lbl)
+
+    // Render VAH and VAL slanted/curved lines
+    if show_vah_val
+        draw_slanted_level_line(va_high_idx, "VAH (" + str.tostring(ym3 + (va_high_idx + 0.5) * row_step, format.mintick) + ")", col_bull, "Dashed")
+        draw_slanted_level_line(va_low_idx, "VAL (" + str.tostring(ym3 + (va_low_idx + 0.5) * row_step, format.mintick) + ")", col_bear, "Dashed")
+
+    // Render HVN and LVN slanted/curved lines
+    if show_hvn_lvn
+        for r = 1 to vp_bars_count - 2
+            float v_prev = array.get(row_buy_vol, r - 1) + array.get(row_sell_vol, r - 1)
+            float v_curr = array.get(row_buy_vol, r) + array.get(row_sell_vol, r)
+            float v_next = array.get(row_buy_vol, r + 1) + array.get(row_sell_vol, r + 1)
+
+            if v_curr > v_prev and v_curr > v_next and v_curr > avg_row_vol * 1.3
+                draw_slanted_level_line(r, "HVN", col_bull, "Dotted")
+            if v_curr < v_prev and v_curr < v_next and v_curr < avg_row_vol * 0.5
+                draw_slanted_level_line(r, "LVN", col_bear, "Dotted")
+
+    // Render Large Volume slanted/curved lines
+    if show_large_vol
+        for r = 0 to vp_bars_count - 1
+            float b_v = array.get(row_buy_vol, r)
+            float s_v = array.get(row_sell_vol, r)
+            float total_v = b_v + s_v
+
+            if total_v > avg_row_vol * large_vol_mult
+                bool is_bull_dom = b_v >= s_v
+                draw_slanted_level_line(r, is_bull_dom ? "LG BUY" : "LG SELL", is_bull_dom ? col_bull : col_bear, "Solid")
 
 // -----------------------------------------------------------------------------
 // 7. GLASS HUD TABLE DASHBOARD
