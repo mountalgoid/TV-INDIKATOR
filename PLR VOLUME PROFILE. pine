@@ -657,13 +657,13 @@ if barstate.islast
                                             text_formatting=text.format_bold)
                 array.push(vp_labels, poc_badge)
 
-    // Render VAH and VAL slanted/curved lines
+    // Render VAH and VAL slanted/curved lines (Extended to lookback limit)
     if show_vah_val
         // VAH
         float yc_vah = ym3 + (va_high_idx + 0.5) * row_step
         string vah_text = "VAH (" + str.tostring(ym3 + (va_high_idx + 0.5) * row_step, format.mintick) + ")"
-        for step = 0 to vp_bars_count by step_size
-            int offset = math.min(vp_bars_count, step)
+        for step = 0 to reg_lookback by step_size
+            int offset = math.min(reg_lookback, step)
             int x_curr = left_x + offset
             float t_curr = t_left + offset
             float y_curr = yc_vah + a1 * t_curr + a2 * t_curr * t_curr
@@ -688,8 +688,8 @@ if barstate.islast
         // VAL
         float yc_val = ym3 + (va_low_idx + 0.5) * row_step
         string val_text = "VAL (" + str.tostring(ym3 + (va_low_idx + 0.5) * row_step, format.mintick) + ")"
-        for step = 0 to vp_bars_count by step_size
-            int offset = math.min(vp_bars_count, step)
+        for step = 0 to reg_lookback by step_size
+            int offset = math.min(reg_lookback, step)
             int x_curr = left_x + offset
             float t_curr = t_left + offset
             float y_curr = yc_val + a1 * t_curr + a2 * t_curr * t_curr
@@ -711,7 +711,7 @@ if barstate.islast
                                       text_formatting=text.format_bold)
                 array.push(vp_labels, lbl)
 
-    // Render HVN and LVN slanted/curved lines
+    // Render HVN and LVN slanted/curved lines (Extended to lookback limit)
     if show_hvn_lvn
         for r = 1 to vp_bars_count - 2
             float v_prev = array.get(row_buy_vol, r - 1) + array.get(row_sell_vol, r - 1)
@@ -721,8 +721,8 @@ if barstate.islast
             if v_curr > v_prev and v_curr > v_next and v_curr > avg_row_vol * 1.3
                 // Draw HVN
                 float yc_hvn = ym3 + (r + 0.5) * row_step
-                for step = 0 to vp_bars_count by step_size
-                    int offset = math.min(vp_bars_count, step)
+                for step = 0 to reg_lookback by step_size
+                    int offset = math.min(reg_lookback, step)
                     int x_curr = left_x + offset
                     float t_curr = t_left + offset
                     float y_curr = yc_hvn + a1 * t_curr + a2 * t_curr * t_curr
@@ -747,8 +747,8 @@ if barstate.islast
             if v_curr < v_prev and v_curr < v_next and v_curr < avg_row_vol * 0.5
                 // Draw LVN
                 float yc_lvn = ym3 + (r + 0.5) * row_step
-                for step = 0 to vp_bars_count by step_size
-                    int offset = math.min(vp_bars_count, step)
+                for step = 0 to reg_lookback by step_size
+                    int offset = math.min(reg_lookback, step)
                     int x_curr = left_x + offset
                     float t_curr = t_left + offset
                     float y_curr = yc_lvn + a1 * t_curr + a2 * t_curr * t_curr
@@ -770,7 +770,7 @@ if barstate.islast
                                               text_formatting=text.format_bold)
                         array.push(vp_labels, lbl)
 
-    // Render Large Volume slanted/curved lines
+    // Render Large Volume slanted/curved lines (Extended to lookback limit)
     if show_large_vol
         for r = 0 to vp_bars_count - 1
             float b_v = array.get(row_buy_vol, r)
@@ -783,8 +783,8 @@ if barstate.islast
                 string lv_text = is_bull_dom ? "LG BUY" : "LG SELL"
                 float yc_lv = ym3 + (r + 0.5) * row_step
 
-                for step = 0 to vp_bars_count by step_size
-                    int offset = math.min(vp_bars_count, step)
+                for step = 0 to reg_lookback by step_size
+                    int offset = math.min(reg_lookback, step)
                     int x_curr = left_x + offset
                     float t_curr = t_left + offset
                     float y_curr = yc_lv + a1 * t_curr + a2 * t_curr * t_curr
