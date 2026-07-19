@@ -13,7 +13,6 @@ string grp_vp    = "Volume Profile Settings"
 vp_bars_count    = input.int(40, "Profile Width (Bars)", minval=10, maxval=100, group=grp_vp, tooltip="Number of rightmost bars included in the volume profile.")
 max_width_bars   = input.int(15, "Max Bar Length (Bars)", minval=5, maxval=50, group=grp_vp, tooltip="Maximum horizontal length of a volume bar.")
 volume_line_width = input.int(3, "Volume Line Width", minval=1, maxval=10, group=grp_vp, tooltip="Line width of each volume profile bar.")
-vp_h_offset      = input.int(20, "Volume Profile Right Offset (Bars)", minval=0, maxval=100, group=grp_vp, tooltip="Horizontal offset to position the volume profile to the right of the chart.")
 show_poc_label   = input.bool(true, "Show POC Right Badge", group=grp_vp)
 show_block_val   = input.bool(false, "Show Volume Values inside Profile", group=grp_vp)
 
@@ -311,7 +310,8 @@ if barstate.islast
     direction_str := a1 > 0 ? "Bullish ↗" : "Bearish ↘"
     
     // Right alignment coordinate for the volume profile and edge labels
-    int right_x = bar_index + vp_h_offset
+    // perfectly aligned with the right edge of the regression channel (from top to bottom)
+    int right_x = bar_index
 
     // -------------------------------------------------------------------------
     // 5. CHANNEL DRAWING WITH STEP OPTIMIZATION AND CONTINUOUS LINEFILL
