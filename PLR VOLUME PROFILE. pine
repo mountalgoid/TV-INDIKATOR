@@ -13,6 +13,7 @@ string grp_vp    = "Volume Profile Settings"
 vp_bars_count    = input.int(40, "Profile Width (Bars)", minval=10, maxval=100, group=grp_vp, tooltip="Number of rightmost bars included in the volume profile.")
 max_width_bars   = input.int(15, "Max Bar Length (Bars)", minval=5, maxval=50, group=grp_vp, tooltip="Maximum horizontal length of a volume bar.")
 volume_line_width = input.int(3, "Volume Line Width", minval=1, maxval=10, group=grp_vp, tooltip="Line width of each volume profile bar.")
+vp_h_offset      = input.int(20, "Volume Profile Right Offset (Bars)", minval=0, maxval=100, group=grp_vp, tooltip="Horizontal offset to position the volume profile to the right of the chart.")
 show_poc_label   = input.bool(true, "Show POC Right Badge", group=grp_vp)
 show_block_val   = input.bool(false, "Show Volume Values inside Profile", group=grp_vp)
 
@@ -309,6 +310,9 @@ if barstate.islast
     direction_bias := a1
     direction_str := a1 > 0 ? "Bullish ↗" : "Bearish ↘"
     
+    // Right alignment coordinate for the volume profile and edge labels
+    int right_x = bar_index + vp_h_offset
+
     // -------------------------------------------------------------------------
     // 5. CHANNEL DRAWING WITH STEP OPTIMIZATION AND CONTINUOUS LINEFILL
     // -------------------------------------------------------------------------
@@ -365,13 +369,13 @@ if barstate.islast
             current_chan_high := yp3
             current_chan_low := ym3
             
-            // Right edge indicators
-            label.new(bar_x + 2, yp3, "Channel High (+3 SD): " + str.tostring(yp3, format.mintick), color=color.new(dark, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
-            label.new(bar_x + 2, yp2, "+2 SD", color=color.new(dark, 100), textcolor=color.new(white, 50), size=size.tiny, style=label.style_label_left)
-            label.new(bar_x + 2, yp1, "+1 SD", color=color.new(dark, 100), textcolor=color.new(white, 40), size=size.tiny, style=label.style_label_left)
-            label.new(bar_x + 2, ym1, "-1 SD", color=color.new(dark, 100), textcolor=color.new(white, 40), size=size.tiny, style=label.style_label_left)
-            label.new(bar_x + 2, ym2, "-2 SD", color=color.new(dark, 100), textcolor=color.new(white, 50), size=size.tiny, style=label.style_label_left)
-            label.new(bar_x + 2, ym3, "Channel Low (-3 SD): " + str.tostring(ym3, format.mintick), color=color.new(dark, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
+            // Right edge indicators aligned with right_x
+            label.new(right_x + 2, yp3, "Channel High (+3 SD): " + str.tostring(yp3, format.mintick), color=color.new(dark, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
+            label.new(right_x + 2, yp2, "+2 SD", color=color.new(dark, 100), textcolor=color.new(white, 50), size=size.tiny, style=label.style_label_left)
+            label.new(right_x + 2, yp1, "+1 SD", color=color.new(dark, 100), textcolor=color.new(white, 40), size=size.tiny, style=label.style_label_left)
+            label.new(right_x + 2, ym1, "-1 SD", color=color.new(dark, 100), textcolor=color.new(white, 40), size=size.tiny, style=label.style_label_left)
+            label.new(right_x + 2, ym2, "-2 SD", color=color.new(dark, 100), textcolor=color.new(white, 50), size=size.tiny, style=label.style_label_left)
+            label.new(right_x + 2, ym3, "Channel Low (-3 SD): " + str.tostring(ym3, format.mintick), color=color.new(dark, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
 
     // -------------------------------------------------------------------------
     // 6. CURVED/SLANTED VOLUME PROFILE (SE-PRESISI MUNGKIN DENGAN HORIZONTAL LINES)
@@ -392,11 +396,10 @@ if barstate.islast
                 max_bar_vol := tot_p
                 poc_k := k
                 
-    // Render curved/slanted volume profile aligning with the regression curve
+    // Render curved/slanted volume profile right-aligned to right_x extending leftwards
     for k = 0 to vp_bars_count - 1
         int idx = reg_lookback - vp_bars_count + k
         if idx >= 0 and idx < reg_lookback
-            int bar_x = bar_index - (reg_lookback - 1 - idx)
             float yc = array.get(fitted_y, idx)
             
             int hist_offset = reg_lookback - 1 - idx
@@ -425,30 +428,30 @@ if barstate.islast
                 if sell_length_bars == 0.0 and s_vol > 0
                     sell_length_bars := 0.2
                     
-                // Render buy volume line (stacked on the left)
-                int buy_end_x = math.round(bar_x + buy_length_bars)
-                color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
-                line buy_line = line.new(x1=bar_x, y1=yc, x2=buy_end_x, y2=yc,
-                                         color=b_line_col, width=volume_line_width, style=line.style_solid)
-                array.push(vp_lines, buy_line)
-
-                // Render sell volume line (stacked on the right of buy volume)
-                int sell_start_x = buy_end_x
-                int sell_end_x = math.round(sell_start_x + sell_length_bars)
+                // Right aligned stacking: Sell on the right (closer to right_x), Buy on the left (extending left)
+                int sell_end_x = right_x
+                int sell_start_x = math.round(right_x - sell_length_bars)
                 color s_line_col = is_poc ? color.new(col_poc, 30) : color.new(col_bear, 20)
                 line sell_line = line.new(x1=sell_start_x, y1=yc, x2=sell_end_x, y2=yc,
                                           color=s_line_col, width=volume_line_width, style=line.style_solid)
                 array.push(vp_lines, sell_line)
+
+                int buy_end_x = sell_start_x
+                int buy_start_x = math.round(sell_start_x - buy_length_bars)
+                color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
+                line buy_line = line.new(x1=buy_start_x, y1=yc, x2=buy_end_x, y2=yc,
+                                         color=b_line_col, width=volume_line_width, style=line.style_solid)
+                array.push(vp_lines, buy_line)
                 
                 // Format block text if show_block_val is enabled
                 if show_block_val
-                    label val_lbl = label.new(x=sell_end_x, y=yc, text=f_formatNumber(total_vol),
+                    label val_lbl = label.new(x=buy_start_x, y=yc, text=f_formatNumber(total_vol),
                                               color=color.new(dark, 100), textcolor=white,
-                                              style=label.style_label_left, size=size.tiny)
+                                              style=label.style_label_right, size=size.tiny)
                     array.push(vp_labels, val_lbl)
                 
                 if is_poc and show_poc_label
-                    label poc_badge = label.new(x=sell_end_x + 1, y=yc,
+                    label poc_badge = label.new(x=right_x + 1, y=yc,
                                                 text="<- POC Vol: " + f_formatNumber(total_vol),
                                                 color=color.new(col_bear, 10), textcolor=dark,
                                                 style=label.style_label_left, size=size.tiny,
