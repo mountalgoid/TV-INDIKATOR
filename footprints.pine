@@ -81,6 +81,8 @@ color col_poc = switch color_theme
 int lookback_bars = input.int(30, "Lookback Bars to Display", minval=5, maxval=55, group=grp_footprint, tooltip="Number of candle profiles to keep on chart (keep low to prevent Pine drawing limits)")
 int volume_levels = input.int(10, "Volume Profile Levels", minval=5, maxval=50, group=grp_footprint, tooltip="Configure the number of volume rows/levels rendered within each candle profile (default 20)")
 bool show_values = input.bool(true, "Show Volume Values Inside Boxes", group=grp_footprint)
+string fp_text_mode = input.string("Buy / Sell & Delta", "Box Text Mode", options=["Buy / Sell Only", "Delta Only", "Buy / Sell & Delta"], group=grp_footprint)
+bool show_poc_text = input.bool(true, "Show POC Label Inside Box", group=grp_footprint)
 
 // VAH, VAL & POC Line Settings (High Visibility Inputs)
 color color_poc_line = input.color(#ff9800, "POC Line Color", group=grp_lines, tooltip="Point of Control (POC) high-visibility color")
@@ -359,13 +361,28 @@ if barstate.islast
                         is_hvn := lvl_total > prev_total and lvl_total > next_total and lvl_total >= (max_lvl_vol * hvn_threshold_pct / 100.0)
                         is_lvn := lvl_total < prev_total and lvl_total < next_total and lvl_total <= (max_lvl_vol * lvn_threshold_pct / 100.0)
 
-                    // Text format: ▲Buy | ▼Sell
-                    string txt = show_values ? ("▲" + format_vol(lvl_buy) + " \n▼" + format_vol(lvl_sell)) : ""
-                    if show_hvn_lvn
+                    // Text format customization based on delta bullish/bearish and POC/HVN/LVN
+                    float lvl_net_delta = lvl_buy - lvl_sell
+                    string delta_sign = lvl_net_delta > 0 ? "+" : lvl_net_delta < 0 ? "-" : ""
+                    string formatted_delta = "Δ: " + delta_sign + format_vol(math.abs(lvl_net_delta))
+
+                    string txt = ""
+                    if show_values
+                        if fp_text_mode == "Buy / Sell Only"
+                            txt := "▲" + format_vol(lvl_buy) + " \n▼" + format_vol(lvl_sell)
+                        else if fp_text_mode == "Delta Only"
+                            txt := formatted_delta
+                        else if fp_text_mode == "Buy / Sell & Delta"
+                            txt := "▲" + format_vol(lvl_buy) + " \n▼" + format_vol(lvl_sell) + " \n" + formatted_delta
+
+                    // Add Level Tag (POC takes precedence, followed by HVN/LVN)
+                    if i == poc_idx and show_poc_text
+                        txt := (txt != "" ? txt + " \n" : "") + "POC"
+                    else if show_hvn_lvn
                         if is_hvn
-                            txt := show_values ? ("▲" + format_vol(lvl_buy) + " \n▼" + format_vol(lvl_sell) + " \nHVN") : "HVN"
+                            txt := (txt != "" ? txt + " \n" : "") + "HVN"
                         else if is_lvn
-                            txt := show_values ? ("▲" + format_vol(lvl_buy) + " \n▼" + format_vol(lvl_sell) + " \nLVN") : "LVN"
+                            txt := (txt != "" ? txt + " \n" : "") + "LVN"
                     
                     // All text is set to fully opaque white color for clean professional look
                     color txt_color = white
