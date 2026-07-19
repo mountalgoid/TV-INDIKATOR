@@ -226,16 +226,17 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         s_buy_vol += b_buy
         s_sell_vol += b_sell
 
-        int bin_low = math.max(0, math.floor((b_low - s_low) / step))
-        int bin_high = math.min(levels_count - 1, math.floor((b_high - s_low) / step))
+        int bin_low = math.min(levels_count - 1, math.max(0, math.floor((b_low - s_low) / step)))
+        int bin_high = math.min(levels_count - 1, math.max(0, math.floor((b_high - s_low) / step)))
         
-        int bins_covered = math.max(1, bin_high - bin_low + 1)
-        float vol_per_bin = b_vol / bins_covered
-        float buy_per_bin = b_buy / bins_covered
-        
-        for b_idx = bin_low to bin_high
-            array.set(vol_dist, b_idx, array.get(vol_dist, b_idx) + vol_per_bin)
-            array.set(buy_dist, b_idx, array.get(buy_dist, b_idx) + buy_per_bin)
+        if bin_low <= bin_high
+            int bins_covered = math.max(1, bin_high - bin_low + 1)
+            float vol_per_bin = b_vol / bins_covered
+            float buy_per_bin = b_buy / bins_covered
+
+            for b_idx = bin_low to bin_high
+                array.set(vol_dist, b_idx, array.get(vol_dist, b_idx) + vol_per_bin)
+                array.set(buy_dist, b_idx, array.get(buy_dist, b_idx) + buy_per_bin)
 
     // Ensure no empty volume levels to maintain density
     for i = 0 to levels_count - 1
