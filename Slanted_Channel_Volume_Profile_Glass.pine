@@ -516,13 +516,13 @@ if barstate.islast
             float top_box_y2 = (c + max_detrended)
 
             if buy_box_right > buy_box_left
-                box top_buy_b = box.new(left=buy_box_left, top=top_box_y1, right=buy_box_right, bottom=top_box_y2, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.valign_center)
+                box top_buy_b = box.new(left=buy_box_left, top=top_box_y1, right=buy_box_right, bottom=top_box_y2, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(live_boxes, top_buy_b)
             if sell_box_right > sell_box_left
-                box top_sell_b = box.new(left=sell_box_left, top=top_box_y1, right=sell_box_right, bottom=top_box_y2, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.valign_center)
+                box top_sell_b = box.new(left=sell_box_left, top=top_box_y1, right=sell_box_right, bottom=top_box_y2, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(live_boxes, top_sell_b)
             if delta_box_right > delta_box_left
-                box top_delta_b = box.new(left=delta_box_left, top=top_box_y1, right=delta_box_right, bottom=top_box_y2, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.valign_center)
+                box top_delta_b = box.new(left=delta_box_left, top=top_box_y1, right=delta_box_right, bottom=top_box_y2, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(live_boxes, top_delta_b)
         else
             // BOTTOM Stats Boxes (Positive or Neutral Delta)
@@ -530,13 +530,13 @@ if barstate.islast
             float btm_box_y2 = (c + min_detrended) - stats_box_h
 
             if buy_box_right > buy_box_left
-                box btm_buy_b = box.new(left=buy_box_left, top=btm_box_y1, right=buy_box_right, bottom=btm_box_y2, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.valign_center)
+                box btm_buy_b = box.new(left=buy_box_left, top=btm_box_y1, right=buy_box_right, bottom=btm_box_y2, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(live_boxes, btm_buy_b)
             if sell_box_right > sell_box_left
-                box btm_sell_b = box.new(left=sell_box_left, top=btm_box_y1, right=sell_box_right, bottom=btm_box_y2, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.valign_center)
+                box btm_sell_b = box.new(left=sell_box_left, top=btm_box_y1, right=sell_box_right, bottom=btm_box_y2, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(live_boxes, btm_sell_b)
             if delta_box_right > delta_box_left
-                box btm_delta_b = box.new(left=delta_box_left, top=btm_box_y1, right=delta_box_right, bottom=btm_box_y2, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.valign_center)
+                box btm_delta_b = box.new(left=delta_box_left, top=btm_box_y1, right=delta_box_right, bottom=btm_box_y2, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
                 array.push(live_boxes, btm_delta_b)
 
 //════════════════════════════════════════════════════════════════════════
