@@ -13,6 +13,7 @@ string grp_vp    = "Volume Profile Settings"
 vp_bars_count    = input.int(40, "Profile Width (Bars)", minval=10, maxval=100, group=grp_vp, tooltip="Number of rightmost bars included in the volume profile.")
 max_width_bars   = input.int(15, "Max Bar Length (Bars)", minval=5, maxval=50, group=grp_vp, tooltip="Maximum horizontal length of a volume bar.")
 volume_line_width = input.int(3, "Volume Line Width", minval=1, maxval=10, group=grp_vp, tooltip="Line width of each volume profile bar.")
+box_height_factor = input.float(0.08, "Volume Bar Thickness", minval=0.01, maxval=0.5, step=0.01, group=grp_vp, tooltip="Vertical thickness of each volume profile bar.")
 show_poc_label   = input.bool(true, "Show POC Right Badge", group=grp_vp)
 show_block_val   = input.bool(false, "Show Volume Values inside Profile", group=grp_vp)
 
@@ -94,7 +95,10 @@ color col_poc = switch color_theme
 var line[] reg_lines      = array.new_line()
 var linefill[] reg_fills  = array.new<linefill>()
 var line[] vp_lines       = array.new_line()
+var linefill[] vp_fills   = array.new<linefill>()
 var label[] vp_labels     = array.new_label()
+var float[] row_buy_vol   = array.new_float(100, 0.0)
+var float[] row_sell_vol  = array.new_float(100, 0.0)
 
 cleanup_drawings() =>
     while array.size(reg_lines) > 0
@@ -103,6 +107,8 @@ cleanup_drawings() =>
         linefill.delete(array.pop(reg_fills))
     while array.size(vp_lines) > 0
         line.delete(array.pop(vp_lines))
+    while array.size(vp_fills) > 0
+        linefill.delete(array.pop(vp_fills))
     while array.size(vp_labels) > 0
         label.delete(array.pop(vp_labels))
 
@@ -264,6 +270,59 @@ solve_quadratic(int n) =>
                      
     [a0, a1, a2]
 
+// High-precision volume distribution helper for detrended curves
+distribute_vol_plr(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _b_total, float _s_total, float[] _bucket_buy, float[] _bucket_sell) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        if _range_val <= 0
+            int idx = math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h)))
+            array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + _b_total)
+            array.set(_bucket_sell, idx, array.get(_bucket_sell, idx) + _s_total)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h - b_high) * inv_range
+
+            float b_center = (_o + _c) * 0.5
+            float body_pos = (b_center - _l) * inv_range
+            float br_b = _c > _o ? math.min(0.9, 0.6 + body_pos * 0.3) : (_c < _o ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+            if w_l > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float denom_count = idx_h - idx_l + 1
+                    float v_j_buy = (_b_total * w_l * 0.90 + _s_total * w_l * 0.10) / denom_count
+                    float v_j_sell = (_b_total * w_l * 0.10 + _s_total * w_l * 0.90) / denom_count
+                    for j = idx_l to idx_h
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if w_b > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float denom_count = idx_h - idx_l + 1
+                    float v_j_buy = (_b_total * w_b * br_b + _s_total * w_b * br_b) / denom_count
+                    float v_j_sell = (_b_total * w_b * (1.0 - br_b) + _s_total * w_b * (1.0 - br_b)) / denom_count
+                    for j = idx_l to idx_h
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if w_u > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float denom_count = idx_h - idx_l + 1
+                    float v_j_buy = (_b_total * w_u * 0.10 + _s_total * w_u * 0.90) / denom_count
+                    float v_j_sell = (_b_total * w_u * 0.90 + _s_total * w_u * 0.10) / denom_count
+                    for j = idx_l to idx_h
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+
 // Execute profile calculations on the last bar
 var float direction_bias = 0.0
 var float current_poc_level = na
@@ -378,85 +437,154 @@ if barstate.islast
             label.new(right_x + 2, ym3, "Channel Low (-3 SD): " + str.tostring(ym3, format.mintick), color=color.new(dark, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
 
     // -------------------------------------------------------------------------
-    // 6. CURVED/SLANTED VOLUME PROFILE (SE-PRESISI MUNGKIN DENGAN HORIZONTAL LINES)
+    // 6. CURVED/SLANTED VOLUME PROFILE (SE-PRESISI MUNGKIN DENGAN SLOPE & POLY/LINEAR)
     // -------------------------------------------------------------------------
-    float max_bar_vol = 0.0
-    int poc_k = 0
-    
-    // Pre-calculate max volume inside the volume profile boundaries using the precise stored values
+    // Reset volume buckets
+    array.fill(row_buy_vol, 0.0)
+    array.fill(row_sell_vol, 0.0)
+
+    // Calculate row heights stretching across the entire width of the regression channel
+    float yp3 = a0 + 3 * sd
+    float ym3 = a0 - 3 * sd
+    float channel_height = yp3 - ym3
+    float row_step = channel_height / vp_bars_count
+    float inv_row_step = 1.0 / row_step
+
+    // Distribute the high-precision volume of the rightmost bars
     for k = 0 to vp_bars_count - 1
         int idx = reg_lookback - vp_bars_count + k
         if idx >= 0 and idx < reg_lookback
-            // Correct offset calculation using the historical array or close series
-            int hist_offset = reg_lookback - 1 - idx
-            float bv_p = nz(array.get(bar_buy_vol_arr, array.size(bar_buy_vol_arr) - 1 - hist_offset))
-            float sv_p = nz(array.get(bar_sell_vol_arr, array.size(bar_sell_vol_arr) - 1 - hist_offset))
-            float tot_p = bv_p + sv_p
-            if tot_p > max_bar_vol
-                max_bar_vol := tot_p
-                poc_k := k
-                
-    // Render curved/slanted volume profile right-aligned to right_x extending leftwards
-    for k = 0 to vp_bars_count - 1
-        int idx = reg_lookback - vp_bars_count + k
-        if idx >= 0 and idx < reg_lookback
-            float yc = array.get(fitted_y, idx)
-            
             int hist_offset = reg_lookback - 1 - idx
             float b_vol = nz(array.get(bar_buy_vol_arr, array.size(bar_buy_vol_arr) - 1 - hist_offset))
             float s_vol = nz(array.get(bar_sell_vol_arr, array.size(bar_sell_vol_arr) - 1 - hist_offset))
-            float total_vol = b_vol + s_vol
             
-            if total_vol > 0
-                bool is_poc = k == poc_k
-                if is_poc
-                    current_poc_level := yc
-                    current_poc_vol := total_vol
+            float h_op = open[hist_offset]
+            float h_hi = high[hist_offset]
+            float h_lo = low[hist_offset]
+            float h_cl = close[hist_offset]
 
-                // Calculate line segment length proportional to total volume
-                float total_proportion = total_vol / max_bar_vol
-                float buy_proportion  = b_vol / total_vol
-                float sell_proportion = s_vol / total_vol
+            // Detrend prices to align with flat row coordinates at right_x
+            float t_offset = idx - (reg_lookback - 1)
+            float curve_yc = a0 + a1 * t_offset + a2 * t_offset * t_offset
+            float curve_delta = curve_yc - a0
 
-                float total_length_bars = total_proportion * max_width_bars
-                float buy_length_bars  = total_length_bars * buy_proportion
-                float sell_length_bars = total_length_bars * sell_proportion
+            float d_op = h_op - curve_delta
+            float d_hi = h_hi - curve_delta
+            float d_lo = h_lo - curve_delta
+            float d_cl = h_cl - curve_delta
 
-                // Ensure minor minimum length so lines remain visible
-                if buy_length_bars == 0.0 and b_vol > 0
-                    buy_length_bars := 0.2
-                if sell_length_bars == 0.0 and s_vol > 0
-                    sell_length_bars := 0.2
-                    
-                // Right aligned stacking: Sell on the right (closer to right_x), Buy on the left (extending left)
-                int sell_end_x = right_x
-                int sell_start_x = math.round(right_x - sell_length_bars)
-                color s_line_col = is_poc ? color.new(col_poc, 30) : color.new(col_bear, 20)
-                line sell_line = line.new(x1=sell_start_x, y1=yc, x2=sell_end_x, y2=yc,
+            distribute_vol_plr(vp_bars_count, ym3, inv_row_step, d_op, d_hi, d_lo, d_cl, b_vol, s_vol, row_buy_vol, row_sell_vol)
+
+    // Find the Point of Control (POC) among the rows
+    float max_row_vol = 0.0
+    int poc_row_idx = 0
+    for r = 0 to vp_bars_count - 1
+        float row_tot = array.get(row_buy_vol, r) + array.get(row_sell_vol, r)
+        if row_tot > max_row_vol
+            max_row_vol := row_tot
+            poc_row_idx := r
+
+    // Render slanted/curved glass blocks following the regression curvature
+    for r = 0 to vp_bars_count - 1
+        float b_vol = array.get(row_buy_vol, r)
+        float s_vol = array.get(row_sell_vol, r)
+        float total_vol = b_vol + s_vol
+
+        if total_vol > 0
+            bool is_poc = r == poc_row_idx
+
+            // Define standard flat row limits at right_x
+            float y_bot_relative = ym3 + r * row_step
+            float y_top_relative = ym3 + (r + 1) * row_step
+            float y_center_relative = ym3 + (r + 0.5) * row_step
+
+            if is_poc
+                current_poc_level := y_center_relative
+                current_poc_vol := total_vol
+
+            // Compute lengths proportional to total volume
+            float total_proportion = total_vol / max_row_vol
+            float buy_proportion  = b_vol / total_vol
+            float sell_proportion = s_vol / total_vol
+
+            float total_length_bars = total_proportion * max_width_bars
+            float buy_length_bars  = total_length_bars * buy_proportion
+            float sell_length_bars = total_length_bars * sell_proportion
+
+            if buy_length_bars == 0.0 and b_vol > 0
+                buy_length_bars := 0.2
+            if sell_length_bars == 0.0 and s_vol > 0
+                sell_length_bars := 0.2
+
+            // Stacking: Sell on the right (closest to right_x), Buy on the left (extending left)
+            int sell_end_x = right_x
+            int sell_start_x = math.round(right_x - sell_length_bars)
+            int buy_end_x = sell_start_x
+            int buy_start_x = math.round(sell_start_x - buy_length_bars)
+
+            // Evaluate polynomial/linear curvature at each boundary point
+            float t_sell = -sell_length_bars
+            float curve_sell = a1 * t_sell + a2 * t_sell * t_sell
+
+            float t_buy = -(sell_length_bars + buy_length_bars)
+            float curve_buy = a1 * t_buy + a2 * t_buy * t_buy
+
+            // Apply customizable bar thickness
+            float h_half = (row_step / 2) * (box_height_factor / 0.08)
+
+            // Sell boundaries
+            float sell_top_right = y_center_relative + h_half
+            float sell_bot_right = y_center_relative - h_half
+            float sell_top_left  = y_center_relative + curve_sell + h_half
+            float sell_bot_left  = y_center_relative + curve_sell - h_half
+
+            // Buy boundaries
+            float buy_top_right = y_center_relative + curve_sell + h_half
+            float buy_bot_right = y_center_relative + curve_sell - h_half
+            float buy_top_left  = y_center_relative + curve_buy + h_half
+            float buy_bot_left  = y_center_relative + curve_buy - h_half
+
+            // Draw Sell lines & fill
+            color s_line_col = is_poc ? color.new(col_poc, 30) : color.new(col_bear, 20)
+            color s_fill_col = is_poc ? color.new(col_poc, 50) : color.new(col_bear, 60)
+
+            line sell_top_line = line.new(x1=sell_start_x, y1=sell_top_left, x2=sell_end_x, y2=sell_top_right,
                                           color=s_line_col, width=volume_line_width, style=line.style_solid)
-                array.push(vp_lines, sell_line)
+            line sell_bot_line = line.new(x1=sell_start_x, y1=sell_bot_left, x2=sell_end_x, y2=sell_bot_right,
+                                          color=s_line_col, width=volume_line_width, style=line.style_solid)
+            array.push(vp_lines, sell_top_line)
+            array.push(vp_lines, sell_bot_line)
 
-                int buy_end_x = sell_start_x
-                int buy_start_x = math.round(sell_start_x - buy_length_bars)
-                color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
-                line buy_line = line.new(x1=buy_start_x, y1=yc, x2=buy_end_x, y2=yc,
+            linefill.new(sell_top_line, sell_bot_line, color=s_fill_col)
+
+            // Draw Buy lines & fill
+            color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
+            color b_fill_col = is_poc ? color.new(col_poc, 30) : color.new(col_bull, 60)
+
+            line buy_top_line = line.new(x1=buy_start_x, y1=buy_top_left, x2=buy_end_x, y2=buy_top_right,
                                          color=b_line_col, width=volume_line_width, style=line.style_solid)
-                array.push(vp_lines, buy_line)
-                
-                // Format block text if show_block_val is enabled
-                if show_block_val
-                    label val_lbl = label.new(x=buy_start_x, y=yc, text=f_formatNumber(total_vol),
-                                              color=color.new(dark, 100), textcolor=white,
-                                              style=label.style_label_right, size=size.tiny)
-                    array.push(vp_labels, val_lbl)
-                
-                if is_poc and show_poc_label
-                    label poc_badge = label.new(x=right_x + 1, y=yc,
-                                                text="<- POC Vol: " + f_formatNumber(total_vol),
-                                                color=color.new(col_bear, 10), textcolor=dark,
-                                                style=label.style_label_left, size=size.tiny,
-                                                text_formatting=text.format_bold)
-                    array.push(vp_labels, poc_badge)
+            line buy_bot_line = line.new(x1=buy_start_x, y1=buy_bot_left, x2=buy_end_x, y2=buy_bot_right,
+                                         color=b_line_col, width=volume_line_width, style=line.style_solid)
+            array.push(vp_lines, buy_top_line)
+            array.push(vp_lines, buy_bot_line)
+
+            linefill.new(buy_top_line, buy_bot_line, color=b_fill_col)
+
+            // Label text drawing
+            if show_block_val
+                float y_center_left = y_center_relative + curve_buy
+                label val_lbl = label.new(x=buy_start_x, y=y_center_left, text=f_formatNumber(total_vol),
+                                          color=color.new(dark, 100), textcolor=white,
+                                          style=label.style_label_right, size=size.tiny)
+                array.push(vp_labels, val_lbl)
+
+            if is_poc and show_poc_label
+                label poc_badge = label.new(x=right_x + 1, y=y_center_relative,
+                                            text="<- POC Vol: " + f_formatNumber(total_vol),
+                                            color=color.new(col_bear, 10), textcolor=dark,
+                                            style=label.style_label_left, size=size.tiny,
+                                            text_formatting=text.format_bold)
+                array.push(vp_labels, poc_badge)
 
 // -----------------------------------------------------------------------------
 // 7. GLASS HUD TABLE DASHBOARD
