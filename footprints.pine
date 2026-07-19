@@ -1,9 +1,3 @@
-// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
-// © MLTFX
-
-//@version=6
-// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
-// © MLTFX
 
 //@version=6
 indicator("Footprint Profile V2.67 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="Footprint Profile V2.67 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
