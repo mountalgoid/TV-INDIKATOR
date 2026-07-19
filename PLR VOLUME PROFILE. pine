@@ -651,43 +651,59 @@ if barstate.islast
                                             text_formatting=text.format_bold)
                 array.push(vp_labels, poc_badge)
 
-    // Helper for rendering full-width slanted indicator level lines (VAH, VAL, HVN, LVN, Large Vol)
-    draw_slanted_level_line(r, name, col, line_style) =>
-        float yc_r = ym3 + (r + 0.5) * row_step
-        // We render the line across the lookback range from (right_x - vp_bars_count) to right_x
-        line_style_val = switch line_style
-            "Dashed" => line.style_dashed
-            "Dotted" => line.style_dotted
-            => line.style_solid
-
-        line prev_seg = na
+    // Render VAH and VAL slanted/curved lines
+    if show_vah_val
+        // VAH
+        float yc_vah = ym3 + (va_high_idx + 0.5) * row_step
+        string vah_text = "VAH (" + str.tostring(ym3 + (va_high_idx + 0.5) * row_step, format.mintick) + ")"
         for step = 0 to vp_bars_count by step_size
             int offset = math.min(vp_bars_count, step)
             int x_curr = right_x - (vp_bars_count - offset)
             float t_curr = - (vp_bars_count - offset)
-            float y_curr = yc_r + a1 * t_curr + a2 * t_curr * t_curr
+            float y_curr = yc_vah + a1 * t_curr + a2 * t_curr * t_curr
 
             if offset > 0
                 int prev_offset = math.max(0, offset - step_size)
                 int x_prev = right_x - (vp_bars_count - prev_offset)
                 float t_prev = - (vp_bars_count - prev_offset)
-                float y_prev = yc_r + a1 * t_prev + a2 * t_prev * t_prev
+                float y_prev = yc_vah + a1 * t_prev + a2 * t_prev * t_prev
 
                 line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
-                                    color=col, width=1, style=line_style_val)
+                                    color=col_bull, width=1, style=line.style_dashed)
                 array.push(vp_lines, seg)
 
             if offset == vp_bars_count
-                label lbl = label.new(x=right_x + 1, y=y_curr, text=name,
-                                      color=color.new(dark, 100), textcolor=col,
+                label lbl = label.new(x=right_x + 1, y=y_curr, text=vah_text,
+                                      color=color.new(dark, 100), textcolor=col_bull,
                                       style=label.style_label_left, size=size.tiny,
                                       text_formatting=text.format_bold)
                 array.push(vp_labels, lbl)
 
-    // Render VAH and VAL slanted/curved lines
-    if show_vah_val
-        draw_slanted_level_line(va_high_idx, "VAH (" + str.tostring(ym3 + (va_high_idx + 0.5) * row_step, format.mintick) + ")", col_bull, "Dashed")
-        draw_slanted_level_line(va_low_idx, "VAL (" + str.tostring(ym3 + (va_low_idx + 0.5) * row_step, format.mintick) + ")", col_bear, "Dashed")
+        // VAL
+        float yc_val = ym3 + (va_low_idx + 0.5) * row_step
+        string val_text = "VAL (" + str.tostring(ym3 + (va_low_idx + 0.5) * row_step, format.mintick) + ")"
+        for step = 0 to vp_bars_count by step_size
+            int offset = math.min(vp_bars_count, step)
+            int x_curr = right_x - (vp_bars_count - offset)
+            float t_curr = - (vp_bars_count - offset)
+            float y_curr = yc_val + a1 * t_curr + a2 * t_curr * t_curr
+
+            if offset > 0
+                int prev_offset = math.max(0, offset - step_size)
+                int x_prev = right_x - (vp_bars_count - prev_offset)
+                float t_prev = - (vp_bars_count - prev_offset)
+                float y_prev = yc_val + a1 * t_prev + a2 * t_prev * t_prev
+
+                line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
+                                    color=col_bear, width=1, style=line.style_dashed)
+                array.push(vp_lines, seg)
+
+            if offset == vp_bars_count
+                label lbl = label.new(x=right_x + 1, y=y_curr, text=val_text,
+                                      color=color.new(dark, 100), textcolor=col_bear,
+                                      style=label.style_label_left, size=size.tiny,
+                                      text_formatting=text.format_bold)
+                array.push(vp_labels, lbl)
 
     // Render HVN and LVN slanted/curved lines
     if show_hvn_lvn
@@ -697,9 +713,56 @@ if barstate.islast
             float v_next = array.get(row_buy_vol, r + 1) + array.get(row_sell_vol, r + 1)
 
             if v_curr > v_prev and v_curr > v_next and v_curr > avg_row_vol * 1.3
-                draw_slanted_level_line(r, "HVN", col_bull, "Dotted")
+                // Draw HVN
+                float yc_hvn = ym3 + (r + 0.5) * row_step
+                for step = 0 to vp_bars_count by step_size
+                    int offset = math.min(vp_bars_count, step)
+                    int x_curr = right_x - (vp_bars_count - offset)
+                    float t_curr = - (vp_bars_count - offset)
+                    float y_curr = yc_hvn + a1 * t_curr + a2 * t_curr * t_curr
+
+                    if offset > 0
+                        int prev_offset = math.max(0, offset - step_size)
+                        int x_prev = right_x - (vp_bars_count - prev_offset)
+                        float t_prev = - (vp_bars_count - prev_offset)
+                        float y_prev = yc_hvn + a1 * t_prev + a2 * t_prev * t_prev
+
+                        line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
+                                            color=col_bull, width=1, style=line.style_dotted)
+                        array.push(vp_lines, seg)
+
+                    if offset == vp_bars_count
+                        label lbl = label.new(x=right_x + 1, y=y_curr, text="HVN",
+                                              color=color.new(dark, 100), textcolor=col_bull,
+                                              style=label.style_label_left, size=size.tiny,
+                                              text_formatting=text.format_bold)
+                        array.push(vp_labels, lbl)
+
             if v_curr < v_prev and v_curr < v_next and v_curr < avg_row_vol * 0.5
-                draw_slanted_level_line(r, "LVN", col_bear, "Dotted")
+                // Draw LVN
+                float yc_lvn = ym3 + (r + 0.5) * row_step
+                for step = 0 to vp_bars_count by step_size
+                    int offset = math.min(vp_bars_count, step)
+                    int x_curr = right_x - (vp_bars_count - offset)
+                    float t_curr = - (vp_bars_count - offset)
+                    float y_curr = yc_lvn + a1 * t_curr + a2 * t_curr * t_curr
+
+                    if offset > 0
+                        int prev_offset = math.max(0, offset - step_size)
+                        int x_prev = right_x - (vp_bars_count - prev_offset)
+                        float t_prev = - (vp_bars_count - prev_offset)
+                        float y_prev = yc_lvn + a1 * t_prev + a2 * t_prev * t_prev
+
+                        line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
+                                            color=col_bear, width=1, style=line.style_dotted)
+                        array.push(vp_lines, seg)
+
+                    if offset == vp_bars_count
+                        label lbl = label.new(x=right_x + 1, y=y_curr, text="LVN",
+                                              color=color.new(dark, 100), textcolor=col_bear,
+                                              style=label.style_label_left, size=size.tiny,
+                                              text_formatting=text.format_bold)
+                        array.push(vp_labels, lbl)
 
     // Render Large Volume slanted/curved lines
     if show_large_vol
@@ -710,7 +773,32 @@ if barstate.islast
 
             if total_v > avg_row_vol * large_vol_mult
                 bool is_bull_dom = b_v >= s_v
-                draw_slanted_level_line(r, is_bull_dom ? "LG BUY" : "LG SELL", is_bull_dom ? col_bull : col_bear, "Solid")
+                color lv_col = is_bull_dom ? col_bull : col_bear
+                string lv_text = is_bull_dom ? "LG BUY" : "LG SELL"
+                float yc_lv = ym3 + (r + 0.5) * row_step
+
+                for step = 0 to vp_bars_count by step_size
+                    int offset = math.min(vp_bars_count, step)
+                    int x_curr = right_x - (vp_bars_count - offset)
+                    float t_curr = - (vp_bars_count - offset)
+                    float y_curr = yc_lv + a1 * t_curr + a2 * t_curr * t_curr
+
+                    if offset > 0
+                        int prev_offset = math.max(0, offset - step_size)
+                        int x_prev = right_x - (vp_bars_count - prev_offset)
+                        float t_prev = - (vp_bars_count - prev_offset)
+                        float y_prev = yc_lv + a1 * t_prev + a2 * t_prev * t_prev
+
+                        line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
+                                            color=lv_col, width=1, style=line.style_solid)
+                        array.push(vp_lines, seg)
+
+                    if offset == vp_bars_count
+                        label lbl = label.new(x=right_x + 1, y=y_curr, text=lv_text,
+                                              color=color.new(dark, 100), textcolor=lv_col,
+                                              style=label.style_label_left, size=size.tiny,
+                                              text_formatting=text.format_bold)
+                        array.push(vp_labels, lbl)
 
 // -----------------------------------------------------------------------------
 // 7. GLASS HUD TABLE DASHBOARD
