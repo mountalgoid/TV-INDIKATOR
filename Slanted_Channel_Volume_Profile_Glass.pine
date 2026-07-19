@@ -99,6 +99,14 @@ length          = input.int(95, "Channel Lookback Length", minval=20, group=grp_
 vp_resolution   = input.int(50, 'Profile Resolution (Rows)', minval=5, maxval=100, group=grp_vp)
 vp_va_perc      = input.float(70.0, 'Value Area Volume %', minval=10.0, maxval=100.0, step=5.0, group=grp_vp)
 max_blocks      = input.int(22, 'Max Profile Width (Bars)', minval=5, maxval=50, group=grp_vp)
+vp_type         = input.string("Normal", "Profile View Type", options=["Normal", "Delta"], group=grp_vp)
+
+string grp_hvl = "HVN, LVN, & Large Volume Settings"
+show_hvn_lvn   = input.bool(true, "Show HVN and LVN Lines", group=grp_hvl)
+hvn_threshold  = input.float(1.2, "HVN Volume Multiplier (Avg)", minval=1.0, step=0.1, group=grp_hvl)
+lvn_threshold  = input.float(0.3, "LVN Volume Threshold (Max %)", minval=0.01, maxval=1.0, step=0.05, group=grp_hvl)
+show_large_vol = input.bool(true, "Show Large Volume Levels", group=grp_hvl)
+large_vol_mult = input.float(1.5, "Large Volume Multiplier (Avg)", minval=1.0, step=0.1, group=grp_hvl)
 
 string grp_grid = "Grid & Glass Aesthetics"
 gap_y_perc      = input.float(12.0, "Vertical Block Gap (%)", minval=0.0, maxval=49.0, step=2.0, group=grp_grid)
@@ -432,30 +440,48 @@ if barstate.islast
             float P_top_padded = P_top - pad_y
             float P_bot_padded = P_bot + pad_y
 
-            float pct_total = r_tot_vol / max_vol
-            int row_width = math.round(max_blocks * pct_total)
-            int buy_width = math.round(row_width * buy_ratio)
-            int sell_width = row_width - buy_width
+            float pct_total = 0.0
+            int row_width = 0
 
-            // 1. Draw the Buy Segment (Green/Teal fill at the left side of the row)
-            if buy_width > 0
-                int x_left = start_idx
-                int x_right = start_idx + buy_width
-                line t_ln = line.new(x_left, m * (x_left - start_idx) + c + P_top_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=color.new(col_bull, 60), width=1)
-                line b_ln = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_bot_padded, color=color.new(col_bull, 60), width=1)
-                array.push(live_lines, t_ln)
-                array.push(live_lines, b_ln)
-                array.push(live_fills, linefill.new(t_ln, b_ln, color=color.new(col_bull, 55)))
+            if vp_type == "Delta"
+                float r_delta = r_buy_vol - r_sell_vol
+                pct_total := max_abs_delta > 0 ? math.abs(r_delta) / max_abs_delta : 0.0
+                row_width := math.round(max_blocks * pct_total)
 
-            // 2. Draw the Sell Segment (Red fill at the right side of the row)
-            if sell_width > 0
-                int x_left = start_idx + buy_width
-                int x_right = start_idx + row_width
-                line t_ln = line.new(x_left, m * (x_left - start_idx) + c + P_top_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=color.new(col_bear, 60), width=1)
-                line b_ln = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_bot_padded, color=color.new(col_bear, 60), width=1)
-                array.push(live_lines, t_ln)
-                array.push(live_lines, b_ln)
-                array.push(live_fills, linefill.new(t_ln, b_ln, color=color.new(col_bear, 55)))
+                if row_width > 0
+                    color d_col = r_delta >= 0 ? col_bull : col_bear
+                    int x_left = start_idx
+                    int x_right = start_idx + row_width
+                    line t_ln = line.new(x_left, m * (x_left - start_idx) + c + P_top_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=color.new(d_col, 60), width=1)
+                    line b_ln = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_bot_padded, color=color.new(d_col, 60), width=1)
+                    array.push(live_lines, t_ln)
+                    array.push(live_lines, b_ln)
+                    array.push(live_fills, linefill.new(t_ln, b_ln, color=color.new(d_col, 55)))
+            else
+                pct_total := r_tot_vol / max_vol
+                row_width := math.round(max_blocks * pct_total)
+                int buy_width = math.round(row_width * buy_ratio)
+                int sell_width = row_width - buy_width
+
+                // 1. Draw the Buy Segment (Green/Teal fill at the left side of the row)
+                if buy_width > 0
+                    int x_left = start_idx
+                    int x_right = start_idx + buy_width
+                    line t_ln = line.new(x_left, m * (x_left - start_idx) + c + P_top_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=color.new(col_bull, 60), width=1)
+                    line b_ln = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_bot_padded, color=color.new(col_bull, 60), width=1)
+                    array.push(live_lines, t_ln)
+                    array.push(live_lines, b_ln)
+                    array.push(live_fills, linefill.new(t_ln, b_ln, color=color.new(col_bull, 55)))
+
+                // 2. Draw the Sell Segment (Red fill at the right side of the row)
+                if sell_width > 0
+                    int x_left = start_idx + buy_width
+                    int x_right = start_idx + row_width
+                    line t_ln = line.new(x_left, m * (x_left - start_idx) + c + P_top_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=color.new(col_bear, 60), width=1)
+                    line b_ln = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_bot_padded, color=color.new(col_bear, 60), width=1)
+                    array.push(live_lines, t_ln)
+                    array.push(live_lines, b_ln)
+                    array.push(live_fills, linefill.new(t_ln, b_ln, color=color.new(col_bear, 55)))
 
     //════════════════════════════════════════════════════════════════════════
     // SLANTED PRICE LEVEL PROJECTIONS (Yellow POC & Purple Delta POC)
@@ -482,6 +508,43 @@ if barstate.islast
         label lbl_val = label.new(label_x, m * (label_x - start_idx) + c - std_dev, "VAL", color=color.new(white, 100), textcolor=color.new(#0288d1, 0), size=size.tiny, style=label.style_label_left)
         array.push(live_labels, lbl_vah)
         array.push(live_labels, lbl_val)
+
+    // ===== HVN, LVN, & LARGE VOLUME LEVEL DETECTIONS & SLANTED PROJECTIONS =====
+    float avg_profile_vol = total_vol / vp_resolution
+    float thresh_lvn = max_vol * lvn_threshold
+
+    for r = 1 to vp_resolution - 2
+        float v_prev = array.get(bucket_total, r - 1)
+        float v_curr = array.get(bucket_total, r)
+        float v_next = array.get(bucket_total, r + 1)
+
+        float r_buy = array.get(bucket_buy, r)
+        float r_sell = array.get(bucket_sell, r)
+        float buy_ratio = v_curr > 0 ? r_buy / v_curr : 0.5
+
+        float P_det_center = min_detrended + r * step + (step / 2.0)
+
+        // 1. HVN Detection & Slanted Projection
+        if show_hvn_lvn and v_curr > v_prev and v_curr > v_next and v_curr > avg_profile_vol * hvn_threshold and r != poc_idx
+            line hvn_ln = line.new(start_idx, m * 0 + c + P_det_center, bar_index, m * (bar_index - start_idx) + c + P_det_center, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
+            array.push(live_lines, hvn_ln)
+            label lbl_hvn = label.new(label_x, m * (label_x - start_idx) + c + P_det_center, "HVN", color=color.new(white, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
+            array.push(live_labels, lbl_hvn)
+
+        // 2. LVN Detection & Slanted Projection
+        if show_hvn_lvn and v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
+            line lvn_ln = line.new(start_idx, m * 0 + c + P_det_center, bar_index, m * (bar_index - start_idx) + c + P_det_center, color=color.new(col_bear, 40), width=1, style=line.style_dotted)
+            array.push(live_lines, lvn_ln)
+            label lbl_lvn = label.new(label_x, m * (label_x - start_idx) + c + P_det_center, "LVN", color=color.new(white, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
+            array.push(live_labels, lbl_lvn)
+
+        // 3. Large Volume Level Detection & Slanted Projection
+        if show_large_vol and v_curr > avg_profile_vol * large_vol_mult
+            color lg_col = buy_ratio > 0.5 ? col_bull : col_bear
+            line lg_ln = line.new(start_idx, m * 0 + c + P_det_center, bar_index, m * (bar_index - start_idx) + c + P_det_center, color=lg_col, width=3, style=line.style_dotted)
+            array.push(live_lines, lg_ln)
+            label lbl_lg = label.new(label_x, m * (label_x - start_idx) + c + P_det_center, "LG VOL", color=color.new(white, 100), textcolor=lg_col, size=size.tiny, style=label.style_label_left)
+            array.push(live_labels, lbl_lg)
 
     // Render Stats Boxes stacked vertically to the left of the volume profile
     if show_stats_boxes
