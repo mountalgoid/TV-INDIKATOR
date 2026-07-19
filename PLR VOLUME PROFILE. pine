@@ -12,7 +12,7 @@ step_size        = input.int(3, "Line Segment Step Size", minval=1, maxval=10, g
 string grp_vp    = "Volume Profile Settings"
 vp_bars_count    = input.int(40, "Profile Width (Bars)", minval=10, maxval=100, group=grp_vp, tooltip="Number of rightmost bars included in the volume profile.")
 max_width_bars   = input.int(15, "Max Bar Length (Bars)", minval=5, maxval=50, group=grp_vp, tooltip="Maximum horizontal length of a volume bar.")
-box_height_factor= input.float(0.08, "Volume Bar Thickness", minval=0.01, maxval=0.5, step=0.01, group=grp_vp, tooltip="Vertical thickness of each volume profile bar.")
+volume_line_width = input.int(3, "Volume Line Width", minval=1, maxval=10, group=grp_vp, tooltip="Line width of each volume profile bar.")
 show_poc_label   = input.bool(true, "Show POC Right Badge", group=grp_vp)
 show_block_val   = input.bool(false, "Show Volume Values inside Profile", group=grp_vp)
 
@@ -93,7 +93,7 @@ color col_poc = switch color_theme
 // -----------------------------------------------------------------------------
 var line[] reg_lines      = array.new_line()
 var linefill[] reg_fills  = array.new<linefill>()
-var box[] vp_boxes        = array.new_box()
+var line[] vp_lines       = array.new_line()
 var label[] vp_labels     = array.new_label()
 
 cleanup_drawings() =>
@@ -101,8 +101,8 @@ cleanup_drawings() =>
         line.delete(array.pop(reg_lines))
     while array.size(reg_fills) > 0
         linefill.delete(array.pop(reg_fills))
-    while array.size(vp_boxes) > 0
-        box.delete(array.pop(vp_boxes))
+    while array.size(vp_lines) > 0
+        line.delete(array.pop(vp_lines))
     while array.size(vp_labels) > 0
         label.delete(array.pop(vp_labels))
 
@@ -136,6 +136,48 @@ calc_vol_partition(float op, float hi, float lo, float cl, float vol) =>
         b_vol := vol * 0.5
         s_vol := vol * 0.5
     [b_vol, s_vol]
+
+// --- LTF PRECISION ENGINE ---
+get_ltf_v() =>
+    [b, s] = calc_vol_partition(open, high, low, close, volume)
+    [open, high, low, close, volume, b, s]
+
+[ltf_o, ltf_h, ltf_l, ltf_c, ltf_v, ltf_b, ltf_s] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_v())
+
+// Accumulate precise buy and sell volume statistics on each bar globally to ensure high precision
+var float[] bar_buy_vol_arr  = array.new_float(3000, 0.0)
+var float[] bar_sell_vol_arr = array.new_float(3000, 0.0)
+
+// Shift and store values dynamically on each bar
+if barstate.isfirst
+    array.fill(bar_buy_vol_arr, 0.0)
+    array.fill(bar_sell_vol_arr, 0.0)
+
+// Calculate and record exact buy/sell statistics for current bar
+float cur_buy_sum  = 0.0
+float cur_sell_sum = 0.0
+int ltf_count = array.size(ltf_v)
+float ltf_v_total = 0.0
+
+if ltf_count > 0
+    for i = 0 to ltf_count - 1
+        cur_buy_sum  += array.get(ltf_b, i)
+        cur_sell_sum += array.get(ltf_s, i)
+        ltf_v_total  += array.get(ltf_v, i)
+
+// Account for any remaining volume gap
+float missing_v = math.max(0.0, nz(volume) - ltf_v_total)
+[miss_b, miss_s] = calc_vol_partition(open, high, low, close, missing_v)
+
+float exact_buy_vol  = cur_buy_sum + miss_b
+float exact_sell_vol = cur_sell_sum + miss_s
+
+// Push to persistent arrays
+array.push(bar_buy_vol_arr, exact_buy_vol)
+array.push(bar_sell_vol_arr, exact_sell_vol)
+if array.size(bar_buy_vol_arr) > 3000
+    array.shift(bar_buy_vol_arr)
+    array.shift(bar_sell_vol_arr)
 
 // Formatter helper
 f_formatNumber(float number) =>
@@ -332,18 +374,22 @@ if barstate.islast
             label.new(bar_x + 2, ym3, "Channel Low (-3 SD): " + str.tostring(ym3, format.mintick), color=color.new(dark, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
 
     // -------------------------------------------------------------------------
-    // 6. CURVED/SLANTED VOLUME PROFILE
+    // 6. CURVED/SLANTED VOLUME PROFILE (SE-PRESISI MUNGKIN DENGAN HORIZONTAL LINES)
     // -------------------------------------------------------------------------
     float max_bar_vol = 0.0
     int poc_k = 0
     
-    // Pre-calculate max volume inside the volume profile boundaries
+    // Pre-calculate max volume inside the volume profile boundaries using the precise stored values
     for k = 0 to vp_bars_count - 1
         int idx = reg_lookback - vp_bars_count + k
         if idx >= 0 and idx < reg_lookback
-            float v = nz(volume[reg_lookback - 1 - (reg_lookback - 1 - idx)])
-            if v > max_bar_vol
-                max_bar_vol := v
+            // Correct offset calculation using the historical array or close series
+            int hist_offset = reg_lookback - 1 - idx
+            float bv_p = nz(array.get(bar_buy_vol_arr, array.size(bar_buy_vol_arr) - 1 - hist_offset))
+            float sv_p = nz(array.get(bar_sell_vol_arr, array.size(bar_sell_vol_arr) - 1 - hist_offset))
+            float tot_p = bv_p + sv_p
+            if tot_p > max_bar_vol
+                max_bar_vol := tot_p
                 poc_k := k
                 
     // Render curved/slanted volume profile aligning with the regression curve
@@ -353,45 +399,57 @@ if barstate.islast
             int bar_x = bar_index - (reg_lookback - 1 - idx)
             float yc = array.get(fitted_y, idx)
             
-            // Fixed reference variables to correct historical state calculation
-            float h_op = open[reg_lookback - 1 - idx]
-            float h_hi = high[reg_lookback - 1 - idx]
-            float h_lo = low[reg_lookback - 1 - idx]
-            float h_cl = close[reg_lookback - 1 - idx]
-            float v = nz(volume[reg_lookback - 1 - idx])
+            int hist_offset = reg_lookback - 1 - idx
+            float b_vol = nz(array.get(bar_buy_vol_arr, array.size(bar_buy_vol_arr) - 1 - hist_offset))
+            float s_vol = nz(array.get(bar_sell_vol_arr, array.size(bar_sell_vol_arr) - 1 - hist_offset))
+            float total_vol = b_vol + s_vol
             
-            if v > 0
-                [b_vol, s_vol] = calc_vol_partition(h_op, h_hi, h_lo, h_cl, v)
-                bool is_bull_dom = b_vol >= s_vol
-                
-                int length_bars = math.round((v / max_bar_vol) * max_width_bars)
-                length_bars := math.max(1, length_bars)
-                
-                float h_half = sd * box_height_factor
-                float top_y = yc + h_half
-                float bottom_y = yc - h_half
-                
-                color blk_color = is_bull_dom ? color.new(col_bull, 60) : color.new(col_bear, 60)
-                color border_col = is_bull_dom ? color.new(col_bull, 40) : color.new(col_bear, 40)
-                
+            if total_vol > 0
                 bool is_poc = k == poc_k
                 if is_poc
-                    blk_color := color.new(col_bear, 25)
-                    border_col := color.new(col_bear, 10)
                     current_poc_level := yc
-                    current_poc_vol := v
+                    current_poc_vol := total_vol
+
+                // Calculate line segment length proportional to total volume
+                float total_proportion = total_vol / max_bar_vol
+                float buy_proportion  = b_vol / total_vol
+                float sell_proportion = s_vol / total_vol
+
+                float total_length_bars = total_proportion * max_width_bars
+                float buy_length_bars  = total_length_bars * buy_proportion
+                float sell_length_bars = total_length_bars * sell_proportion
+
+                // Ensure minor minimum length so lines remain visible
+                if buy_length_bars == 0.0 and b_vol > 0
+                    buy_length_bars := 0.2
+                if sell_length_bars == 0.0 and s_vol > 0
+                    sell_length_bars := 0.2
                     
-                string block_txt = show_block_val ? f_formatNumber(v) : ""
+                // Render buy volume line (stacked on the left)
+                int buy_end_x = math.round(bar_x + buy_length_bars)
+                color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
+                line buy_line = line.new(x1=bar_x, y1=yc, x2=buy_end_x, y2=yc,
+                                         color=b_line_col, width=volume_line_width, style=line.style_solid)
+                array.push(vp_lines, buy_line)
+
+                // Render sell volume line (stacked on the right of buy volume)
+                int sell_start_x = buy_end_x
+                int sell_end_x = math.round(sell_start_x + sell_length_bars)
+                color s_line_col = is_poc ? color.new(col_poc, 30) : color.new(col_bear, 20)
+                line sell_line = line.new(x1=sell_start_x, y1=yc, x2=sell_end_x, y2=yc,
+                                          color=s_line_col, width=volume_line_width, style=line.style_solid)
+                array.push(vp_lines, sell_line)
                 
-                box blk = box.new(left=bar_x, top=top_y, right=bar_x + length_bars, bottom=bottom_y,
-                                  bgcolor=blk_color, border_color=border_col, border_width=1,
-                                  text=block_txt, text_color=white, text_size=size.auto,
-                                  text_halign=text.align_center, text_valign=text.align_center)
-                array.push(vp_boxes, blk)
+                // Format block text if show_block_val is enabled
+                if show_block_val
+                    label val_lbl = label.new(x=sell_end_x, y=yc, text=f_formatNumber(total_vol),
+                                              color=color.new(dark, 100), textcolor=white,
+                                              style=label.style_label_left, size=size.tiny)
+                    array.push(vp_labels, val_lbl)
                 
                 if is_poc and show_poc_label
-                    label poc_badge = label.new(x=bar_x + length_bars, y=yc,
-                                                text="<- POC Vol: " + f_formatNumber(v),
+                    label poc_badge = label.new(x=sell_end_x + 1, y=yc,
+                                                text="<- POC Vol: " + f_formatNumber(total_vol),
                                                 color=color.new(col_bear, 10), textcolor=dark,
                                                 style=label.style_label_left, size=size.tiny,
                                                 text_formatting=text.format_bold)
