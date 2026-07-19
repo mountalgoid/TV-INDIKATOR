@@ -202,11 +202,12 @@ distribute_vol_detrended(int _rows, float _lowest_detrended, float _inv_row_h, f
 
     if max_idx >= 0
         if _range_val <= 0
-            int idx = math.min(max_idx, math.max(0, math.floor((_c_det - _lowest_detrended) * _inv_row_h)))
-            array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
-            float v_half = _v_total * 0.5
-            array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + v_half)
-            array.set(_bucket_sell, idx, array.get(_bucket_sell, idx) + v_half)
+            int idx = math.floor((_c_det - _lowest_detrended) * _inv_row_h)
+            if idx >= 0 and idx <= max_idx
+                array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
+                float v_half = _v_total * 0.5
+                array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + v_half)
+                array.set(_bucket_sell, idx, array.get(_bucket_sell, idx) + v_half)
         else
             float inv_range = 1.0 / _range_val
             float w_l = (b_low - _l_det) * inv_range
@@ -223,35 +224,41 @@ distribute_vol_detrended(int _rows, float _lowest_detrended, float _inv_row_h, f
             float br_b = _c_det > _o_det ? math.min(0.9, 0.6 + body_pos * 0.3) : (_c_det < _o_det ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
 
             if v_l > 0
-                int idx_l = math.min(max_idx, math.max(0, math.floor((_l_det - _lowest_detrended) * _inv_row_h)))
-                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_detrended) * _inv_row_h)))
-                if idx_l <= idx_h
+                int idx_l = math.floor((_l_det - _lowest_detrended) * _inv_row_h)
+                int idx_h = math.floor((b_low - _lowest_detrended) * _inv_row_h)
+                int start_j = math.max(0, idx_l)
+                int end_j = math.min(max_idx, idx_h)
+                if start_j <= end_j and idx_l <= idx_h
                     float v_j = v_l / (idx_h - idx_l + 1)
                     float v_j_buy = v_j * 0.90
                     float v_j_sell = v_j * 0.10
-                    for j = idx_l to idx_h
+                    for j = start_j to end_j
                         array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
             if v_b > 0
-                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_detrended) * _inv_row_h)))
-                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_detrended) * _inv_row_h)))
-                if idx_l <= idx_h
+                int idx_l = math.floor((b_low - _lowest_detrended) * _inv_row_h)
+                int idx_h = math.floor((b_high - _lowest_detrended) * _inv_row_h)
+                int start_j = math.max(0, idx_l)
+                int end_j = math.min(max_idx, idx_h)
+                if start_j <= end_j and idx_l <= idx_h
                     float v_j = v_b / (idx_h - idx_l + 1)
                     float v_j_buy = v_j * br_b
                     float v_j_sell = v_j * (1.0 - br_b)
-                    for j = idx_l to idx_h
+                    for j = start_j to end_j
                         array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
             if v_u > 0
-                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_detrended) * _inv_row_h)))
-                int idx_h = math.min(max_idx, math.max(0, math.floor((_h_det - _lowest_detrended) * _inv_row_h)))
-                if idx_l <= idx_h
+                int idx_l = math.floor((b_high - _lowest_detrended) * _inv_row_h)
+                int idx_h = math.floor((_h_det - _lowest_detrended) * _inv_row_h)
+                int start_j = math.max(0, idx_l)
+                int end_j = math.min(max_idx, idx_h)
+                if start_j <= end_j and idx_l <= idx_h
                     float v_j = v_u / (idx_h - idx_l + 1)
                     float v_j_buy = v_j * 0.10
                     float v_j_sell = v_j * 0.90
-                    for j = idx_l to idx_h
+                    for j = start_j to end_j
                         array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
@@ -476,7 +483,7 @@ if barstate.islast
         array.push(live_labels, lbl_vah)
         array.push(live_labels, lbl_val)
 
-    // Render Stats Boxes Above and Below the session boundaries if enabled
+    // Render Stats Boxes stacked vertically to the left of the volume profile
     if show_stats_boxes
         color buy_col_theme  = color.new(col_bull, 85)
         color sell_col_theme = color.new(col_bear, 85)
@@ -484,60 +491,33 @@ if barstate.islast
         color border_theme_c = color.new(white, 70)
 
         // Strings to display inside the panels
-        string str_buy_val   = "Buy: " + f_formatNumber(total_buy_vol)
-        string str_sell_val  = "Sell: " + f_formatNumber(total_sell_vol)
-        string str_delta_val = "Δ: " + (total_delta_vol >= 0 ? "+" : "") + f_formatNumber(total_delta_vol)
+        string str_buy_val   = "Buy:\n" + f_formatNumber(total_buy_vol)
+        string str_sell_val  = "Sell:\n" + f_formatNumber(total_sell_vol)
+        string str_delta_val = "Δ:\n" + (total_delta_vol >= 0 ? "+" : "") + f_formatNumber(total_delta_vol)
 
-        float stats_box_h = step * 1.5
+        // Total vertical span of the regression channel at start_idx
+        float channel_span = 4.0 * std_dev
+        float box_height = channel_span / 3.0
 
-        int buy_box_left   = start_idx
-        int buy_box_right  = buy_box_left
-        int sell_box_left  = buy_box_left
-        int sell_box_right = buy_box_left
-        int delta_box_left  = start_idx + max_blocks - delta_box_width
-        int delta_box_right = start_idx + max_blocks
+        int box_left = start_idx - delta_box_width
+        int box_right = start_idx
 
-        int remaining_width = math.max(0, delta_box_left - buy_box_left)
-        float total_buysell_sum = total_buy_vol + total_sell_vol
-        if total_buysell_sum > 0
-            int computed_buy_w = math.round(remaining_width * (total_buy_vol / total_buysell_sum))
-            buy_box_right  := buy_box_left + computed_buy_w
-            sell_box_left  := buy_box_right
-            sell_box_right := delta_box_left
-        else
-            int half_w = math.round(remaining_width * 0.5)
-            buy_box_right  := buy_box_left + half_w
-            sell_box_left  := buy_box_right
-            sell_box_right := delta_box_left
+        float y_top_buy = c + max_detrended
+        float y_bot_buy = y_top_buy - box_height
 
-        if total_delta_vol < 0
-            // TOP Stats Boxes (Negative Delta)
-            float top_box_y1 = (c + max_detrended) + stats_box_h
-            float top_box_y2 = (c + max_detrended)
+        float y_top_sell = y_bot_buy
+        float y_bot_sell = y_top_sell - box_height
 
-            if buy_box_right > buy_box_left
-                box top_buy_b = box.new(left=buy_box_left, top=top_box_y1, right=buy_box_right, bottom=top_box_y2, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
-                array.push(live_boxes, top_buy_b)
-            if sell_box_right > sell_box_left
-                box top_sell_b = box.new(left=sell_box_left, top=top_box_y1, right=sell_box_right, bottom=top_box_y2, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
-                array.push(live_boxes, top_sell_b)
-            if delta_box_right > delta_box_left
-                box top_delta_b = box.new(left=delta_box_left, top=top_box_y1, right=delta_box_right, bottom=top_box_y2, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
-                array.push(live_boxes, top_delta_b)
-        else
-            // BOTTOM Stats Boxes (Positive or Neutral Delta)
-            float btm_box_y1 = (c + min_detrended)
-            float btm_box_y2 = (c + min_detrended) - stats_box_h
+        float y_top_delta = y_bot_sell
+        float y_bot_delta = c + min_detrended
 
-            if buy_box_right > buy_box_left
-                box btm_buy_b = box.new(left=buy_box_left, top=btm_box_y1, right=buy_box_right, bottom=btm_box_y2, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
-                array.push(live_boxes, btm_buy_b)
-            if sell_box_right > sell_box_left
-                box btm_sell_b = box.new(left=sell_box_left, top=btm_box_y1, right=sell_box_right, bottom=btm_box_y2, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
-                array.push(live_boxes, btm_sell_b)
-            if delta_box_right > delta_box_left
-                box btm_delta_b = box.new(left=delta_box_left, top=btm_box_y1, right=delta_box_right, bottom=btm_box_y2, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
-                array.push(live_boxes, btm_delta_b)
+        if box_right > box_left
+            box buy_b = box.new(left=box_left, top=y_top_buy, right=box_right, bottom=y_bot_buy, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
+            box sell_b = box.new(left=box_left, top=y_top_sell, right=box_right, bottom=y_bot_sell, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
+            box delta_b = box.new(left=box_left, top=y_top_delta, right=box_right, bottom=y_bot_delta, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
+            array.push(live_boxes, buy_b)
+            array.push(live_boxes, sell_b)
+            array.push(live_boxes, delta_b)
 
 //════════════════════════════════════════════════════════════════════════
 // 7. UPGRADED HUD TABLE DASHBOARD (OANDA-style, matches user image)
@@ -557,7 +537,7 @@ if show_table and barstate.islast
     // Table Header
     string header_txt = "[MarkitTick] Sloped Profile   OANDA:" + str.tostring(syminfo.ticker) + " • " + str.tostring(timeframe.period)
     table.merge_cells(info_table, 0, 0, 1, 0)
-    table.cell(info_table, 0, 0, header_txt, bgcolor=color.new(#1a237e, 50), text_color=white, text_size=size.small, text_formatting=text.format_bold)
+    table.cell(info_table, 0, 0, header_txt, bgcolor=color.new(#1a237e, 50), text_color=white, text_size=size.small, text_format=text.format_bold)
 
     // 1. LinReg Slope
     string slope_dir = m >= 0 ? "▲ Bullish" : "▼ Bearish"
