@@ -578,11 +578,12 @@ if barstate.islast
                 // Draw Sell lines & fill
                 color s_line_col = is_poc ? color.new(col_poc, 30) : color.new(col_bear, 20)
                 color s_fill_col = is_poc ? color.new(col_poc, 50) : color.new(col_bear, 60)
+                int s_line_w = is_poc ? volume_line_width : 1
 
                 line sell_top_line = line.new(x1=sell_start_x, y1=sell_top_left, x2=sell_end_x, y2=sell_top_right,
-                                              color=s_line_col, width=volume_line_width, style=line.style_solid)
+                                              color=s_line_col, width=s_line_w, style=line.style_solid)
                 line sell_bot_line = line.new(x1=sell_start_x, y1=sell_bot_left, x2=sell_end_x, y2=sell_bot_right,
-                                              color=s_line_col, width=volume_line_width, style=line.style_solid)
+                                              color=s_line_col, width=s_line_w, style=line.style_solid)
                 array.push(vp_lines, sell_top_line)
                 array.push(vp_lines, sell_bot_line)
                 linefill.new(sell_top_line, sell_bot_line, color=s_fill_col)
@@ -590,11 +591,12 @@ if barstate.islast
                 // Draw Buy lines & fill
                 color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
                 color b_fill_col = is_poc ? color.new(col_poc, 30) : color.new(col_bull, 60)
+                int b_line_w = is_poc ? volume_line_width : 1
 
                 line buy_top_line = line.new(x1=buy_start_x, y1=buy_top_left, x2=buy_end_x, y2=buy_top_right,
-                                             color=b_line_col, width=volume_line_width, style=line.style_solid)
+                                             color=b_line_col, width=b_line_w, style=line.style_solid)
                 line buy_bot_line = line.new(x1=buy_start_x, y1=buy_bot_left, x2=buy_end_x, y2=buy_bot_right,
-                                             color=b_line_col, width=volume_line_width, style=line.style_solid)
+                                             color=b_line_col, width=b_line_w, style=line.style_solid)
                 array.push(vp_lines, buy_top_line)
                 array.push(vp_lines, buy_bot_line)
                 linefill.new(buy_top_line, buy_bot_line, color=b_fill_col)
@@ -623,11 +625,12 @@ if barstate.islast
                 bool is_bull_dom = b_vol >= s_vol
                 color line_col = is_poc ? color.new(col_poc, 0) : (is_bull_dom ? color.new(col_bull, 20) : color.new(col_bear, 20))
                 color fill_col = is_poc ? color.new(col_poc, 30) : (is_bull_dom ? color.new(col_bull, 60) : color.new(col_bear, 60))
+                int normal_line_w = is_poc ? volume_line_width : 1
 
                 line top_line = line.new(x1=total_start_x, y1=top_left, x2=total_end_x, y2=top_right,
-                                         color=line_col, width=volume_line_width, style=line.style_solid)
+                                         color=line_col, width=normal_line_w, style=line.style_solid)
                 line bot_line = line.new(x1=total_start_x, y1=bot_left, x2=total_end_x, y2=bot_right,
-                                         color=line_col, width=volume_line_width, style=line.style_solid)
+                                         color=line_col, width=normal_line_w, style=line.style_solid)
                 array.push(vp_lines, top_line)
                 array.push(vp_lines, bot_line)
                 linefill.new(top_line, bot_line, color=fill_col)
@@ -649,7 +652,7 @@ if barstate.islast
                 array.push(vp_labels, poc_badge)
 
     // Helper for rendering full-width slanted indicator level lines (VAH, VAL, HVN, LVN, Large Vol)
-    draw_slanted_level_line(int r, string name, color col, string line_style) =>
+    draw_slanted_level_line(r, name, col, line_style) =>
         float yc_r = ym3 + (r + 0.5) * row_step
         // We render the line across the lookback range from (right_x - vp_bars_count) to right_x
         line_style_val = switch line_style
@@ -671,7 +674,7 @@ if barstate.islast
                 float y_prev = yc_r + a1 * t_prev + a2 * t_prev * t_prev
 
                 line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
-                                    color=col, width=2, style=line_style_val)
+                                    color=col, width=1, style=line_style_val)
                 array.push(vp_lines, seg)
 
             if offset == vp_bars_count
