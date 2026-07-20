@@ -388,10 +388,12 @@ if barstate.islast
             line lc = line.new(bar_x_prev, yc_prev, bar_x, yc, color=base_line_col, width=2)
             line lp1 = line.new(bar_x_prev, yc_prev + 1 * sd, bar_x, yp1, color=color.new(white, 40), width=1, style=line.style_dashed)
             line lp2 = line.new(bar_x_prev, yc_prev + 2 * sd, bar_x, yp2, color=color.new(white, 60), width=1, style=line.style_dashed)
-            line lp3 = line.new(bar_x_prev, yc_prev + 3 * sd, bar_x, yp3, color=color.new(white, 80), width=1, style=line.style_dotted)
+            // Enhanced boundary visibility: solid line.style_solid with thickness of 2
+            line lp3 = line.new(bar_x_prev, yc_prev + 3 * sd, bar_x, yp3, color=color.new(col_bear, 10), width=2, style=line.style_solid)
             line lm1 = line.new(bar_x_prev, yc_prev - 1 * sd, bar_x, ym1, color=color.new(white, 40), width=1, style=line.style_dashed)
             line lm2 = line.new(bar_x_prev, yc_prev - 2 * sd, bar_x, ym2, color=color.new(white, 60), width=1, style=line.style_dashed)
-            line lm3 = line.new(bar_x_prev, yc_prev - 3 * sd, bar_x, ym3, color=color.new(white, 80), width=1, style=line.style_dotted)
+            // Enhanced boundary visibility: solid line.style_solid with thickness of 2
+            line lm3 = line.new(bar_x_prev, yc_prev - 3 * sd, bar_x, ym3, color=color.new(col_bull, 10), width=2, style=line.style_solid)
             
             array.push(reg_lines, lc)
             array.push(reg_lines, lp1)
@@ -417,7 +419,7 @@ if barstate.islast
             label.new(bar_index + 2, ym3, "Channel Low (-3 SD): " + str.tostring(ym3, format.mintick), color=color.new(dark, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
 
     // -------------------------------------------------------------------------
-    // 6. VOLUME PROFILE CALCULATION & SLANTED/CURVED RENDERING
+    // 6. VOLUME PROFILE CALCULATION & SLANTED/CURVED RENDERING (UNIFORM ALIGNED EDGES)
     // -------------------------------------------------------------------------
     array.fill(row_buy_vol, 0.0)
     array.fill(row_sell_vol, 0.0)
@@ -487,8 +489,8 @@ if barstate.islast
         total_buy_percentage := (total_buy_sum / total_profile_vol) * 100.0
         total_sell_percentage := 100.0 - total_buy_percentage
 
-    // Render original slanted/curved profile blocks conforming to the regression curves ("angle volume profile tetap")
-    // and utilizing highly saturated, solid opaque fills ("fill volume pekat", opacity = 15% transparency / 85% opaque)
+    // Render slanted/curved profile blocks conforming to the regression curves ("angle volume profile tetap")
+    // Aligns the start and end coordinates with the exact rounded integer bar offsets to remove uneven skewed slants ("menceng sedikit-sedikit")
     for r = 0 to vp_bars_count - 1
         float b_vol = array.get(row_buy_vol, r)
         float s_vol = array.get(row_sell_vol, r)
@@ -521,14 +523,17 @@ if barstate.islast
 
             if vp_align == "Left"
                 if vp_mode_view == "Delta"
+                    int sell_len_int = math.round(sell_length_bars)
+                    int buy_len_int = math.round(buy_length_bars)
+
                     int sell_start_x = left_x
-                    int sell_end_x = math.round(left_x + sell_length_bars)
+                    int sell_end_x = left_x + sell_len_int
                     int buy_start_x = sell_end_x
-                    int buy_end_x = math.round(sell_end_x + buy_length_bars)
+                    int buy_end_x = sell_end_x + buy_len_int
 
                     float t_sell_start = t_left
-                    float t_sell_end   = t_left + sell_length_bars
-                    float t_buy_end    = t_sell_end + buy_length_bars
+                    float t_sell_end   = t_left + sell_len_int
+                    float t_buy_end    = t_sell_end + buy_len_int
 
                     float curve_sell_start = a1 * t_sell_start + a2 * t_sell_start * t_sell_start
                     float curve_sell_end   = a1 * t_sell_end + a2 * t_sell_end * t_sell_end
@@ -580,11 +585,13 @@ if barstate.islast
                         array.push(vp_labels, val_lbl)
 
                 else
+                    int tot_len_int = math.round(total_length_bars)
+
                     int total_start_x = left_x
-                    int total_end_x = math.round(left_x + total_length_bars)
+                    int total_end_x = left_x + tot_len_int
 
                     float t_tot_start = t_left
-                    float t_tot_end   = t_left + total_length_bars
+                    float t_tot_end   = t_left + tot_len_int
 
                     float curve_tot_start = a1 * t_tot_start + a2 * t_tot_start * t_tot_start
                     float curve_tot_end   = a1 * t_tot_end + a2 * t_tot_end * t_tot_end
@@ -617,16 +624,19 @@ if barstate.islast
             else
                 // Right aligned, projecting leftwards
                 if vp_mode_view == "Delta"
+                    int sell_len_int = math.round(sell_length_bars)
+                    int buy_len_int = math.round(buy_length_bars)
+
                     int sell_end_x = bar_index
-                    int sell_start_x = math.round(bar_index - sell_length_bars)
+                    int sell_start_x = bar_index - sell_len_int
                     int buy_end_x = sell_start_x
-                    int buy_start_x = math.round(sell_start_x - buy_length_bars)
+                    int buy_start_x = sell_start_x - buy_len_int
 
-                    float t_sell = -sell_length_bars
+                    float t_sell = -sell_len_int
+                    float t_buy  = -(sell_len_int + buy_len_int)
+
                     float curve_sell = a1 * t_sell + a2 * t_sell * t_sell
-
-                    float t_buy = -(sell_length_bars + buy_length_bars)
-                    float curve_buy = a1 * t_buy + a2 * t_buy * t_buy
+                    float curve_buy  = a1 * t_buy + a2 * t_buy * t_buy
 
                     // Sell slanted boundaries
                     float sell_top_right = y_center_relative + h_half
@@ -672,10 +682,12 @@ if barstate.islast
                         array.push(vp_labels, val_lbl)
 
                 else
-                    int total_end_x = bar_index
-                    int total_start_x = math.round(bar_index - total_length_bars)
+                    int tot_len_int = math.round(total_length_bars)
 
-                    float t_tot = -total_length_bars
+                    int total_end_x = bar_index
+                    int total_start_x = bar_index - tot_len_int
+
+                    float t_tot = -tot_len_int
                     float curve_tot = a1 * t_tot + a2 * t_tot * t_tot
 
                     float top_right = y_center_relative + h_half
@@ -706,9 +718,6 @@ if barstate.islast
     // -------------------------------------------------------------------------
     // 7. LEVEL LINES & LABELS SHIFTED IN FRONT (TO THE RIGHT) OF THE REGRESSION CHANNEL
     // -------------------------------------------------------------------------
-    // All identification lines are drawn as perfectly horizontal projection lines in front of the channel.
-    // They start at bar_index (the rightmost boundary) and project into the future to bar_index + 15,
-    // aligned to their exact flat detrended price levels occurring inside the profile area (relative to the detrended baseline).
     int start_proj_x = bar_index
     int end_proj_x   = bar_index + 15
     int label_proj_x = bar_index + 16
