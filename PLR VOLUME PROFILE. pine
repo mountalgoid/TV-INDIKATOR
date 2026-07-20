@@ -12,7 +12,7 @@ step_size        = input.int(3, "Line Segment Step Size", minval=1, maxval=10, g
 string grp_vp    = "Volume Profile Settings"
 vp_bars_count    = input.int(40, "Profile Width (Bars)", minval=10, maxval=100, group=grp_vp, tooltip="Number of rightmost bars included in the volume profile.")
 max_width_bars   = input.int(15, "Max Bar Length (Bars)", minval=5, maxval=50, group=grp_vp, tooltip="Maximum horizontal length of a volume bar.")
-volume_line_width = input.int(1, "Volume Line Width", minval=1, maxval=10, group=grp_vp, tooltip="Line width of the Point of Control (POC) volume profile bar.")
+volume_line_width = input.int(2, "Volume Line Width", minval=1, maxval=10, group=grp_vp, tooltip="Line width of the Point of Control (POC) volume profile bar.")
 box_height_factor = input.float(0.08, "Volume Bar Thickness", minval=0.01, maxval=0.5, step=0.01, group=grp_vp, tooltip="Vertical thickness of each volume profile bar.")
 gap_factor       = input.float(0.15, "Vertical Bar Gap", minval=0.0, maxval=0.5, step=0.05, group=grp_vp, tooltip="Vertical spacing/gap between individual curved volume profile rows.")
 vp_mode_view     = input.string("Normal", "Profile View Mode", options=["Normal", "Delta"], group=grp_vp, tooltip="View mode. 'Normal' draws a single dominant volume block. 'Delta' draws stacked buy and sell blocks.")
@@ -161,8 +161,7 @@ get_ltf_v() =>
 
 [ltf_o, ltf_h, ltf_l, ltf_c, ltf_v, ltf_b, ltf_s] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_v())
 
-// Calculate and record exact buy/sell statistics for current bar globally as series variables.
-// This completely avoids the memory shifting overhead of array buffers on every bar!
+// Calculate exact buy/sell volume as series variables on every bar globally
 float cur_buy_sum  = 0.0
 float cur_sell_sum = 0.0
 int ltf_count = array.size(ltf_v)
@@ -178,7 +177,6 @@ if ltf_count > 0
 float missing_v = math.max(0.0, nz(volume) - ltf_v_total)
 [miss_b, miss_s] = calc_vol_partition(open, high, low, close, missing_v)
 
-// Series variables updated on every single bar historically
 float exact_buy_vol  = cur_buy_sum + miss_b
 float exact_sell_vol = cur_sell_sum + miss_s
 
@@ -360,11 +358,9 @@ if barstate.islast
         
     float sd = math.sqrt(sum_sq_residuals / reg_lookback)
     
-    // Direction bias defined by derivative/slope at t = 0 (current bar)
     direction_bias := a1
     direction_str := a1 > 0 ? "Bullish ↗" : "Bearish ↘"
     
-    // Left and right alignment coordinates
     int left_x = bar_index - (reg_lookback - 1)
     float t_left = -(reg_lookback - 1)
 
@@ -413,7 +409,6 @@ if barstate.islast
             current_chan_high := yp3
             current_chan_low := ym3
             
-            // Labels on the right side of the channel (Standard labels with tiny size and clean styling)
             label.new(bar_index + 2, yp3, "Channel High (+3 SD): " + str.tostring(yp3, format.mintick), color=color.new(dark, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
             label.new(bar_index + 2, yp2, "+2 SD", color=color.new(dark, 100), textcolor=color.new(white, 50), size=size.tiny, style=label.style_label_left)
             label.new(bar_index + 2, yp1, "+1 SD", color=color.new(dark, 100), textcolor=color.new(white, 40), size=size.tiny, style=label.style_label_left)
@@ -422,12 +417,11 @@ if barstate.islast
             label.new(bar_index + 2, ym3, "Channel Low (-3 SD): " + str.tostring(ym3, format.mintick), color=color.new(dark, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
 
     // -------------------------------------------------------------------------
-    // 6. CURVED VOLUME PROFILE CALCULATIONS
+    // 6. VOLUME PROFILE CALCULATION & FLAT HORIZONTAL ROW DRAWINGS
     // -------------------------------------------------------------------------
     array.fill(row_buy_vol, 0.0)
     array.fill(row_sell_vol, 0.0)
 
-    // Calculate row heights stretching across the entire width of the regression channel
     float yp3 = a0 + 3 * sd
     float ym3 = a0 - 3 * sd
     float channel_height = yp3 - ym3
@@ -439,7 +433,6 @@ if barstate.islast
         int idx = reg_lookback - vp_bars_count + k
         if idx >= 0 and idx < reg_lookback
             int hist_offset = reg_lookback - 1 - idx
-            // Reference the global high-precision variables directly with bracket syntax!
             float b_vol = nz(exact_buy_vol[hist_offset])
             float s_vol = nz(exact_sell_vol[hist_offset])
 
@@ -448,7 +441,6 @@ if barstate.islast
             float h_lo = low[hist_offset]
             float h_cl = close[hist_offset]
 
-            // Detrend prices to align with flat row coordinates
             float t_offset = idx - (reg_lookback - 1)
             float curve_yc = a0 + a1 * t_offset + a2 * t_offset * t_offset
             float curve_delta = curve_yc - a0
@@ -490,13 +482,20 @@ if barstate.islast
 
     float avg_row_vol = total_profile_vol / vp_bars_count
 
-    // Store percentage of buy and sell volume
     float total_buy_sum = array.sum(row_buy_vol)
     if total_profile_vol > 0
         total_buy_percentage := (total_buy_sum / total_profile_vol) * 100.0
         total_sell_percentage := 100.0 - total_buy_percentage
 
-    // Render slanted/curved glass blocks following the regression curvature
+    // To make the row blocks perfectly flat, neat, and straight (horizontal) without slanted wavy overlaps:
+    // We calculate a single flat price shift at the profile's anchor point (attachment point).
+    // For Left alignment: t = t_left = -(reg_lookback - 1)
+    // For Right alignment: t = 0
+    float curve_anchor = 0.0
+    if vp_align == "Left"
+        curve_anchor := a1 * t_left + a2 * t_left * t_left
+
+    // Render perfectly straight, flat horizontal blocks with solid saturated opaque fills ("fill volume pekat")
     for r = 0 to vp_bars_count - 1
         float b_vol = array.get(row_buy_vol, r)
         float s_vol = array.get(row_sell_vol, r)
@@ -505,10 +504,11 @@ if barstate.islast
         if total_vol > 0
             bool is_poc = r == poc_row_idx
 
-            float y_center_relative = ym3 + (r + 0.5) * row_step
+            // Perfect flat vertical coordinates shifted by curve_anchor
+            float y_center_flat = ym3 + (r + 0.5) * row_step + curve_anchor
 
             if is_poc
-                current_poc_level := y_center_relative
+                current_poc_level := y_center_flat
                 current_poc_vol := total_vol
 
             // Compute lengths proportional to total volume
@@ -527,6 +527,10 @@ if barstate.islast
 
             float h_half = (row_step / 2) * (1.0 - gap_factor) * (box_height_factor / 0.08)
 
+            // Flat vertical coordinate boundaries for both left and right points to prevent slant/wavy rows
+            float top_flat = y_center_flat + h_half
+            float bot_flat = y_center_flat - h_half
+
             if vp_align == "Left"
                 if vp_mode_view == "Delta"
                     int sell_start_x = left_x
@@ -534,55 +538,34 @@ if barstate.islast
                     int buy_start_x = sell_end_x
                     int buy_end_x = math.round(sell_end_x + buy_length_bars)
 
-                    float t_sell_start = t_left
-                    float t_sell_end   = t_left + sell_length_bars
-                    float t_buy_end    = t_sell_end + buy_length_bars
-
-                    float curve_sell_start = a1 * t_sell_start + a2 * t_sell_start * t_sell_start
-                    float curve_sell_end   = a1 * t_sell_end + a2 * t_sell_end * t_sell_end
-                    float curve_buy_end    = a1 * t_buy_end + a2 * t_buy_end * t_buy_end
-
-                    // Sell boundaries
-                    float sell_top_left  = y_center_relative + curve_sell_start + h_half
-                    float sell_bot_left  = y_center_relative + curve_sell_start - h_half
-                    float sell_top_right = y_center_relative + curve_sell_end + h_half
-                    float sell_bot_right = y_center_relative + curve_sell_end - h_half
-
-                    // Buy boundaries
-                    float buy_top_left  = y_center_relative + curve_sell_end + h_half
-                    float buy_bot_left  = y_center_relative + curve_sell_end - h_half
-                    float buy_top_right = y_center_relative + curve_buy_end + h_half
-                    float buy_bot_right = y_center_relative + curve_buy_end - h_half
-
-                    // Draw Sell lines & fill (Optimized visual hierarchy: Non-POC lines use width=1)
-                    color s_line_col = is_poc ? color.new(col_poc, 30) : color.new(col_bear, 20)
-                    color s_fill_col = is_poc ? color.new(col_poc, 50) : color.new(col_bear, 60)
+                    // Draw Sell lines & fill (Highly saturated "pekat" colors, opacity = 10% transparency / 90% opaque)
+                    color s_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bear, 10)
+                    color s_fill_col = is_poc ? color.new(col_poc, 5) : color.new(col_bear, 15)
                     int s_line_w = is_poc ? volume_line_width : 1
 
-                    line sell_top_line = line.new(x1=sell_start_x, y1=sell_top_left, x2=sell_end_x, y2=sell_top_right,
+                    line sell_top_line = line.new(x1=sell_start_x, y1=top_flat, x2=sell_end_x, y2=top_flat,
                                                   color=s_line_col, width=s_line_w, style=line.style_solid)
-                    line sell_bot_line = line.new(x1=sell_start_x, y1=sell_bot_left, x2=sell_end_x, y2=sell_bot_right,
+                    line sell_bot_line = line.new(x1=sell_start_x, y1=bot_flat, x2=sell_end_x, y2=bot_flat,
                                                   color=s_line_col, width=s_line_w, style=line.style_solid)
                     array.push(vp_lines, sell_top_line)
                     array.push(vp_lines, sell_bot_line)
                     linefill.new(sell_top_line, sell_bot_line, color=s_fill_col)
 
-                    // Draw Buy lines & fill
-                    color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
-                    color b_fill_col = is_poc ? color.new(col_poc, 30) : color.new(col_bull, 60)
+                    // Draw Buy lines & fill (Highly saturated "pekat" colors)
+                    color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 10)
+                    color b_fill_col = is_poc ? color.new(col_poc, 5) : color.new(col_bull, 15)
                     int b_line_w = is_poc ? volume_line_width : 1
 
-                    line buy_top_line = line.new(x1=buy_start_x, y1=buy_top_left, x2=buy_end_x, y2=buy_top_right,
+                    line buy_top_line = line.new(x1=buy_start_x, y1=top_flat, x2=buy_end_x, y2=top_flat,
                                                  color=b_line_col, width=b_line_w, style=line.style_solid)
-                    line buy_bot_line = line.new(x1=buy_start_x, y1=buy_bot_left, x2=buy_end_x, y2=buy_bot_right,
+                    line buy_bot_line = line.new(x1=buy_start_x, y1=bot_flat, x2=buy_end_x, y2=bot_flat,
                                                  color=b_line_col, width=b_line_w, style=line.style_solid)
                     array.push(vp_lines, buy_top_line)
                     array.push(vp_lines, buy_bot_line)
                     linefill.new(buy_top_line, buy_bot_line, color=b_fill_col)
 
                     if show_block_val
-                        float y_center_right = y_center_relative + curve_buy_end
-                        label val_lbl = label.new(x=buy_end_x, y=y_center_right, text=f_formatNumber(total_vol),
+                        label val_lbl = label.new(x=buy_end_x, y=y_center_flat, text=f_formatNumber(total_vol),
                                                   color=color.new(dark, 100), textcolor=white,
                                                   style=label.style_label_left, size=size.tiny)
                         array.push(vp_labels, val_lbl)
@@ -591,33 +574,21 @@ if barstate.islast
                     int total_start_x = left_x
                     int total_end_x = math.round(left_x + total_length_bars)
 
-                    float t_tot_start = t_left
-                    float t_tot_end   = t_left + total_length_bars
-
-                    float curve_tot_start = a1 * t_tot_start + a2 * t_tot_start * t_tot_start
-                    float curve_tot_end   = a1 * t_tot_end + a2 * t_tot_end * t_tot_end
-
-                    float top_left  = y_center_relative + curve_tot_start + h_half
-                    float bot_left  = y_center_relative + curve_tot_start - h_half
-                    float top_right = y_center_relative + curve_tot_end + h_half
-                    float bot_right = y_center_relative + curve_tot_end - h_half
-
                     bool is_bull_dom = b_vol >= s_vol
-                    color line_col = is_poc ? color.new(col_poc, 0) : (is_bull_dom ? color.new(col_bull, 20) : color.new(col_bear, 20))
-                    color fill_col = is_poc ? color.new(col_poc, 30) : (is_bull_dom ? color.new(col_bull, 60) : color.new(col_bear, 60))
+                    color line_col = is_poc ? color.new(col_poc, 0) : (is_bull_dom ? color.new(col_bull, 10) : color.new(col_bear, 10))
+                    color fill_col = is_poc ? color.new(col_poc, 5) : (is_bull_dom ? color.new(col_bull, 15) : color.new(col_bear, 15))
                     int normal_line_w = is_poc ? volume_line_width : 1
 
-                    line top_line = line.new(x1=total_start_x, y1=top_left, x2=total_end_x, y2=top_right,
+                    line top_line = line.new(x1=total_start_x, y1=top_flat, x2=total_end_x, y2=top_flat,
                                              color=line_col, width=normal_line_w, style=line.style_solid)
-                    line bot_line = line.new(x1=total_start_x, y1=bot_left, x2=total_end_x, y2=bot_right,
+                    line bot_line = line.new(x1=total_start_x, y1=bot_flat, x2=total_end_x, y2=bot_flat,
                                              color=line_col, width=normal_line_w, style=line.style_solid)
                     array.push(vp_lines, top_line)
                     array.push(vp_lines, bot_line)
                     linefill.new(top_line, bot_line, color=fill_col)
 
                     if show_block_val
-                        float y_center_right = y_center_relative + curve_tot_end
-                        label val_lbl = label.new(x=total_end_x, y=y_center_right, text=f_formatNumber(total_vol),
+                        label val_lbl = label.new(x=total_end_x, y=y_center_flat, text=f_formatNumber(total_vol),
                                                   color=color.new(dark, 100), textcolor=white,
                                                   style=label.style_label_left, size=size.tiny)
                         array.push(vp_labels, val_lbl)
@@ -630,51 +601,32 @@ if barstate.islast
                     int buy_end_x = sell_start_x
                     int buy_start_x = math.round(sell_start_x - buy_length_bars)
 
-                    float t_sell = -sell_length_bars
-                    float curve_sell = a1 * t_sell + a2 * t_sell * t_sell
-
-                    float t_buy = -(sell_length_bars + buy_length_bars)
-                    float curve_buy = a1 * t_buy + a2 * t_buy * t_buy
-
-                    // Sell boundaries
-                    float sell_top_right = y_center_relative + h_half
-                    float sell_bot_right = y_center_relative - h_half
-                    float sell_top_left  = y_center_relative + curve_sell + h_half
-                    float sell_bot_left  = y_center_relative + curve_sell - h_half
-
-                    // Buy boundaries
-                    float buy_top_right = y_center_relative + curve_sell + h_half
-                    float buy_bot_right = y_center_relative + curve_sell - h_half
-                    float buy_top_left  = y_center_relative + curve_buy + h_half
-                    float buy_bot_left  = y_center_relative + curve_buy - h_half
-
-                    color s_line_col = is_poc ? color.new(col_poc, 30) : color.new(col_bear, 20)
-                    color s_fill_col = is_poc ? color.new(col_poc, 50) : color.new(col_bear, 60)
+                    color s_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bear, 10)
+                    color s_fill_col = is_poc ? color.new(col_poc, 5) : color.new(col_bear, 15)
                     int s_line_w = is_poc ? volume_line_width : 1
 
-                    line sell_top_line = line.new(x1=sell_start_x, y1=sell_top_left, x2=sell_end_x, y2=sell_top_right,
+                    line sell_top_line = line.new(x1=sell_start_x, y1=top_flat, x2=sell_end_x, y2=top_flat,
                                                   color=s_line_col, width=s_line_w, style=line.style_solid)
-                    line sell_bot_line = line.new(x1=sell_start_x, y1=sell_bot_left, x2=sell_end_x, y2=sell_bot_right,
+                    line sell_bot_line = line.new(x1=sell_start_x, y1=bot_flat, x2=sell_end_x, y2=bot_flat,
                                                   color=s_line_col, width=s_line_w, style=line.style_solid)
                     array.push(vp_lines, sell_top_line)
                     array.push(vp_lines, sell_bot_line)
                     linefill.new(sell_top_line, sell_bot_line, color=s_fill_col)
 
-                    color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 20)
-                    color b_fill_col = is_poc ? color.new(col_poc, 30) : color.new(col_bull, 60)
+                    color b_line_col = is_poc ? color.new(col_poc, 0) : color.new(col_bull, 10)
+                    color b_fill_col = is_poc ? color.new(col_poc, 5) : color.new(col_bull, 15)
                     int b_line_w = is_poc ? volume_line_width : 1
 
-                    line buy_top_line = line.new(x1=buy_start_x, y1=buy_top_left, x2=buy_end_x, y2=buy_top_right,
+                    line buy_top_line = line.new(x1=buy_start_x, y1=top_flat, x2=buy_end_x, y2=top_flat,
                                                  color=b_line_col, width=b_line_w, style=line.style_solid)
-                    line buy_bot_line = line.new(x1=buy_start_x, y1=buy_bot_left, x2=buy_end_x, y2=buy_bot_right,
+                    line buy_bot_line = line.new(x1=buy_start_x, y1=bot_flat, x2=buy_end_x, y2=bot_flat,
                                                  color=b_line_col, width=b_line_w, style=line.style_solid)
                     array.push(vp_lines, buy_top_line)
                     array.push(vp_lines, buy_bot_line)
                     linefill.new(buy_top_line, buy_bot_line, color=b_fill_col)
 
                     if show_block_val
-                        float y_center_left = y_center_relative + curve_buy
-                        label val_lbl = label.new(x=buy_start_x, y=y_center_left, text=f_formatNumber(total_vol),
+                        label val_lbl = label.new(x=buy_start_x, y=y_center_flat, text=f_formatNumber(total_vol),
                                                   color=color.new(dark, 100), textcolor=white,
                                                   style=label.style_label_right, size=size.tiny)
                         array.push(vp_labels, val_lbl)
@@ -683,175 +635,84 @@ if barstate.islast
                     int total_end_x = bar_index
                     int total_start_x = math.round(bar_index - total_length_bars)
 
-                    float t_tot = -total_length_bars
-                    float curve_tot = a1 * t_tot + a2 * t_tot * t_tot
-
-                    float top_right = y_center_relative + h_half
-                    float bot_right = y_center_relative - h_half
-                    float top_left  = y_center_relative + curve_tot + h_half
-                    float bot_left  = y_center_relative + curve_tot - h_half
-
                     bool is_bull_dom = b_vol >= s_vol
-                    color line_col = is_poc ? color.new(col_poc, 0) : (is_bull_dom ? color.new(col_bull, 20) : color.new(col_bear, 20))
-                    color fill_col = is_poc ? color.new(col_poc, 30) : (is_bull_dom ? color.new(col_bull, 60) : color.new(col_bear, 60))
+                    color line_col = is_poc ? color.new(col_poc, 0) : (is_bull_dom ? color.new(col_bull, 10) : color.new(col_bear, 10))
+                    color fill_col = is_poc ? color.new(col_poc, 5) : (is_bull_dom ? color.new(col_bull, 15) : color.new(col_bear, 15))
                     int normal_line_w = is_poc ? volume_line_width : 1
 
-                    line top_line = line.new(x1=total_start_x, y1=top_left, x2=total_end_x, y2=top_right,
+                    line top_line = line.new(x1=total_start_x, y1=top_flat, x2=total_end_x, y2=top_flat,
                                              color=line_col, width=normal_line_w, style=line.style_solid)
-                    line bot_line = line.new(x1=total_start_x, y1=bot_left, x2=total_end_x, y2=bot_right,
+                    line bot_line = line.new(x1=total_start_x, y1=bot_flat, x2=total_end_x, y2=bot_flat,
                                              color=line_col, width=normal_line_w, style=line.style_solid)
                     array.push(vp_lines, top_line)
                     array.push(vp_lines, bot_line)
                     linefill.new(top_line, bot_line, color=fill_col)
 
                     if show_block_val
-                        float y_center_left = y_center_relative + curve_tot
-                        label val_lbl = label.new(x=total_start_x, y=y_center_left, text=f_formatNumber(total_vol),
+                        label val_lbl = label.new(x=total_start_x, y=y_center_flat, text=f_formatNumber(total_vol),
                                                   color=color.new(dark, 100), textcolor=white,
                                                   style=label.style_label_right, size=size.tiny)
                         array.push(vp_labels, val_lbl)
 
-    // Dynamic level lines parameters based on alignment and extension options
-    int draw_span = extend_levels ? reg_lookback : vp_bars_count
+    // -------------------------------------------------------------------------
+    // 7. PERFECTLY FLAT HORIZONTAL INDICATOR LEVELS & LABELS AT THE RIGHT BARINDEX
+    // -------------------------------------------------------------------------
+    int level_start_x = vp_align == "Left" ? left_x : bar_index - vp_bars_count
+    int level_end_x   = bar_index
 
-    // Render POC slanted/curved line
+    // POC Flat Horizontal Level Line & Right Label
     if show_poc_label
-        float yc_poc = ym3 + (poc_row_idx + 0.5) * row_step
-        string poc_text = "POC (" + str.tostring(ym3 + (poc_row_idx + 0.5) * row_step, format.mintick) + ")"
-        if vp_align == "Left"
-            for step = 0 to draw_span by step_size
-                int offset = math.min(draw_span, step)
-                int x_curr = left_x + offset
-                float t_curr = t_left + offset
-                float y_curr = yc_poc + a1 * t_curr + a2 * t_curr * t_curr
+        float y_poc_flat = ym3 + (poc_row_idx + 0.5) * row_step + curve_anchor
+        string poc_text = "POC (" + str.tostring(y_poc_flat, format.mintick) + ")"
 
-                if offset > 0
-                    int prev_offset = math.max(0, offset - step_size)
-                    int x_prev = left_x + prev_offset
-                    float t_prev = t_left + prev_offset
-                    float y_prev = yc_poc + a1 * t_prev + a2 * t_prev * t_prev
+        line seg = line.new(x1=level_start_x, y1=y_poc_flat, x2=level_end_x, y2=y_poc_flat,
+                            color=col_poc, width=volume_line_width, style=line.style_solid)
+        array.push(vp_lines, seg)
 
-                    line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
-                                        color=col_poc, width=volume_line_width, style=line.style_solid)
-                    array.push(vp_lines, seg)
+        label lbl = label.new(x=bar_index + 1, y=y_poc_flat, text=poc_text,
+                              color=color.new(dark, 100), textcolor=col_poc,
+                              style=label.style_label_left, size=size.tiny,
+                              text_formatting=text.format_bold)
+        array.push(vp_labels, lbl)
 
-                if offset == 0
-                    label lbl = label.new(x=left_x - 1, y=y_curr, text=poc_text,
-                                          color=color.new(dark, 100), textcolor=col_poc,
-                                          style=label.style_label_right, size=size.tiny,
-                                          text_formatting=text.format_bold)
-                    array.push(vp_labels, lbl)
-        else
-            for step = 0 to draw_span by step_size
-                int offset = math.min(draw_span, step)
-                int x_curr = bar_index - (draw_span - offset)
-                float t_curr = - (draw_span - offset)
-                float y_curr = yc_poc + a1 * t_curr + a2 * t_curr * t_curr
-
-                if offset > 0
-                    int prev_offset = math.max(0, offset - step_size)
-                    int x_prev = bar_index - (draw_span - prev_offset)
-                    float t_prev = - (draw_span - prev_offset)
-                    float y_prev = yc_poc + a1 * t_prev + a2 * t_prev * t_prev
-
-                    line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
-                                        color=col_poc, width=volume_line_width, style=line.style_solid)
-                    array.push(vp_lines, seg)
-
-                if offset == draw_span
-                    label lbl = label.new(x=bar_index + 1, y=y_curr, text=poc_text,
-                                          color=color.new(dark, 100), textcolor=col_poc,
-                                          style=label.style_label_left, size=size.tiny,
-                                          text_formatting=text.format_bold)
-                    array.push(vp_labels, lbl)
-
-    // Render VAH and VAL slanted/curved lines
+    // VAH/VAL Flat Horizontal Level Lines & Right Labels
     if show_vah_val
-        float yc_vah = ym3 + (va_high_idx + 0.5) * row_step
-        string vah_text = "VAH (" + str.tostring(ym3 + (va_high_idx + 0.5) * row_step, format.mintick) + ")"
+        float y_vah_flat = ym3 + (va_high_idx + 0.5) * row_step + curve_anchor
+        string vah_text = "VAH (" + str.tostring(y_vah_flat, format.mintick) + ")"
 
-        // Dynamic horizontal layout variables matching vp_align and extend_levels
-        int vah_start_x = vp_align == "Left" ? left_x : bar_index - draw_span
-        float t_vah_start = vp_align == "Left" ? t_left : -draw_span
+        line seg_vah = line.new(x1=level_start_x, y1=y_vah_flat, x2=level_end_x, y2=y_vah_flat,
+                                color=col_bull, width=1, style=line.style_dashed)
+        array.push(vp_lines, seg_vah)
 
-        for step = 0 to draw_span by step_size
-            int offset = math.min(draw_span, step)
-            int x_curr = vah_start_x + offset
-            float t_curr = t_vah_start + offset
-            float y_curr = yc_vah + a1 * t_curr + a2 * t_curr * t_curr
+        label lbl_vah = label.new(x=bar_index + 1, y=y_vah_flat, text=vah_text,
+                                  color=color.new(dark, 100), textcolor=col_bull,
+                                  style=label.style_label_left, size=size.tiny,
+                                  text_formatting=text.format_bold)
+        array.push(vp_labels, lbl_vah)
 
-            if offset > 0
-                int prev_offset = math.max(0, offset - step_size)
-                int x_prev = vah_start_x + prev_offset
-                float t_prev = t_vah_start + prev_offset
-                float y_prev = yc_vah + a1 * t_prev + a2 * t_prev * t_prev
+        float y_val_flat = ym3 + (va_low_idx + 0.5) * row_step + curve_anchor
+        string val_text = "VAL (" + str.tostring(y_val_flat, format.mintick) + ")"
 
-                line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
-                                    color=col_bull, width=1, style=line.style_dashed)
-                array.push(vp_lines, seg)
+        line seg_val = line.new(x1=level_start_x, y1=y_val_flat, x2=level_end_x, y2=y_val_flat,
+                                color=col_bear, width=1, style=line.style_dashed)
+        array.push(vp_lines, seg_val)
 
-            if vp_align == "Left" and offset == 0
-                label lbl = label.new(x=left_x - 1, y=y_curr, text=vah_text,
-                                      color=color.new(dark, 100), textcolor=col_bull,
-                                      style=label.style_label_right, size=size.tiny,
-                                      text_formatting=text.format_bold)
-                array.push(vp_labels, lbl)
-            else if vp_align == "Right" and offset == draw_span
-                label lbl = label.new(x=bar_index + 1, y=y_curr, text=vah_text,
-                                      color=color.new(dark, 100), textcolor=col_bull,
-                                      style=label.style_label_left, size=size.tiny,
-                                      text_formatting=text.format_bold)
-                array.push(vp_labels, lbl)
+        label lbl_val = label.new(x=bar_index + 1, y=y_val_flat, text=val_text,
+                                  color=color.new(dark, 100), textcolor=col_bear,
+                                  style=label.style_label_left, size=size.tiny,
+                                  text_formatting=text.format_bold)
+        array.push(vp_labels, lbl_val)
 
-        float yc_val = ym3 + (va_low_idx + 0.5) * row_step
-        string val_text = "VAL (" + str.tostring(ym3 + (va_low_idx + 0.5) * row_step, format.mintick) + ")"
-
-        int val_start_x = vp_align == "Left" ? left_x : bar_index - draw_span
-        float t_val_start = vp_align == "Left" ? t_left : -draw_span
-
-        for step = 0 to draw_span by step_size
-            int offset = math.min(draw_span, step)
-            int x_curr = val_start_x + offset
-            float t_curr = t_val_start + offset
-            float y_curr = yc_val + a1 * t_curr + a2 * t_curr * t_curr
-
-            if offset > 0
-                int prev_offset = math.max(0, offset - step_size)
-                int x_prev = val_start_x + prev_offset
-                float t_prev = t_val_start + prev_offset
-                float y_prev = yc_val + a1 * t_prev + a2 * t_prev * t_prev
-
-                line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
-                                    color=col_bear, width=1, style=line.style_dashed)
-                array.push(vp_lines, seg)
-
-            if vp_align == "Left" and offset == 0
-                label lbl = label.new(x=left_x - 1, y=y_curr, text=val_text,
-                                      color=color.new(dark, 100), textcolor=col_bear,
-                                      style=label.style_label_right, size=size.tiny,
-                                      text_formatting=text.format_bold)
-                array.push(vp_labels, lbl)
-            else if vp_align == "Right" and offset == draw_span
-                label lbl = label.new(x=bar_index + 1, y=y_curr, text=val_text,
-                                      color=color.new(dark, 100), textcolor=col_bear,
-                                      style=label.style_label_left, size=size.tiny,
-                                      text_formatting=text.format_bold)
-                array.push(vp_labels, lbl)
-
-        // VAH & VAL projected lines extending from the profile start coordinate to the right side of the chart layout (similar to projected POC lines)
+        // VAH & VAL projected lines extending horizontally to the right
         if show_vah_val_lines
-            float t_curr_last = 0.0
-            float y_vah_proj_curr = yc_vah + a1 * t_curr_last + a2 * t_curr_last * t_curr_last
-            float y_val_proj_curr = yc_val + a1 * t_curr_last + a2 * t_curr_last * t_curr_last
-
-            line vah_proj = line.new(x1=bar_index, y1=y_vah_proj_curr, x2=bar_index + 20, y2=y_vah_proj_curr,
+            line vah_proj = line.new(x1=bar_index, y1=y_vah_flat, x2=bar_index + 20, y2=y_vah_flat,
                                      color=col_bull, width=1, style=line.style_dashed)
-            line val_proj = line.new(x1=bar_index, y1=y_val_proj_curr, x2=bar_index + 20, y2=y_val_proj_curr,
+            line val_proj = line.new(x1=bar_index, y1=y_val_flat, x2=bar_index + 20, y2=y_val_flat,
                                      color=col_bear, width=1, style=line.style_dashed)
             array.push(vp_lines, vah_proj)
             array.push(vp_lines, val_proj)
 
-    // Render HVN and LVN slanted/curved lines
+    // HVN/LVN Flat Horizontal Level Lines & Right Labels
     if show_hvn_lvn
         for r = 1 to vp_bars_count - 2
             float v_prev = array.get(row_buy_vol, r - 1) + array.get(row_sell_vol, r - 1)
@@ -859,74 +720,32 @@ if barstate.islast
             float v_next = array.get(row_buy_vol, r + 1) + array.get(row_sell_vol, r + 1)
 
             if v_curr > v_prev and v_curr > v_next and v_curr > avg_row_vol * 1.3
-                float yc_hvn = ym3 + (r + 0.5) * row_step
-                int hvn_start_x = vp_align == "Left" ? left_x : bar_index - draw_span
-                float t_hvn_start = vp_align == "Left" ? t_left : -draw_span
+                float y_hvn_flat = ym3 + (r + 0.5) * row_step + curve_anchor
 
-                for step = 0 to draw_span by step_size
-                    int offset = math.min(draw_span, step)
-                    int x_curr = hvn_start_x + offset
-                    float t_curr = t_hvn_start + offset
-                    float y_curr = yc_hvn + a1 * t_curr + a2 * t_curr * t_curr
+                line seg = line.new(x1=level_start_x, y1=y_hvn_flat, x2=level_end_x, y2=y_hvn_flat,
+                                    color=col_bull, width=1, style=line.style_dotted)
+                array.push(vp_lines, seg)
 
-                    if offset > 0
-                        int prev_offset = math.max(0, offset - step_size)
-                        int x_prev = hvn_start_x + prev_offset
-                        float t_prev = t_hvn_start + prev_offset
-                        float y_prev = yc_hvn + a1 * t_prev + a2 * t_prev * t_prev
-
-                        line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
-                                            color=col_bull, width=1, style=line.style_dotted)
-                        array.push(vp_lines, seg)
-
-                    if vp_align == "Left" and offset == 0
-                        label lbl = label.new(x=left_x - 1, y=y_curr, text="HVN",
-                                              color=color.new(dark, 100), textcolor=col_bull,
-                                              style=label.style_label_right, size=size.tiny,
-                                              text_formatting=text.format_bold)
-                        array.push(vp_labels, lbl)
-                    else if vp_align == "Right" and offset == draw_span
-                        label lbl = label.new(x=bar_index + 1, y=y_curr, text="HVN",
-                                              color=color.new(dark, 100), textcolor=col_bull,
-                                              style=label.style_label_left, size=size.tiny,
-                                              text_formatting=text.format_bold)
-                        array.push(vp_labels, lbl)
+                label lbl = label.new(x=bar_index + 1, y=y_hvn_flat, text="HVN",
+                                      color=color.new(dark, 100), textcolor=col_bull,
+                                      style=label.style_label_left, size=size.tiny,
+                                      text_formatting=text.format_bold)
+                array.push(vp_labels, lbl)
 
             if v_curr < v_prev and v_curr < v_next and v_curr < avg_row_vol * 0.5
-                float yc_lvn = ym3 + (r + 0.5) * row_step
-                int lvn_start_x = vp_align == "Left" ? left_x : bar_index - draw_span
-                float t_lvn_start = vp_align == "Left" ? t_left : -draw_span
+                float y_lvn_flat = ym3 + (r + 0.5) * row_step + curve_anchor
 
-                for step = 0 to draw_span by step_size
-                    int offset = math.min(draw_span, step)
-                    int x_curr = lvn_start_x + offset
-                    float t_curr = t_lvn_start + offset
-                    float y_curr = yc_lvn + a1 * t_curr + a2 * t_curr * t_curr
+                line seg = line.new(x1=level_start_x, y1=y_lvn_flat, x2=level_end_x, y2=y_lvn_flat,
+                                    color=col_bear, width=1, style=line.style_dotted)
+                array.push(vp_lines, seg)
 
-                    if offset > 0
-                        int prev_offset = math.max(0, offset - step_size)
-                        int x_prev = lvn_start_x + prev_offset
-                        float t_prev = t_lvn_start + prev_offset
-                        float y_prev = yc_lvn + a1 * t_prev + a2 * t_prev * t_prev
+                label lbl = label.new(x=bar_index + 1, y=y_lvn_flat, text="LVN",
+                                      color=color.new(dark, 100), textcolor=col_bear,
+                                      style=label.style_label_left, size=size.tiny,
+                                      text_formatting=text.format_bold)
+                array.push(vp_labels, lbl)
 
-                        line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
-                                            color=col_bear, width=1, style=line.style_dotted)
-                        array.push(vp_lines, seg)
-
-                    if vp_align == "Left" and offset == 0
-                        label lbl = label.new(x=left_x - 1, y=y_curr, text="LVN",
-                                              color=color.new(dark, 100), textcolor=col_bear,
-                                              style=label.style_label_right, size=size.tiny,
-                                              text_formatting=text.format_bold)
-                        array.push(vp_labels, lbl)
-                    else if vp_align == "Right" and offset == draw_span
-                        label lbl = label.new(x=bar_index + 1, y=y_curr, text="LVN",
-                                              color=color.new(dark, 100), textcolor=col_bear,
-                                              style=label.style_label_left, size=size.tiny,
-                                              text_formatting=text.format_bold)
-                        array.push(vp_labels, lbl)
-
-    // Render Large Volume slanted/curved lines
+    // Large Volume Flat Horizontal Level Lines & Right Labels
     if show_large_vol
         for r = 0 to vp_bars_count - 1
             float b_v = array.get(row_buy_vol, r)
@@ -937,38 +756,17 @@ if barstate.islast
                 bool is_bull_dom = b_v >= s_v
                 color lv_col = is_bull_dom ? col_bull : col_bear
                 string lv_text = is_bull_dom ? "LG BUY" : "LG SELL"
-                float yc_lv = ym3 + (r + 0.5) * row_step
-                int lv_start_x = vp_align == "Left" ? left_x : bar_index - draw_span
-                float t_lv_start = vp_align == "Left" ? t_left : -draw_span
+                float y_lv_flat = ym3 + (r + 0.5) * row_step + curve_anchor
 
-                for step = 0 to draw_span by step_size
-                    int offset = math.min(draw_span, step)
-                    int x_curr = lv_start_x + offset
-                    float t_curr = t_lv_start + offset
-                    float y_curr = yc_lv + a1 * t_curr + a2 * t_curr * t_curr
+                line seg = line.new(x1=level_start_x, y1=y_lv_flat, x2=level_end_x, y2=y_lv_flat,
+                                    color=lv_col, width=1, style=line.style_solid)
+                array.push(vp_lines, seg)
 
-                    if offset > 0
-                        int prev_offset = math.max(0, offset - step_size)
-                        int x_prev = lv_start_x + prev_offset
-                        float t_prev = t_lv_start + prev_offset
-                        float y_prev = yc_lv + a1 * t_prev + a2 * t_prev * t_prev
-
-                        line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
-                                            color=lv_col, width=1, style=line.style_solid)
-                        array.push(vp_lines, seg)
-
-                    if vp_align == "Left" and offset == 0
-                        label lbl = label.new(x=left_x - 1, y=y_curr, text=lv_text,
-                                              color=color.new(dark, 100), textcolor=lv_col,
-                                              style=label.style_label_right, size=size.tiny,
-                                              text_formatting=text.format_bold)
-                        array.push(vp_labels, lbl)
-                    else if vp_align == "Right" and offset == draw_span
-                        label lbl = label.new(x=bar_index + 1, y=y_curr, text=lv_text,
-                                              color=color.new(dark, 100), textcolor=lv_col,
-                                              style=label.style_label_left, size=size.tiny,
-                                              text_formatting=text.format_bold)
-                        array.push(vp_labels, lbl)
+                label lbl = label.new(x=bar_index + 1, y=y_lv_flat, text=lv_text,
+                                      color=color.new(dark, 100), textcolor=lv_col,
+                                      style=label.style_label_left, size=size.tiny,
+                                      text_formatting=text.format_bold)
+                array.push(vp_labels, lbl)
 
 // =============================================================================
 // 7. GLASS HUD TABLE DASHBOARD
