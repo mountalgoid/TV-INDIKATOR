@@ -1,0 +1,794 @@
+//@version=6
+indicator(title            = "Slanted Channel Volume Profile Glass Pro 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤"
+  , shorttitle             = "Slanted VP Glass Pro"
+  , overlay                = true
+  , max_bars_back          = 4000
+  , max_lines_count        = 500
+  , max_boxes_count        = 500
+  , max_labels_count       = 500)
+
+//════════════════════════════════════════════════════════════════════════
+// 1. COLORS & THEME SYSTEM
+//════════════════════════════════════════════════════════════════════════
+string GlobalGroup = "Visual Themes & Global Settings"
+color_theme = input.string(defval = 'Bookmap System Theme', title = 'Select Color Theme', options = ['Bookmap System Theme', 'Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=GlobalGroup)
+
+// Core Colors
+color dark   = #0a0b10
+color white  = #c4d3ff
+color green  = #00b0ff
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
+color Transparent_Color = color.new(white, 100)
+
+// Specific palette for Bookmap theme syncing with the user's reference image
+color col_bull = switch color_theme
+    'Bookmap System Theme' => #00e676  // Bright neon green
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
+
+color col_bear = switch color_theme
+    'Bookmap System Theme' => #ff1744  // Hot pink/red
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
+
+color col_poc = switch color_theme
+    'Bookmap System Theme' => #ffeb3b  // Neon yellow
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+
+color col_dpoc = #d500f9 // Neon magenta for Delta POC
+
+//════════════════════════════════════════════════════════════════════════
+// 1.5 GLOBAL HUD HELPERS
+//════════════════════════════════════════════════════════════════════════
+f_set_cell(table tbl, int c, int r, string txt, color bg_color, color txt_color) =>
+    table.cell(tbl, c, r, txt, bgcolor=bg_color, text_color=txt_color, text_size=size.small, text_halign=c == 0 ? text.align_left : text.align_right)
+
+f_get_hud_table_bg(c, r, total_c, total_r, col_bull_in, col_bear_in, dark_in) =>
+    float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
+    color base = color.from_gradient(ratio, 0, 1, col_bull_in, col_bear_in)
+    color mixed_base = color.from_gradient(60, 0, 100, base, dark_in)
+    color.new(mixed_base, 25)
+
+//════════════════════════════════════════════════════════════════════════
+// 2. INPUTS & CONFIGURATION
+//════════════════════════════════════════════════════════════════════════
+string grp_vp   = "Volume Profile Grid Settings"
+length          = input.int(95, "Channel Lookback Length", minval=20, group=grp_vp)
+vp_resolution   = input.int(50, 'Profile Resolution (Rows)', minval=5, maxval=100, group=grp_vp)
+vp_va_perc      = input.float(70.0, 'Value Area Volume %', minval=10.0, maxval=100.0, step=5.0, group=grp_vp)
+max_blocks      = input.int(22, 'Max Profile Width (Bars)', minval=5, maxval=50, group=grp_vp)
+vp_type         = input.string("Normal", "Profile View Type", options=["Normal", "Delta"], group=grp_vp)
+
+string grp_hvl = "HVN, LVN, & Large Volume Settings"
+show_hvn_lvn   = input.bool(true, "Show HVN and LVN Lines", group=grp_hvl)
+hvn_threshold  = input.float(1.2, "HVN Volume Multiplier (Avg)", minval=1.0, step=0.1, group=grp_hvl)
+lvn_threshold  = input.float(0.3, "LVN Volume Threshold (Max %)", minval=0.01, maxval=1.0, step=0.05, group=grp_hvl)
+show_large_vol = input.bool(true, "Show Large Volume Levels", group=grp_hvl)
+large_vol_mult = input.float(1.5, "Large Volume Multiplier (Avg)", minval=1.0, step=0.1, group=grp_hvl)
+
+string grp_grid = "Grid & Glass Aesthetics"
+gap_y_perc      = input.float(12.0, "Vertical Block Gap (%)", minval=0.0, maxval=49.0, step=2.0, group=grp_grid)
+show_stats_boxes = input.bool(true, "Show Session Stats Boxes", group=grp_grid)
+delta_box_width  = input.int(8, "Delta Box Width (Bars)", minval=2, maxval=20, group=grp_grid)
+
+string grp_disp = "Display Controls"
+show_poc_line   = input.bool(true, "Show POC Projected Line", group=grp_disp)
+show_dpoc_line  = input.bool(true, "Show Delta POC Projected Line", group=grp_disp)
+show_vah_val_lines = input.bool(true, "Show VAH/VAL Projected Lines", group=grp_disp)
+show_table      = input.bool(true, "Show Glass HUD Table", group=grp_disp)
+hud_position    = input.string("top_right", "HUD Table Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_disp)
+show_logo       = input.bool(true, "Show Animated Logo", group="Logo Settings")
+logo_offset_input = input.int(85, "Logo Offset", group="Logo Settings")
+
+// Global state trackers for indicator metrics to avoid conditional execution errors
+global_atr = ta.atr(14)
+global_avg_atr = ta.sma(global_atr, 100)
+
+//════════════════════════════════════════════════════════════════════════
+// 3. SLANTED LINEAR REGRESSION CHANNEL MATH
+//════════════════════════════════════════════════════════════════════════
+float sumX = 0.0
+float sumY = 0.0
+float sumXSqr = 0.0
+float sumXY = 0.0
+int start_idx = bar_index - length + 1
+
+if barstate.islast
+    for i = 0 to length - 1
+        float y_val = close[length - 1 - i]
+        float x_val = float(i)
+        sumX += x_val
+        sumY += y_val
+        sumXSqr += x_val * x_val
+        sumXY += x_val * y_val
+
+float denom = length * sumXSqr - sumX * sumX
+float m = denom != 0 ? (length * sumXY - sumX * sumY) / denom : 0.0
+float c = denom != 0 ? (sumY - m * sumX) / length : close
+
+// Calculate standard deviation of detrended prices
+float sum_sq_diff = 0.0
+if barstate.islast
+    for i = 0 to length - 1
+        float y_center = m * i + c
+        float diff = close[length - 1 - i] - y_center
+        sum_sq_diff += diff * diff
+float std_dev = barstate.islast ? math.sqrt(sum_sq_diff / length) : 0.0
+
+// Define volume profile boundaries perfectly synced with standard deviation boundaries
+float max_detrended = 2.0 * std_dev
+float min_detrended = -2.0 * std_dev
+
+// Range and step logic
+float rng = max_detrended - min_detrended
+float step = rng > 0 ? rng / vp_resolution : syminfo.mintick * 10
+float inv_step = 1.0 / step
+
+//════════════════════════════════════════════════════════════════════════
+// 4. PRECISION SLANTED VOLUME DISTRIBUTION
+//════════════════════════════════════════════════════════════════════════
+// Heuristic Volume Partitioning
+calc_vol_partition(float vol) =>
+    float range_size = high - low
+    float b_vol = 0.0
+    float s_vol = 0.0
+
+    if range_size > 0
+        float b_high = math.max(open, close)
+        float b_low  = math.min(open, close)
+        float body_size = b_high - b_low
+        float upper_wick = high - b_high
+        float lower_wick = b_low - low
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (open + close) / 2
+        float body_pos = (b_center - low) / range_size
+        float br_b = close > open ? math.min(0.9, 0.6 + body_pos * 0.3) : (close < open ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+        b_vol := vol * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := vol * (w_body * (1.0 - br_b) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := vol * 0.5
+        s_vol := vol * 0.5
+    [b_vol, s_vol]
+
+distribute_vol_detrended(int _rows, float _lowest_detrended, float _inv_row_h, float _o, float _h, float _l, float _c, float _y_center, float _v_total, float[] _bucket_total, float[] _bucket_buy, float[] _bucket_sell) =>
+    float _o_det = _o - _y_center
+    float _h_det = _h - _y_center
+    float _l_det = _l - _y_center
+    float _c_det = _c - _y_center
+
+    float b_high = math.max(_o_det, _c_det)
+    float b_low  = math.min(_o_det, _c_det)
+    float _range_val = _h_det - _l_det
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        if _range_val <= 0
+            int idx = math.floor((_c_det - _lowest_detrended) * _inv_row_h)
+            if idx >= 0 and idx <= max_idx
+                array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
+                float v_half = _v_total * 0.5
+                array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + v_half)
+                array.set(_bucket_sell, idx, array.get(_bucket_sell, idx) + v_half)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l_det) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h_det - b_high) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * w_u
+
+            float b_center = (_o_det + _c_det) * 0.5
+            float body_pos = (b_center - _l_det) * inv_range
+
+            float br_b = _c_det > _o_det ? math.min(0.9, 0.6 + body_pos * 0.3) : (_c_det < _o_det ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+            if v_l > 0
+                int idx_l = math.floor((_l_det - _lowest_detrended) * _inv_row_h)
+                int idx_h = math.floor((b_low - _lowest_detrended) * _inv_row_h)
+                int start_j = math.max(0, idx_l)
+                int end_j = math.min(max_idx, idx_h)
+                if start_j <= end_j and idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.90
+                    float v_j_sell = v_j * 0.10
+                    for j = start_j to end_j
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_b > 0
+                int idx_l = math.floor((b_low - _lowest_detrended) * _inv_row_h)
+                int idx_h = math.floor((b_high - _lowest_detrended) * _inv_row_h)
+                int start_j = math.max(0, idx_l)
+                int end_j = math.min(max_idx, idx_h)
+                if start_j <= end_j and idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * br_b
+                    float v_j_sell = v_j * (1.0 - br_b)
+                    for j = start_j to end_j
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_u > 0
+                int idx_l = math.floor((b_high - _lowest_detrended) * _inv_row_h)
+                int idx_h = math.floor((_h_det - _lowest_detrended) * _inv_row_h)
+                int start_j = math.max(0, idx_l)
+                int end_j = math.min(max_idx, idx_h)
+                if start_j <= end_j and idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.10
+                    float v_j_sell = v_j * 0.90
+                    for j = start_j to end_j
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+
+// ===== LTF PRECISION SYSTEM =====
+get_ltf_data() => [open, high, low, close, volume]
+[ltf_o, ltf_h, ltf_l, ltf_c, ltf_v] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_data())
+
+//════════════════════════════════════════════════════════════════════════
+// 5. STORAGE & CLEANUP
+//════════════════════════════════════════════════════════════════════════
+var line[] live_lines = array.new<line>()
+var linefill[] live_fills = array.new<linefill>()
+var label[] live_labels = array.new<label>()
+var box[] live_boxes = array.new<box>()
+
+f_cleanup_drawings() =>
+    while array.size(live_lines) > 0
+        line.delete(array.pop(live_lines))
+    while array.size(live_fills) > 0
+        linefill.delete(array.pop(live_fills))
+    while array.size(live_labels) > 0
+        label.delete(array.pop(live_labels))
+    while array.size(live_boxes) > 0
+        box.delete(array.pop(live_boxes))
+
+//════════════════════════════════════════════════════════════════════════
+// 6. RENDER LOGIC
+//════════════════════════════════════════════════════════════════════════
+f_formatNumber(float number) =>
+    float abs_number = math.abs(number)
+    if abs_number >= 1000000
+        str.tostring(number / 1000000, "#.##") + "M"
+    else if abs_number >= 1000
+        str.tostring(number / 1000, "#.#") + "K"
+    else
+        str.tostring(number, "#")
+
+// Active execution holders
+var float rt_total_vol = 0.0
+var float rt_max_vol = 0.0
+var float rt_poc_price = na
+var float rt_dpoc_price = na
+var float rt_vah_price = na
+var float rt_val_price = na
+var float rt_total_delta_vol = 0.0
+var float rt_total_buy_vol = 0.0
+var float rt_total_sell_vol = 0.0
+
+if barstate.islast
+    f_cleanup_drawings()
+
+    // Bins allocation
+    bucket_total = array.new_float(vp_resolution, 0.0)
+    bucket_buy   = array.new_float(vp_resolution, 0.0)
+    bucket_sell  = array.new_float(vp_resolution, 0.0)
+
+    // Distribute historical channel bars (index 1 to length - 1, meaning excluding index 0 / live bar)
+    for i = 0 to length - 2
+        float y_center = m * i + c
+        distribute_vol_detrended(vp_resolution, min_detrended, inv_step, open[length - 1 - i], high[length - 1 - i], low[length - 1 - i], close[length - 1 - i], y_center, nz(volume[length - 1 - i]), bucket_total, bucket_buy, bucket_sell)
+
+    // Distribute the live bar using precise LTF 1m data (index 0)
+    int ltf_count = not na(ltf_v) ? array.size(ltf_v) : 0
+    float ltf_v_total = 0.0
+    float y_live_center = m * (bar_index - start_idx) + c
+    if ltf_count > 0
+        for j = 0 to ltf_count - 1
+            float _o = array.get(ltf_o, j)
+            float _h = array.get(ltf_h, j)
+            float _l = array.get(ltf_l, j)
+            float _c = array.get(ltf_c, j)
+            float _v = array.get(ltf_v, j)
+            ltf_v_total += _v
+            distribute_vol_detrended(vp_resolution, min_detrended, inv_step, _o, _h, _l, _c, y_live_center, _v, bucket_total, bucket_buy, bucket_sell)
+
+    // Accumulate missing volume if real-time feeds are faster than LTF ticks
+    float missing_v = math.max(0, volume - ltf_v_total)
+    if missing_v > 0
+        distribute_vol_detrended(vp_resolution, min_detrended, inv_step, open, high, low, close, y_live_center, missing_v, bucket_total, bucket_buy, bucket_sell)
+
+    float max_vol = array.max(bucket_total)
+    float total_vol = array.sum(bucket_total)
+    float total_buy_vol = array.sum(bucket_buy)
+    float total_sell_vol = array.sum(bucket_sell)
+    float total_delta_vol = total_buy_vol - total_sell_vol
+    int poc_idx = array.indexof(bucket_total, max_vol)
+
+    // Calculate Delta POC (row with maximum absolute net delta volume)
+    float max_abs_delta = -1.0
+    int dpoc_idx = 0
+    for r = 0 to vp_resolution - 1
+        float d_vol = math.abs(array.get(bucket_buy, r) - array.get(bucket_sell, r))
+        if d_vol > max_abs_delta
+            max_abs_delta := d_vol
+            dpoc_idx := r
+
+    // Value Area Identification (VAH/VAL)
+    int va_top = poc_idx
+    int va_bot = poc_idx
+    float target_va = total_vol * (vp_va_perc / 100.0)
+    float va_vol = max_vol
+
+    int loop_safety = 0
+    while va_vol < target_va and loop_safety < vp_resolution
+        loop_safety += 1
+        float v_up = (va_top < vp_resolution - 1) ? array.get(bucket_total, va_top + 1) : 0.0
+        float v_dn = (va_bot > 0) ? array.get(bucket_total, va_bot - 1) : 0.0
+        if v_up >= v_dn and va_top < vp_resolution - 1
+            va_vol += v_up
+            va_top += 1
+        else if va_bot > 0
+            va_vol += v_dn
+            va_bot -= 1
+        else if va_top < vp_resolution - 1
+            va_vol += v_up
+            va_top += 1
+
+    float vah_det = min_detrended + (va_top + 1) * step
+    float val_det = min_detrended + va_bot * step
+    float poc_det = min_detrended + poc_idx * step + (step / 2.0)
+    float dpoc_det = min_detrended + dpoc_idx * step + (step / 2.0)
+
+    rt_total_vol := total_vol
+    rt_max_vol := max_vol
+    rt_poc_price := m * (bar_index - start_idx) + c + poc_det
+    rt_dpoc_price := m * (bar_index - start_idx) + c + dpoc_det
+    rt_vah_price := m * (bar_index - start_idx) + c + vah_det
+    rt_val_price := m * (bar_index - start_idx) + c + val_det
+    rt_total_delta_vol := total_delta_vol
+    rt_total_buy_vol := total_buy_vol
+    rt_total_sell_vol := total_sell_vol
+
+    //════════════════════════════════════════════════════════════════════════
+    // DRAW REGRESSION CHANNEL GUIDELINES (Matches image perfectly)
+    //════════════════════════════════════════════════════════════════════════
+    // Center median line (dashed purple)
+    line median_ln = line.new(start_idx, m * 0 + c, bar_index, m * (bar_index - start_idx) + c, color=color.new(#7b1fa2, 20), style=line.style_dashed, width=1)
+
+    // +/-1.0 Standard Deviation bands (dashed blue VAH/VAL)
+    line vah_ln = line.new(start_idx, m * 0 + c + std_dev, bar_index, m * (bar_index - start_idx) + c + std_dev, color=color.new(#0288d1, 20), style=line.style_dashed, width=1)
+    line val_ln = line.new(start_idx, m * 0 + c - std_dev, bar_index, m * (bar_index - start_idx) + c - std_dev, color=color.new(#0288d1, 20), style=line.style_dashed, width=1)
+
+    // +/-2.0 Standard Deviation bands (solid thin gray)
+    line top_boundary_ln = line.new(start_idx, m * 0 + c + 2.0 * std_dev, bar_index, m * (bar_index - start_idx) + c + 2.0 * std_dev, color=color.new(#78909c, 50), style=line.style_solid, width=1)
+    line bot_boundary_ln = line.new(start_idx, m * 0 + c - 2.0 * std_dev, bar_index, m * (bar_index - start_idx) + c - 2.0 * std_dev, color=color.new(#78909c, 50), style=line.style_solid, width=1)
+
+    array.push(live_lines, median_ln)
+    array.push(live_lines, vah_ln)
+    array.push(live_lines, val_ln)
+    array.push(live_lines, top_boundary_ln)
+    array.push(live_lines, bot_boundary_ln)
+
+    // Fill between VAH and VAL lines with translucent dark blue
+    array.push(live_fills, linefill.new(vah_ln, val_ln, color=color.new(#1a237e, 94)))
+
+    //════════════════════════════════════════════════════════════════════════
+    // DRAW THE SLANTED PROFILE ROWS (Teal/Red Buy/Sell splits anchored left)
+    //════════════════════════════════════════════════════════════════════════
+    float pad_y = step * (gap_y_perc / 100.0)
+
+    for r = 0 to vp_resolution - 1
+        float r_tot_vol = array.get(bucket_total, r)
+        if r_tot_vol > 0
+            float r_buy_vol = array.get(bucket_buy, r)
+            float r_sell_vol = array.get(bucket_sell, r)
+            float buy_ratio = r_tot_vol > 0 ? r_buy_vol / r_tot_vol : 0.5
+
+            float P_bot = min_detrended + r * step
+            float P_top = min_detrended + (r + 1) * step
+            float P_top_padded = P_top - pad_y
+            float P_bot_padded = P_bot + pad_y
+
+            float pct_total = 0.0
+            int row_width = 0
+
+            if vp_type == "Delta"
+                float r_delta = r_buy_vol - r_sell_vol
+                pct_total := max_abs_delta > 0 ? math.abs(r_delta) / max_abs_delta : 0.0
+                row_width := math.round(max_blocks * pct_total)
+
+                if row_width > 0
+                    color d_col = r_delta >= 0 ? col_bull : col_bear
+                    int x_left = start_idx
+                    int x_right = start_idx + row_width
+                    line t_ln = line.new(x_left, m * (x_left - start_idx) + c + P_top_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=color.new(d_col, 60), width=1)
+                    line b_ln = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_bot_padded, color=color.new(d_col, 60), width=1)
+                    array.push(live_lines, t_ln)
+                    array.push(live_lines, b_ln)
+                    array.push(live_fills, linefill.new(t_ln, b_ln, color=color.new(d_col, 55)))
+            else
+                pct_total := r_tot_vol / max_vol
+                row_width := math.round(max_blocks * pct_total)
+                int buy_width = math.round(row_width * buy_ratio)
+                int sell_width = row_width - buy_width
+
+                // 1. Draw the Buy Segment (Green/Teal fill at the left side of the row)
+                if buy_width > 0
+                    int x_left = start_idx
+                    int x_right = start_idx + buy_width
+                    line t_ln = line.new(x_left, m * (x_left - start_idx) + c + P_top_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=color.new(col_bull, 60), width=1)
+                    line b_ln = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_bot_padded, color=color.new(col_bull, 60), width=1)
+                    array.push(live_lines, t_ln)
+                    array.push(live_lines, b_ln)
+                    array.push(live_fills, linefill.new(t_ln, b_ln, color=color.new(col_bull, 55)))
+
+                // 2. Draw the Sell Segment (Red fill at the right side of the row)
+                if sell_width > 0
+                    int x_left = start_idx + buy_width
+                    int x_right = start_idx + row_width
+                    line t_ln = line.new(x_left, m * (x_left - start_idx) + c + P_top_padded, x_right, m * (x_right - start_idx) + c + P_top_padded, color=color.new(col_bear, 60), width=1)
+                    line b_ln = line.new(x_left, m * (x_left - start_idx) + c + P_bot_padded, x_right, m * (x_right - start_idx) + c + P_bot_padded, color=color.new(col_bear, 60), width=1)
+                    array.push(live_lines, t_ln)
+                    array.push(live_lines, b_ln)
+                    array.push(live_fills, linefill.new(t_ln, b_ln, color=color.new(col_bear, 55)))
+
+    //════════════════════════════════════════════════════════════════════════
+    // SLANTED PRICE LEVEL PROJECTIONS (Yellow POC & Purple Delta POC)
+    //════════════════════════════════════════════════════════════════════════
+    int label_x = bar_index + 2
+
+    // Slanted POC projection (Solid yellow line)
+    if show_poc_line
+        line poc_ln = line.new(start_idx, m * 0 + c + poc_det, bar_index, m * (bar_index - start_idx) + c + poc_det, color=col_poc, width=2, style=line.style_solid)
+        array.push(live_lines, poc_ln)
+        label lbl_poc = label.new(label_x, m * (label_x - start_idx) + c + poc_det, "POC", color=color.new(white, 100), textcolor=col_poc, size=size.tiny, style=label.style_label_left)
+        array.push(live_labels, lbl_poc)
+
+    // Slanted Delta POC projection (Dashed pink line)
+    if show_dpoc_line
+        line dpoc_ln = line.new(start_idx, m * 0 + c + dpoc_det, bar_index, m * (bar_index - start_idx) + c + dpoc_det, color=col_dpoc, width=1, style=line.style_dashed)
+        array.push(live_lines, dpoc_ln)
+        label lbl_dpoc = label.new(label_x, m * (label_x - start_idx) + c + dpoc_det, "Delta POC", color=color.new(white, 100), textcolor=col_dpoc, size=size.tiny, style=label.style_label_left)
+        array.push(live_labels, lbl_dpoc)
+
+    // Right-aligned labels for VAH and VAL
+    if show_vah_val_lines
+        label lbl_vah = label.new(label_x, m * (label_x - start_idx) + c + std_dev, "VAH", color=color.new(white, 100), textcolor=color.new(#0288d1, 0), size=size.tiny, style=label.style_label_left)
+        label lbl_val = label.new(label_x, m * (label_x - start_idx) + c - std_dev, "VAL", color=color.new(white, 100), textcolor=color.new(#0288d1, 0), size=size.tiny, style=label.style_label_left)
+        array.push(live_labels, lbl_vah)
+        array.push(live_labels, lbl_val)
+
+    // ===== HVN, LVN, & LARGE VOLUME LEVEL DETECTIONS & SLANTED PROJECTIONS =====
+    float avg_profile_vol = total_vol / vp_resolution
+    float thresh_lvn = max_vol * lvn_threshold
+
+    for r = 1 to vp_resolution - 2
+        float v_prev = array.get(bucket_total, r - 1)
+        float v_curr = array.get(bucket_total, r)
+        float v_next = array.get(bucket_total, r + 1)
+
+        float r_buy = array.get(bucket_buy, r)
+        float r_sell = array.get(bucket_sell, r)
+        float buy_ratio = v_curr > 0 ? r_buy / v_curr : 0.5
+
+        float P_det_center = min_detrended + r * step + (step / 2.0)
+
+        // 1. HVN Detection & Slanted Projection
+        if show_hvn_lvn and v_curr > v_prev and v_curr > v_next and v_curr > avg_profile_vol * hvn_threshold and r != poc_idx
+            line hvn_ln = line.new(start_idx, m * 0 + c + P_det_center, bar_index, m * (bar_index - start_idx) + c + P_det_center, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
+            array.push(live_lines, hvn_ln)
+            label lbl_hvn = label.new(label_x, m * (label_x - start_idx) + c + P_det_center, "HVN", color=color.new(white, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
+            array.push(live_labels, lbl_hvn)
+
+        // 2. LVN Detection & Slanted Projection
+        if show_hvn_lvn and v_curr < v_prev and v_curr < v_next and v_curr < thresh_lvn
+            line lvn_ln = line.new(start_idx, m * 0 + c + P_det_center, bar_index, m * (bar_index - start_idx) + c + P_det_center, color=color.new(col_bear, 40), width=1, style=line.style_dotted)
+            array.push(live_lines, lvn_ln)
+            label lbl_lvn = label.new(label_x, m * (label_x - start_idx) + c + P_det_center, "LVN", color=color.new(white, 100), textcolor=col_bear, size=size.tiny, style=label.style_label_left)
+            array.push(live_labels, lbl_lvn)
+
+        // 3. Large Volume Level Detection & Slanted Projection
+        if show_large_vol and v_curr > avg_profile_vol * large_vol_mult
+            color lg_col = buy_ratio > 0.5 ? col_bull : col_bear
+            line lg_ln = line.new(start_idx, m * 0 + c + P_det_center, bar_index, m * (bar_index - start_idx) + c + P_det_center, color=lg_col, width=3, style=line.style_dotted)
+            array.push(live_lines, lg_ln)
+            label lbl_lg = label.new(label_x, m * (label_x - start_idx) + c + P_det_center, "LG VOL", color=color.new(white, 100), textcolor=lg_col, size=size.tiny, style=label.style_label_left)
+            array.push(live_labels, lbl_lg)
+
+    // Render Stats Boxes stacked vertically to the left of the volume profile
+    if show_stats_boxes
+        color buy_col_theme  = color.new(col_bull, 85)
+        color sell_col_theme = color.new(col_bear, 85)
+        color delta_col_theme = total_delta_vol >= 0 ? color.new(col_bull, 85) : color.new(col_bear, 85)
+        color border_theme_c = color.new(white, 70)
+
+        // Strings to display inside the panels
+        string str_buy_val   = "Buy:\n" + f_formatNumber(total_buy_vol)
+        string str_sell_val  = "Sell:\n" + f_formatNumber(total_sell_vol)
+        string str_delta_val = "Δ:\n" + (total_delta_vol >= 0 ? "+" : "") + f_formatNumber(total_delta_vol)
+
+        // Total vertical span of the regression channel at start_idx
+        float channel_span = 4.0 * std_dev
+        float box_height = channel_span / 3.0
+
+        int box_left = start_idx - delta_box_width
+        int box_right = start_idx
+
+        float y_top_buy = c + max_detrended
+        float y_bot_buy = y_top_buy - box_height
+
+        float y_top_sell = y_bot_buy
+        float y_bot_sell = y_top_sell - box_height
+
+        float y_top_delta = y_bot_sell
+        float y_bot_delta = c + min_detrended
+
+        if box_right > box_left
+            box buy_b = box.new(left=box_left, top=y_top_buy, right=box_right, bottom=y_bot_buy, bgcolor=buy_col_theme, border_color=border_theme_c, border_width=1, text=str_buy_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
+            box sell_b = box.new(left=box_left, top=y_top_sell, right=box_right, bottom=y_bot_sell, bgcolor=sell_col_theme, border_color=border_theme_c, border_width=1, text=str_sell_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
+            box delta_b = box.new(left=box_left, top=y_top_delta, right=box_right, bottom=y_bot_delta, bgcolor=delta_col_theme, border_color=border_theme_c, border_width=1, text=str_delta_val, text_color=white, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
+            array.push(live_boxes, buy_b)
+            array.push(live_boxes, sell_b)
+            array.push(live_boxes, delta_b)
+
+//════════════════════════════════════════════════════════════════════════
+// 7. UPGRADED HUD TABLE DASHBOARD (OANDA-style, matches user image)
+//════════════════════════════════════════════════════════════════════════
+var table info_table = na
+if show_table and barstate.islast
+    string pos = switch hud_position
+        "top_left"     => position.top_left
+        "top_right"    => position.top_right
+        "bottom_left"  => position.bottom_left
+        "bottom_right" => position.bottom_right
+        => position.top_right
+
+    // 10 Rows table matching image exactly
+    info_table := table.new(pos, 2, 10, bgcolor=color.new(#0d0e12, 15), border_width=1, border_color=color.new(#263238, 70), frame_color=color.new(#37474f, 50), frame_width=1)
+
+    // Table Header
+    string header_txt = "[MarkitTick] Sloped Profile   OANDA:" + str.tostring(syminfo.ticker) + " • " + str.tostring(timeframe.period)
+    table.merge_cells(info_table, 0, 0, 1, 0)
+    table.cell(info_table, 0, 0, header_txt, bgcolor=color.new(#1a237e, 50), text_color=white, text_size=size.small, text_formatting=text.format_bold)
+
+    // 1. LinReg Slope
+    string slope_dir = m >= 0 ? "▲ Bullish" : "▼ Bearish"
+    color slope_col = m >= 0 ? #00e676 : #ff1744
+    f_set_cell(info_table, 0, 1, "LinReg slope", f_get_hud_table_bg(0, 1, 2, 10, col_bull, col_bear, dark), white)
+    f_set_cell(info_table, 1, 1, slope_dir, f_get_hud_table_bg(1, 1, 2, 10, col_bull, col_bear, dark), slope_col)
+
+    // 2. Price Regime
+    float current_detrended = close - (m * (bar_index - start_idx) + c)
+    bool inside_ch = current_detrended <= max_detrended and current_detrended >= min_detrended
+    string regime_txt = inside_ch ? "Inside Channel" : "Breakout"
+    color regime_col = inside_ch ? #00e676 : #ffeb3b
+    f_set_cell(info_table, 0, 2, "Price Regime", f_get_hud_table_bg(0, 2, 2, 10, col_bull, col_bear, dark), white)
+    f_set_cell(info_table, 1, 2, regime_txt, f_get_hud_table_bg(1, 2, 2, 10, col_bull, col_bear, dark), regime_col)
+
+    // 3. Volume POC
+    f_set_cell(info_table, 0, 3, "Volume POC", f_get_hud_table_bg(0, 3, 2, 10, col_bull, col_bear, dark), white)
+    f_set_cell(info_table, 1, 3, str.tostring(rt_poc_price, format.mintick), f_get_hud_table_bg(1, 3, 2, 10, col_bull, col_bear, dark), col_poc)
+
+    // 4. Buy Vol Bias
+    float buy_bias_pct = rt_total_vol > 0 ? (rt_total_buy_vol / rt_total_vol) * 100.0 : 50.0
+    string bias_txt = str.tostring(buy_bias_pct, "##.#") + "%"
+    color bias_col = buy_bias_pct >= 50.0 ? #00e676 : #ff1744
+    f_set_cell(info_table, 0, 4, "Buy Vol Bias", f_get_hud_table_bg(0, 4, 2, 10, col_bull, col_bear, dark), white)
+    f_set_cell(info_table, 1, 4, bias_txt, f_get_hud_table_bg(1, 4, 2, 10, col_bull, col_bear, dark), bias_col)
+
+    // 5. Channel Age
+    f_set_cell(info_table, 0, 5, "Channel Age", f_get_hud_table_bg(0, 5, 2, 10, col_bull, col_bear, dark), white)
+    f_set_cell(info_table, 1, 5, str.tostring(length) + " Bars", f_get_hud_table_bg(1, 5, 2, 10, col_bull, col_bear, dark), white)
+
+    // 6. Delta POC (Max)
+    f_set_cell(info_table, 0, 6, "Delta POC (Max)", f_get_hud_table_bg(0, 6, 2, 10, col_bull, col_bear, dark), white)
+    f_set_cell(info_table, 1, 6, str.tostring(rt_dpoc_price, format.mintick), f_get_hud_table_bg(1, 6, 2, 10, col_bull, col_bear, dark), col_dpoc)
+
+    // 7. Anchored VWAP (Adaptive relative anchor)
+    float sum_pv = 0.0
+    float sum_v = 0.0
+    for i = 0 to length - 1
+        sum_pv += hlc3[i] * volume[i]
+        sum_v += volume[i]
+    float avwap = sum_v > 0 ? sum_pv / sum_v : close
+    f_set_cell(info_table, 0, 7, "Anchored VWAP", f_get_hud_table_bg(0, 7, 2, 10, col_bull, col_bear, dark), white)
+    f_set_cell(info_table, 1, 7, str.tostring(avwap, format.mintick), f_get_hud_table_bg(1, 7, 2, 10, col_bull, col_bear, dark), #00b0ff)
+
+    // 8. Vol Compression
+    bool compressed = nz(global_atr) < nz(global_avg_atr) * 0.8
+    string comp_txt = compressed ? "High" : "Low"
+    color comp_col = compressed ? #ff1744 : #00e676
+    f_set_cell(info_table, 0, 8, "Vol Compression", f_get_hud_table_bg(0, 8, 2, 10, col_bull, col_bear, dark), white)
+    f_set_cell(info_table, 1, 8, comp_txt, f_get_hud_table_bg(1, 8, 2, 10, col_bull, col_bear, dark), comp_col)
+
+    // 9. Pos Oscillator (CCI relative to channel boundaries)
+    float pos_osc = inside_ch ? (current_detrended - min_detrended) / rng * 100.0 : (current_detrended > max_detrended ? 100.0 : 0.0)
+    string osc_txt = str.tostring(pos_osc, "##.#") + " / 100"
+    color osc_col = pos_osc >= 70.0 ? #ff1744 : (pos_osc <= 30.0 ? #00e676 : white)
+    f_set_cell(info_table, 0, 9, "Pos Oscillator", f_get_hud_table_bg(0, 9, 2, 10, col_bull, col_bear, dark), white)
+    f_set_cell(info_table, 1, 9, osc_txt, f_get_hud_table_bg(1, 9, 2, 10, col_bull, col_bear, dark), osc_col)
+
+//═══════════════════════════════════════════════════════════════════════════════
+// 8. LOGO GRADIENT ENHANCED (BREATHING MOUNTALGO BRAND SYSTEM)
+//═══════════════════════════════════════════════════════════════════════════════
+color bull_c1 = col_bull
+color bull_c2 = col_bear
+color bear_c1 = col_bull
+color bear_c2 = col_bear
+
+bool  trend_check = ta.ema(close, 2) > ta.ema(open, 2)
+color c_start     = trend_check ? bull_c1 : bear_c1
+color c_end       = trend_check ? bull_c2 : bear_c2
+
+float time_cycle = timenow / 1000
+float breathe    = (math.sin(time_cycle * 3) + 1) / 2
+
+int LG_Line_Widthb = 1
+int periodb        = 200
+
+float logo_base_raw = ta.lowest(low, periodb)
+float logo_range    = ta.highest(high, periodb) - logo_base_raw
+var float h_unit    = na
+
+float target_h = math.max(ta.atr(periodb) * 1.5, logo_range * 0.22)
+h_unit := na(h_unit) ? target_h : h_unit * 0.98 + target_h * 0.02
+float logo_base = logo_base_raw - h_unit * 0.2
+
+float point1b  = logo_base + h_unit * 0.71
+float point2b  = logo_base + h_unit * 0.43
+float point3b  = logo_base + h_unit * 0.61
+float point4b  = logo_base + h_unit * 0.32
+float point5b  = logo_base + h_unit * 1.00
+float point6b  = logo_base + h_unit * 0.71
+float point7b  = logo_base + h_unit * 0.18
+float point8b  = logo_base + h_unit * 0.21
+float point9b  = logo_base + h_unit * 0.71
+float point1b0 = logo_base + h_unit * 0.86
+
+var line Line1b  = na
+var line Line2b  = na
+var line Line3b  = na
+var line Line4b  = na
+var line Line5b  = na
+var line Line6b  = na
+var line Line7b  = na
+var line Line8b  = na
+var line Line9b  = na
+var line Line1b0 = na
+var line Line1b1 = na
+var line Line1b2 = na
+var line Line1b3 = na
+var line Line1b4 = na
+var line Line1b5 = na
+var line Line1b6 = na
+var line Line1b7 = na
+var line Line1b8 = na
+var label[] brand_labels = array.new<label>()
+
+if barstate.islast
+    line.delete(Line1b)
+    line.delete(Line2b)
+    line.delete(Line3b)
+    line.delete(Line4b)
+    line.delete(Line5b)
+    line.delete(Line6b)
+    line.delete(Line7b)
+    line.delete(Line8b)
+    line.delete(Line9b)
+    line.delete(Line1b0)
+    line.delete(Line1b1)
+    line.delete(Line1b2)
+    line.delete(Line1b3)
+    line.delete(Line1b4)
+    line.delete(Line1b5)
+    line.delete(Line1b6)
+    line.delete(Line1b7)
+    line.delete(Line1b8)
+    while array.size(brand_labels) > 0
+        label.delete(array.pop(brand_labels))
+
+get_adv_color(step) =>
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15)
+    if dynamic_ratio > 1
+        dynamic_ratio := 1
+    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+
+get_fade_alpha(float x_rel) =>
+    float dist = math.abs(x_rel - 32)
+    float ratio = dist / 32.0
+    math.round(80 * (1 - ratio))
+
+if show_logo and barstate.islast
+    color c_head_sync = get_adv_color(1)
+
+    Line1b := line.new(x1 = bar_index + logo_offset_input + 4, y1 = point7b, x2 = bar_index + logo_offset_input + 11, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line2b := line.new(x1 = bar_index + logo_offset_input + 8, y1 = point7b, x2 = bar_index + logo_offset_input + 11, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, get_fade_alpha(7.5)))
+
+    Line3b := line.new(x1 = bar_index + logo_offset_input + 11, y1 = point1b, x2 = bar_index + logo_offset_input + 13, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line4b := line.new(x1 = bar_index + logo_offset_input + 11, y1 = point2b, x2 = bar_index + logo_offset_input + 13, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), get_fade_alpha(12.0)))
+
+    Line5b := line.new(x1 = bar_index + logo_offset_input + 13, y1 = point3b, x2 = bar_index + logo_offset_input + 19, y2 = point5b, color = col_poc, width = LG_Line_Widthb)
+    Line6b := line.new(x1 = bar_index + logo_offset_input + 13, y1 = point4b, x2 = bar_index + logo_offset_input + 19, y2 = point6b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), get_fade_alpha(16.0)))
+
+    Line7b := line.new(x1 = bar_index + logo_offset_input + 19, y1 = point5b, x2 = bar_index + logo_offset_input + 24, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line8b := line.new(x1 = bar_index + logo_offset_input + 19, y1 = point6b, x2 = bar_index + logo_offset_input + 24, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), get_fade_alpha(21.5)))
+
+    Line9b := line.new(x1 = bar_index + logo_offset_input + 24, y1 = point3b, x2 = bar_index + logo_offset_input + 26, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line1b0 := line.new(x1 = bar_index + logo_offset_input + 24, y1 = point4b, x2 = bar_index + logo_offset_input + 26, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), get_fade_alpha(25.0)))
+
+    Line1b1 := line.new(x1 = bar_index + logo_offset_input + 26, y1 = point1b, x2 = bar_index + logo_offset_input + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b2 := line.new(x1 = bar_index + logo_offset_input + 26, y1 = point2b, x2 = bar_index + logo_offset_input + 32, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), get_fade_alpha(31.0)))
+
+    Line1b3 := line.new(x1 = bar_index + logo_offset_input + 2, y1 = point7b, x2 = bar_index + logo_offset_input + 26, y2 = point7b, color = col_poc, width = LG_Line_Widthb)
+    Line1b4 := line.new(x1 = bar_index + logo_offset_input + 0, y1 = logo_base, x2 = bar_index + logo_offset_input + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, get_fade_alpha(13.0)))
+
+    Line1b5 := line.new(x1 = bar_index + logo_offset_input + 2, y1 = point7b, x2 = bar_index + logo_offset_input + 0, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b6 := line.new(x1 = bar_index + logo_offset_input + 26, y1 = point7b, x2 = bar_index + logo_offset_input + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b7 := line.new(x1 = bar_index + logo_offset_input + 32, y1 = logo_base, x2 = bar_index + logo_offset_input + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    label l = label.new(bar_index + logo_offset_input + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤\nSLANTED VP GLASS PRO", style=label.style_none, textcolor=col_poc, size=size.normal)
+    array.push(brand_labels, l)
+
+    label glow1 = label.new(bar_index + logo_offset_input + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
+    label glow2 = label.new(bar_index + logo_offset_input + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc, size=size.huge)
+    array.push(brand_labels, glow1)
+    array.push(brand_labels, glow2)
