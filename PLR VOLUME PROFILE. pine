@@ -19,6 +19,7 @@ vp_mode_view     = input.string("Normal", "Profile View Mode", options=["Normal"
 vp_align         = input.string("Left", "Profile Alignment", options=["Left", "Right"], group=grp_vp, tooltip="Align volume profile to the Left or Right of the regression channel.")
 extend_levels    = input.bool(true, "Extend Level Lines Across Channel", group=grp_vp, tooltip="If enabled, level lines extend across the entire regression channel. If disabled, they stop at the volume profile width.")
 show_poc_label   = input.bool(true, "Show POC Badge", group=grp_vp)
+show_vah_val_lines = input.bool(true, "Show VAH/VAL Projected Lines", group=grp_vp, tooltip="Show dashed projected lines of VAH and VAL spanning from the profile start.")
 show_block_val   = input.bool(false, "Show Volume Values inside Profile", group=grp_vp)
 
 string grp_levels = "VAH/VAL & HVN/LVN Level Detection"
@@ -387,11 +388,9 @@ if barstate.islast
             line lc = line.new(bar_x_prev, yc_prev, bar_x, yc, color=base_line_col, width=2)
             line lp1 = line.new(bar_x_prev, yc_prev + 1 * sd, bar_x, yp1, color=color.new(white, 40), width=1, style=line.style_dashed)
             line lp2 = line.new(bar_x_prev, yc_prev + 2 * sd, bar_x, yp2, color=color.new(white, 60), width=1, style=line.style_dashed)
-            // Enhanced boundary visibility: solid line.style_solid with thickness of 2
             line lp3 = line.new(bar_x_prev, yc_prev + 3 * sd, bar_x, yp3, color=color.new(col_bear, 10), width=2, style=line.style_solid)
             line lm1 = line.new(bar_x_prev, yc_prev - 1 * sd, bar_x, ym1, color=color.new(white, 40), width=1, style=line.style_dashed)
             line lm2 = line.new(bar_x_prev, yc_prev - 2 * sd, bar_x, ym2, color=color.new(white, 60), width=1, style=line.style_dashed)
-            // Enhanced boundary visibility: solid line.style_solid with thickness of 2
             line lm3 = line.new(bar_x_prev, yc_prev - 3 * sd, bar_x, ym3, color=color.new(col_bull, 10), width=2, style=line.style_solid)
             
             array.push(reg_lines, lc)
@@ -722,8 +721,6 @@ if barstate.islast
     int label_proj_x = bar_index + 16
 
     // --- CURVED POINT OF CONTROL (POC) LINE ON REGRESSION CURVED UP TO THE CHANNEL BOUNDARY ---
-    // This draws an elegant slanted/curved POC line conforming perfectly to the channel's curve
-    // up to the rightmost edge of the regression curve (bar_index)
     if show_poc_label
         float yc_poc = ym3 + (poc_row_idx + 0.5) * row_step
         int poc_start_x = extend_levels ? left_x : bar_index - vp_bars_count
@@ -762,8 +759,9 @@ if barstate.islast
         array.push(vp_labels, lbl)
 
     // VAH/VAL Single Flat Horizontal Level Lines & Right Labels (No duplicate projection lines!)
+    // Using Mathematically accurate row boundary prices: Upper boundary for VAH, Lower boundary for VAL.
     if show_vah_val
-        float y_vah_val = ym3 + (va_high_idx + 0.5) * row_step
+        float y_vah_val = ym3 + (va_high_idx + 1) * row_step
         string vah_text = "VAH (" + str.tostring(y_vah_val, format.mintick) + ")"
 
         line seg_vah = line.new(x1=start_proj_x, y1=y_vah_val, x2=end_proj_x, y2=y_vah_val,
@@ -776,7 +774,7 @@ if barstate.islast
                                   text_formatting=text.format_bold)
         array.push(vp_labels, lbl_vah)
 
-        float y_val_val = ym3 + (va_low_idx + 0.5) * row_step
+        float y_val_val = ym3 + va_low_idx * row_step
         string val_text = "VAL (" + str.tostring(y_val_val, format.mintick) + ")"
 
         line seg_val = line.new(x1=start_proj_x, y1=y_val_val, x2=end_proj_x, y2=y_val_val,
