@@ -19,7 +19,6 @@ vp_mode_view     = input.string("Normal", "Profile View Mode", options=["Normal"
 vp_align         = input.string("Left", "Profile Alignment", options=["Left", "Right"], group=grp_vp, tooltip="Align volume profile to the Left or Right of the regression channel.")
 extend_levels    = input.bool(true, "Extend Level Lines Across Channel", group=grp_vp, tooltip="If enabled, level lines extend across the entire regression channel. If disabled, they stop at the volume profile width.")
 show_poc_label   = input.bool(true, "Show POC Badge", group=grp_vp)
-show_vah_val_lines = input.bool(true, "Show VAH/VAL Projected Lines", group=grp_vp, tooltip="Show dashed projected lines of VAH and VAL spanning from the profile start.")
 show_block_val   = input.bool(false, "Show Volume Values inside Profile", group=grp_vp)
 
 string grp_levels = "VAH/VAL & HVN/LVN Level Detection"
@@ -419,7 +418,7 @@ if barstate.islast
             label.new(bar_index + 2, ym3, "Channel Low (-3 SD): " + str.tostring(ym3, format.mintick), color=color.new(dark, 100), textcolor=col_bull, size=size.tiny, style=label.style_label_left)
 
     // -------------------------------------------------------------------------
-    // 6. VOLUME PROFILE CALCULATION & SLANTED/CURVED RENDERING (UNIFORM ALIGNED EDGES)
+    // 6. VOLUME PROFILE CALCULATION & SLANTED/CURVED RENDERING
     // -------------------------------------------------------------------------
     array.fill(row_buy_vol, 0.0)
     array.fill(row_sell_vol, 0.0)
@@ -722,14 +721,39 @@ if barstate.islast
     int end_proj_x   = bar_index + 15
     int label_proj_x = bar_index + 16
 
-    // POC Flat Horizontal Level Line & Right Label
+    // --- CURVED POINT OF CONTROL (POC) LINE ON REGRESSION CURVED UP TO THE CHANNEL BOUNDARY ---
+    // This draws an elegant slanted/curved POC line conforming perfectly to the channel's curve
+    // up to the rightmost edge of the regression curve (bar_index)
+    if show_poc_label
+        float yc_poc = ym3 + (poc_row_idx + 0.5) * row_step
+        int poc_start_x = extend_levels ? left_x : bar_index - vp_bars_count
+        float t_poc_start = extend_levels ? t_left : -vp_bars_count
+        int draw_span = extend_levels ? reg_lookback : vp_bars_count
+
+        for step = 0 to draw_span by step_size
+            int offset = math.min(draw_span, step)
+            int x_curr = poc_start_x + offset
+            float t_curr = t_poc_start + offset
+            float y_curr = yc_poc + a1 * t_curr + a2 * t_curr * t_curr
+
+            if offset > 0
+                int prev_offset = math.max(0, offset - step_size)
+                int x_prev = poc_start_x + prev_offset
+                float t_prev = t_poc_start + prev_offset
+                float y_prev = yc_poc + a1 * t_prev + a2 * t_prev * t_prev
+
+                line seg = line.new(x1=x_prev, y1=y_prev, x2=x_curr, y2=y_curr,
+                                    color=col_poc, width=volume_line_width, style=line.style_solid)
+                array.push(vp_lines, seg)
+
+    // POC Flat Horizontal Level Line (Starting in front of the channel) & Right Label
     if show_poc_label
         float y_poc_val = ym3 + (poc_row_idx + 0.5) * row_step
         string poc_text = "POC (" + str.tostring(y_poc_val, format.mintick) + ")"
 
-        line seg = line.new(x1=start_proj_x, y1=y_poc_val, x2=end_proj_x, y2=y_poc_val,
-                            color=col_poc, width=volume_line_width, style=line.style_solid)
-        array.push(vp_lines, seg)
+        line seg_proj = line.new(x1=start_proj_x, y1=y_poc_val, x2=end_proj_x, y2=y_poc_val,
+                                 color=col_poc, width=volume_line_width, style=line.style_solid)
+        array.push(vp_lines, seg_proj)
 
         label lbl = label.new(x=label_proj_x, y=y_poc_val, text=poc_text,
                               color=color.new(dark, 100), textcolor=col_poc,
@@ -737,7 +761,7 @@ if barstate.islast
                               text_formatting=text.format_bold)
         array.push(vp_labels, lbl)
 
-    // VAH/VAL Flat Horizontal Level Lines & Right Labels
+    // VAH/VAL Single Flat Horizontal Level Lines & Right Labels (No duplicate projection lines!)
     if show_vah_val
         float y_vah_val = ym3 + (va_high_idx + 0.5) * row_step
         string vah_text = "VAH (" + str.tostring(y_vah_val, format.mintick) + ")"
@@ -764,14 +788,6 @@ if barstate.islast
                                   style=label.style_label_left, size=size.tiny,
                                   text_formatting=text.format_bold)
         array.push(vp_labels, lbl_val)
-
-        if show_vah_val_lines
-            line vah_proj = line.new(x1=end_proj_x + 1, y1=y_vah_val, x2=end_proj_x + 20, y2=y_vah_val,
-                                     color=col_bull, width=1, style=line.style_dashed)
-            line val_proj = line.new(x1=end_proj_x + 1, y1=y_val_val, x2=end_proj_x + 20, y2=y_val_val,
-                                     color=col_bear, width=1, style=line.style_dashed)
-            array.push(vp_lines, vah_proj)
-            array.push(vp_lines, val_proj)
 
     // HVN/LVN Flat Horizontal Level Lines & Right Labels
     if show_hvn_lvn
