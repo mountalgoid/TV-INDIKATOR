@@ -140,6 +140,12 @@ bool show_hvn       = input.bool(true, "Show HVN (High Volume Nodes)", group=grp
 float hvn_threshold = input.float(0.7, "HVN Threshold (%)", minval=0.01, maxval=1.0, step=0.01, group=grp_vp)
 color color_hvn     = input.color(color.new(#ff9800, 90), "HVN Color", group=grp_vp)
 
+// --- Advanced Filters & Layouts ---
+bool use_ema_filter = input.bool(true, "Use EMA Filter for HVN/LVN", group=grp_vp)
+int  ema_filter_len = input.int(5, "EMA Filter Length", minval=2, maxval=50, group=grp_vp)
+string short_vp_align = input.string("Right", "Short VP Position", options=["Right", "Left"], group=grp_vp)
+int short_vp_left_offset = input.int(20, "Short VP Left Distance (Bars)", minval=0, group=grp_vp, tooltip="Distance from current bar when positioned on the Left")
+
 // Layout Settings
 int vp_width       = input.int(10, "Main VP Width (%)", minval=1, maxval=50, group=grp_vp)
 int vp_h_offset    = input.int(4, "Horizontal Offset (Bars)", minval=0, group=grp_vp)
@@ -242,6 +248,17 @@ f_formatNumber(number, add_sign) =>
     else
         res := sign + str.tostring(abs_number, "#")
     res
+
+f_array_ema(src_arr, length) =>
+    int sz = array.size(src_arr)
+    array<float> ema_arr = array.copy(src_arr)
+    if sz > 1 and length > 1
+        float alpha = 2.0 / (length + 1)
+        for j = 1 to sz - 1
+            float prev_ema = array.get(ema_arr, j - 1)
+            float curr_val = array.get(src_arr, j)
+            array.set(ema_arr, j, curr_val * alpha + prev_ema * (1.0 - alpha))
+    ema_arr
 
 get_table_bg(int c, int r, int total_c, int total_r) =>
     float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
@@ -516,7 +533,8 @@ if barstate.isconfirmed
 
 // Historical Rolling POC Calculation (Sync with Volume Profile logic)
 var float hpoc_val = na
-if show_hpoc and (barstate.isconfirmed or barstate.islast)
+bool should_calc_hpoc = show_hpoc and (barstate.islast or (barstate.isconfirmed and bar_index % 5 == 0))
+if should_calc_hpoc
     int data_size = array.size(hist_close)
     if data_size > 10
         float h_p = math.max(array.max(hist_high), high)
@@ -633,6 +651,7 @@ type LargeVolBox
     box id
     box b_vol_box
     box s_vol_box
+    line lvl_line
     float level
     float b_vol
     float s_vol
@@ -664,7 +683,8 @@ if barstate.isconfirmed
                  text="LARGE BUY VOL", text_size=size.auto,text_formatting = text.format_bold, text_color=col_poc)
             bvb = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
             svb = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
-            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, buy_loc, buy_volume, sell_volume, true, 0, true, zone_size))
+            lvl_ln = line.new(bar_index, buy_loc, bar_index + 10, buy_loc, color=color.new(col_bull, 20), width=2, style=line.style_dashed)
+            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, lvl_ln, buy_loc, buy_volume, sell_volume, true, 0, true, zone_size))
         if vol_intensity_sell >= large_vol_threshold
             int dyn_alpha = math.round(100 - vol_intensity_sell * 70)
             b = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, 
@@ -672,7 +692,8 @@ if barstate.isconfirmed
                  text="LARGE SELL VOL", text_size=size.auto,text_formatting = text.format_bold, text_color=col_poc)
             bvb = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
             svb = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
-            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, sell_loc, buy_volume, sell_volume, false, 0, true, zone_size))
+            lvl_ln = line.new(bar_index, sell_loc, bar_index + 10, sell_loc, color=color.new(col_bear, 20), width=2, style=line.style_dashed)
+            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, lvl_ln, sell_loc, buy_volume, sell_volume, false, 0, true, zone_size))
 
 // Mitigation Logic for Imbalance Boxes (Only check for bars AFTER the creation bar)
 if array.size(imbalance_boxes) > 0
@@ -705,6 +726,7 @@ if array.size(lv_boxes) > 0
             // Extension
             int target_r = bar_index + 10
             box.set_right(lvb.id, target_r)
+            line.set_x2(lvb.lvl_line, target_r)
             
             // Internal Volume Split Extension
             float b_ratio = lvb.b_vol / (lvb.b_vol + lvb.s_vol)
@@ -736,6 +758,7 @@ if array.size(lv_boxes) > 0
             
             if broken and bar_index > box.get_left(lvb.id)
                 box.set_right(lvb.id, bar_index)
+                line.set_x2(lvb.lvl_line, bar_index)
                 // Finalize internal boxes
                 int mit_r = bar_index
                 int f_split_x = start_x + math.round((mit_r - start_x) * b_ratio)
@@ -748,6 +771,7 @@ if array.size(lv_boxes) > 0
             box.delete(lvb.id)
             box.delete(lvb.b_vol_box)
             box.delete(lvb.s_vol_box)
+            line.delete(lvb.lvl_line)
             array.remove(lv_boxes, i)
 
 float t_buy  = auto_scaling ? 90 - (vol_intensity_buy * 80) : 40
@@ -1071,23 +1095,27 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             float vah_s_price = lowest_p + (va_top_s * row_height) + row_height
             float val_s_price = lowest_p + (va_bot_s * row_height)
             
+            // Smooth Short total volume if EMA Filter is enabled
+            array<float> s_vol_filter_arr = use_ema_filter ? f_array_ema(bucket_s_total, ema_filter_len) : bucket_s_total
+            float max_s_filter_vol = array.max(s_vol_filter_arr)
+
             array<int> lvn_s_indices = array.new_int(0)
             if show_vp_short and show_lvn
-                float thresh_s = max_s_vol * lvn_threshold
+                float thresh_s = max_s_filter_vol * lvn_threshold
                 for i = 1 to n_rows - 2
-                    float v_prev = array.get(bucket_s_total, i-1)
-                    float v_curr = array.get(bucket_s_total, i)
-                    float v_next = array.get(bucket_s_total, i+1)
+                    float v_prev = array.get(s_vol_filter_arr, i-1)
+                    float v_curr = array.get(s_vol_filter_arr, i)
+                    float v_next = array.get(s_vol_filter_arr, i+1)
                     if v_curr < v_prev and v_curr < v_next and v_curr < thresh_s
                         array.push(lvn_s_indices, i)
 
             array<int> hvn_s_indices = array.new_int(0)
             if show_vp_short and show_hvn
-                float thresh_s_hvn = max_s_vol * hvn_threshold
+                float thresh_s_hvn = max_s_filter_vol * hvn_threshold
                 for i = 1 to n_rows - 2
-                    float v_prev = array.get(bucket_s_total, i-1)
-                    float v_curr = array.get(bucket_s_total, i)
-                    float v_next = array.get(bucket_s_total, i+1)
+                    float v_prev = array.get(s_vol_filter_arr, i-1)
+                    float v_curr = array.get(s_vol_filter_arr, i)
+                    float v_next = array.get(s_vol_filter_arr, i+1)
                     if v_curr > v_prev and v_curr > v_next and v_curr >= thresh_s_hvn and i != poc_s_idx
                         array.push(hvn_s_indices, i)
                 
@@ -1118,25 +1146,29 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             float val_price = lowest_p + (va_bot * row_height)
             float poc_price = lowest_p + (poc_idx * row_height) + (row_height/2)
             
+            // Smooth Main total volume if EMA Filter is enabled
+            array<float> main_vol_filter_arr = use_ema_filter ? f_array_ema(bucket_vol_total, ema_filter_len) : bucket_vol_total
+            float max_main_filter_vol = array.max(main_vol_filter_arr)
+
             // --- LVN IDENTIFICATION ---
             array<int> lvn_indices = array.new_int(0)
             if show_lvn
-                float threshold_vol = max_total_vol * lvn_threshold
+                float threshold_vol = max_main_filter_vol * lvn_threshold
                 for i = 1 to n_rows - 2
-                    float v_prev = array.get(bucket_vol_total, i - 1)
-                    float v_curr = array.get(bucket_vol_total, i)
-                    float v_next = array.get(bucket_vol_total, i + 1)
+                    float v_prev = array.get(main_vol_filter_arr, i - 1)
+                    float v_curr = array.get(main_vol_filter_arr, i)
+                    float v_next = array.get(main_vol_filter_arr, i + 1)
                     if v_curr < v_prev and v_curr < v_next and v_curr < threshold_vol
                         array.push(lvn_indices, i)
 
             // --- HVN IDENTIFICATION ---
             array<int> hvn_indices = array.new_int(0)
             if show_hvn
-                float threshold_hvn_vol = max_total_vol * hvn_threshold
+                float threshold_hvn_vol = max_main_filter_vol * hvn_threshold
                 for i = 1 to n_rows - 2
-                    float v_prev = array.get(bucket_vol_total, i - 1)
-                    float v_curr = array.get(bucket_vol_total, i)
-                    float v_next = array.get(bucket_vol_total, i + 1)
+                    float v_prev = array.get(main_vol_filter_arr, i - 1)
+                    float v_curr = array.get(main_vol_filter_arr, i)
+                    float v_next = array.get(main_vol_filter_arr, i + 1)
                     if v_curr > v_prev and v_curr > v_next and v_curr >= threshold_hvn_vol and i != poc_idx
                         array.push(hvn_indices, i)
 
@@ -1295,13 +1327,20 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             predict_reach := show_predict ? predict_count * predict_bars : 0
             int width_scaler_vp = math.round(30 * (vp_width / 10.0))
             int width_scaler_s = math.round(width_scaler_vp * 0.6)
-            int x_s_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
             
-            // Safe Coordinate Capping to prevent RE10020 runtime error
-            int max_x_s_start = bar_index + 416 - (show_vp_short ? width_scaler_s + vp_gap + 20 : 0) - width_scaler_vp - vp_gap
-            x_s_start := math.max(bar_index + 10, math.min(x_s_start, max_x_s_start))
+            // Central spine coordinate setup
+            int x_vp_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
+            int max_x_vp_start = bar_index + 416 - width_scaler_vp - vp_gap
+            x_vp_start := math.max(bar_index + 10, math.min(x_vp_start, max_x_vp_start))
 
-            int x_vp_start = x_s_start + (show_vp_short ? width_scaler_s + vp_gap + 20 : 0) // Extra space for short VP labels
+            // Configure Short VP coordinates dynamically next to the Main VP with a safe gap to prevent any overlap
+            int x_s_spine = short_vp_align == "Left" ? (bar_index - short_vp_left_offset) : (x_vp_start - width_scaler_s - 35)
+            int gap = 2
+            int x_s_line_start = x_s_spine - gap - width_scaler_s
+            int x_s_line_end = x_s_spine + gap + width_scaler_s
+            string s_lbl_style = label.style_label_right
+            int x_s_lbl_pos = x_s_line_start
+
             float inv_fade_range = 1.0 / (40 * row_height)
 
             for i = 0 to n_rows - 1
@@ -1310,7 +1349,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 float level_bottom = lowest_p + (i * row_height)
                 float level_top = level_bottom + row_height
 
-                // --- SHORT VP RENDERING ---
+                // --- SHORT VP RENDERING (Total Vol on Left, Delta Vol on Right with Gap and Middle Divider) ---
                 if show_vp_short and b_s_vol > 0
                     float s_buy = array.get(bucket_s_buy, i)
                     float s_sell = array.get(bucket_s_sell, i)
@@ -1319,53 +1358,65 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     float pct_s = b_s_vol * inv_max_s_vol
                     int t_s = get_profile_alpha(pct_s, level_bottom, close, inv_fade_range)
                     int len_s = math.round(width_scaler_s * pct_s)
-                    string txt_s_delta = show_vp_labels ? ((s_delta > 0 ? "+" : "") + format_vol(s_delta)) : ""
-                    string vp_s_txt = show_vp_labels ? (format_vol(b_s_vol) + (vp_type == "Delta" ? " | " + txt_s_delta : "")) : ""
-                    box bs = box.new(x_s_start, level_top, x_s_start + len_s, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
+
+                    // Left Side: Show Total Volume, extending LEFT from the spine
+                    string vp_s_txt = show_vp_labels ? format_vol(b_s_vol) : ""
+                    box bs = box.new(x_s_spine - gap - len_s, level_top, x_s_spine - gap, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
                     array.push(vp_s_boxes, bs)
                     
+                    // Right Side: Show Delta Volume, extending RIGHT from the spine
+                    float pct_s_delta = math.abs(s_delta) * inv_max_s_vol
+                    int len_s_delta = math.round(width_scaler_s * pct_s_delta)
+                    color s_delta_c = s_delta > 0 ? c_buy : (s_delta < 0 ? c_sell : col_poc)
+                    string vp_s_delta_txt = show_vp_labels ? ((s_delta > 0 ? "+" : "") + format_vol(s_delta)) : ""
+                    box bs_delta = box.new(x_s_spine + gap, level_top, x_s_spine + gap + len_s_delta, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_delta_c, t_s), text=vp_s_delta_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
+                    array.push(vp_s_boxes, bs_delta)
+
                     if i == poc_s_idx
                         float poc_s_p = level_bottom + (row_height/2)
-                        line l_poc_s = line.new(x_s_start, poc_s_p, x_s_start + width_scaler_s, poc_s_p, color=col_poc, width=1)
+                        line l_poc_s = line.new(x_s_line_start, poc_s_p, x_s_line_end, poc_s_p, color=col_poc, width=1)
                         array.push(vp_s_lines, l_poc_s)
-                        lbl_poc_s = label.new(x_s_start + width_scaler_s, poc_s_p, "POC[S]: " + format_vol(max_s_vol), color=color.new(col_poc, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
+                        lbl_poc_s = label.new(x_s_lbl_pos, poc_s_p, "POC[S]: " + format_vol(max_s_vol), color=color.new(col_poc, 90), textcolor=white, size=size.tiny, style=s_lbl_style)
                         array.push(vp_s_labels, lbl_poc_s)
 
-                // --- MAIN VP RENDERING ---
-                if b_vol > 0
+                // --- MAIN VP RENDERING (Standalone Right-Aligned, always drawn if show_vp is true) ---
+                if show_vp and b_vol > 0
                     float b_buy = array.get(bucket_vol_buy, i)
                     float b_sell = array.get(bucket_vol_sell, i)
                     float b_delta = b_buy - b_sell
-                    
-                    // --- DELTA-BASED COLORING ---
-                    // 1. Total VP (Buy Color -> Sell Color based on Delta or Normal)
                     color base_c = vp_type == "Normal" ? col_poc : (b_delta > 0 ? c_buy : (b_delta < 0 ? c_sell : col_poc))
                     float pct_total = b_vol * inv_max_total_vol
                     int t_vp = get_profile_alpha(pct_total, level_bottom, close, inv_fade_range)
                     color c_bar_vp = color.new(base_c, t_vp)
-                    
+
                     int len_total = math.round(width_scaler_vp * pct_total)
                     string txt_delta = show_vp_labels ? ((b_delta > 0 ? "+" : "") + format_vol(b_delta)) : ""
-                    
-                    if show_vp
-                        string vp_txt = show_vp_labels ? (format_vol(b_vol) + (vp_type == "Delta" ? " | " + txt_delta : "")) : ""
-                        box b = box.new(x_vp_start, level_top, x_vp_start + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt, text_formatting = text.format_bold,text_size=size.auto, text_color=dark)
-                        array.push(vp_boxes, b)
+
+                    string vp_txt = show_vp_labels ? (format_vol(b_vol) + (vp_type == "Delta" ? " | " + txt_delta : "")) : ""
+                    box b = box.new(x_vp_start, level_top, x_vp_start + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt, text_formatting = text.format_bold,text_size=size.auto, text_color=dark)
+                    array.push(vp_boxes, b)
             
             if show_vp_short
                 float poc_s_p = lowest_p + (poc_s_idx * row_height) + (row_height/2)
-                int x_s_end = x_s_start + width_scaler_s
                 
-                line l_vah_s = line.new(x_s_start, vah_s_price, x_s_end, vah_s_price, color=color.new(white, 20), width=1, style=line.style_dotted)
+                // Draw segmented 3-part divider line
+                line l_div_mid = line.new(x_s_spine, val_s_price, x_s_spine, vah_s_price, color=color.new(col_poc, 20), width=3, style=line.style_solid)
+                line l_div_top = line.new(x_s_spine, vah_s_price, x_s_spine, highest_p, color=color.new(col_poc, 50), width=1, style=line.style_dashed)
+                line l_div_bot = line.new(x_s_spine, lowest_p, x_s_spine, val_s_price, color=color.new(col_poc, 50), width=1, style=line.style_dashed)
+                array.push(vp_s_lines, l_div_mid)
+                array.push(vp_s_lines, l_div_top)
+                array.push(vp_s_lines, l_div_bot)
+
+                line l_vah_s = line.new(x_s_line_start, vah_s_price, x_s_line_end, vah_s_price, color=color.new(white, 20), width=1, style=line.style_dotted)
                 array.push(vp_s_lines, l_vah_s)
                 float vah_s_vol = va_top_s < n_rows ? array.get(bucket_s_total, va_top_s) : 0
-                lbl_vah_s = label.new(x_s_end, vah_s_price, "VAH[S]: " + str.tostring(vah_s_price, format.mintick) + " (" + format_vol(vah_s_vol) + ")", color=color.new(white, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
+                lbl_vah_s = label.new(x_s_lbl_pos, vah_s_price, "VAH[S]: " + str.tostring(vah_s_price, format.mintick) + " (" + format_vol(vah_s_vol) + ")", color=color.new(white, 90), textcolor=white, size=size.tiny, style=s_lbl_style)
                 array.push(vp_s_labels, lbl_vah_s)
 
-                line l_val_s = line.new(x_s_start, val_s_price, x_s_end, val_s_price, color=color.new(white, 20), width=1, style=line.style_dotted)
+                line l_val_s = line.new(x_s_line_start, val_s_price, x_s_line_end, val_s_price, color=color.new(white, 20), width=1, style=line.style_dotted)
                 array.push(vp_s_lines, l_val_s)
                 float val_s_vol = va_bot_s >= 0 ? array.get(bucket_s_total, va_bot_s) : 0
-                lbl_val_s = label.new(x_s_end, val_s_price, "VAL[S]: " + str.tostring(val_s_price, format.mintick) + " (" + format_vol(val_s_vol) + ")", color=color.new(white, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
+                lbl_val_s = label.new(x_s_lbl_pos, val_s_price, "VAL[S]: " + str.tostring(val_s_price, format.mintick) + " (" + format_vol(val_s_vol) + ")", color=color.new(white, 90), textcolor=white, size=size.tiny, style=s_lbl_style)
                 array.push(vp_s_labels, lbl_val_s)
                 
                 if show_lvn and array.size(lvn_s_indices) > 0
@@ -1376,8 +1427,8 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         float l_top = l_bottom + row_height
                         color lvn_border_c = color.new(color_lvn, 30)
                         color lvn_bg_c = color.new(color_lvn, 90)
-                        string lvn_txt = "LVN"//"[S]: " + str.tostring(lp, format.mintick) + " (" + format_vol(l_vol) + ")"
-                        box b_lvn = box.new(left=x_s_start, top=l_top, right=x_s_end, bottom=l_bottom,
+                        string lvn_txt = "LVN"
+                        box b_lvn = box.new(left=x_s_line_start, top=l_top, right=x_s_line_end, bottom=l_bottom,
                                             border_color=lvn_border_c, border_width=1, border_style=line.style_dashed,
                                             bgcolor=lvn_bg_c, text=lvn_txt, text_color=white, text_size=size.auto,
                                             text_formatting=text.format_bold, text_halign=text.align_center, text_valign=text.align_center)
@@ -1391,8 +1442,8 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         float h_top = h_bottom + row_height
                         color hvn_border_c = color.new(color_hvn, 30)
                         color hvn_bg_c = color.new(color_hvn, 90)
-                        string hvn_txt = "HVN"//"[S]: " + str.tostring(hp, format.mintick) + " (" + format_vol(h_vol) + ")"
-                        box b_hvn = box.new(left=x_s_start, top=h_top, right=x_s_end, bottom=h_bottom,
+                        string hvn_txt = "HVN"
+                        box b_hvn = box.new(left=x_s_line_start, top=h_top, right=x_s_line_end, bottom=h_bottom,
                                             border_color=hvn_border_c, border_width=1, border_style=line.style_solid,
                                             bgcolor=hvn_bg_c, text=hvn_txt, text_color=white, text_size=size.auto,
                                             text_formatting=text.format_bold, text_halign=text.align_center, text_valign=text.align_center)
@@ -1635,12 +1686,12 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     bool is_hvn = false
                     bool is_lvn = false
                     if r > 0 and r < n_rows - 1
-                        float v_prev = array.get(bucket_vol_total, r - 1)
-                        float v_curr = level_vol
-                        float v_next = array.get(bucket_vol_total, r + 1)
-                        if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= max_total_vol * hvn_threshold and r != poc_idx
+                        float v_prev = array.get(main_vol_filter_arr, r - 1)
+                        float v_curr = array.get(main_vol_filter_arr, r)
+                        float v_next = array.get(main_vol_filter_arr, r + 1)
+                        if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= max_main_filter_vol * hvn_threshold and r != poc_idx
                             is_hvn := true
-                        if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < max_total_vol * lvn_threshold
+                        if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < max_main_filter_vol * lvn_threshold
                             is_lvn := true
 
                     if r == poc_idx
