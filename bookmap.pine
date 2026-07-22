@@ -143,10 +143,6 @@ color color_hvn     = input.color(color.new(#ff9800, 90), "HVN Color", group=grp
 // --- Advanced Filters & Layouts ---
 bool use_ema_filter = input.bool(true, "Use EMA Filter for HVN/LVN", group=grp_vp)
 int  ema_filter_len = input.int(5, "EMA Filter Length", minval=2, maxval=50, group=grp_vp)
-int  high_vol_trans = input.int(15, "High Volume Opacity/Trans", minval=0, maxval=100, tooltip="Lower value = more solid/vibrant", group=grp_vp)
-int  low_vol_trans  = input.int(75, "Low Volume Opacity/Trans", minval=0, maxval=100, tooltip="Higher value = more transparent/faded", group=grp_vp)
-string short_vp_align = input.string("Right", "Short VP Position", options=["Right", "Left"], group=grp_vp)
-int short_vp_left_offset = input.int(20, "Short VP Left Distance (Bars)", minval=0, group=grp_vp, tooltip="Distance from current bar when positioned on the Left")
 
 // Layout Settings
 int vp_width       = input.int(10, "Main VP Width (%)", minval=1, maxval=50, group=grp_vp)
@@ -270,13 +266,12 @@ get_table_bg(int c, int r, int total_c, int total_r) =>
     int t_alpha = 0
     color.new(mixed_base, t_alpha)
 
-get_profile_alpha(float intensity, float level, float price_center, float inv_fade_range, int high_trans, int low_trans) =>
+get_profile_alpha(float intensity, float level, float price_center, float inv_fade_range) =>
     float dist_ratio = math.min(1.0, math.abs(level - price_center) * inv_fade_range)
     float q_weight = math.pow(math.max(0, intensity), 0.7)
-    // Map from low_trans (low intensity) to high_trans (high intensity)
-    int base_alpha = math.round(low_trans - (q_weight * (low_trans - high_trans)))
+    int base_alpha = math.round((1.0 - q_weight) * 80)
     float smooth_f = math.pow(dist_ratio, 2.0)
-    math.round(base_alpha + smooth_f * (100 - base_alpha))
+    math.round(base_alpha + smooth_f * (80 - base_alpha))
 
 format_vol(float v) =>
     float abs_v = math.abs(v)
@@ -1331,21 +1326,11 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             int width_scaler_vp = math.round(30 * (vp_width / 10.0))
             int width_scaler_s = math.round(width_scaler_vp * 0.6)
             
-            int x_s_start = 0
-            int x_vp_start = 0
-
-            if short_vp_align == "Left"
-                x_s_start := bar_index - short_vp_left_offset - width_scaler_s
-                x_vp_start := bar_index + math.max(vp_h_offset, predict_reach + 10)
-                // Safe Coordinate Capping to prevent RE10020 runtime error for x_vp_start
-                int max_x_vp_start = bar_index + 416 - width_scaler_vp - vp_gap
-                x_vp_start := math.max(bar_index + 10, math.min(x_vp_start, max_x_vp_start))
-            else
-                x_s_start := bar_index + math.max(vp_h_offset, predict_reach + 10)
-                // Safe Coordinate Capping to prevent RE10020 runtime error
-                int max_x_s_start = bar_index + 416 - (show_vp_short ? width_scaler_s + vp_gap + 20 : 0) - width_scaler_vp - vp_gap
-                x_s_start := math.max(bar_index + 10, math.min(x_s_start, max_x_s_start))
-                x_vp_start := x_s_start + (show_vp_short ? width_scaler_s + vp_gap + 20 : 0) // Extra space for short VP labels
+            // The Main and Short Volume Profiles share the same central spine (adjoining back-to-back)
+            int x_vp_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
+            // Safe Coordinate Capping to prevent RE10020 runtime error for x_vp_start
+            int max_x_vp_start = bar_index + 416 - width_scaler_vp - vp_gap
+            x_vp_start := math.max(bar_index + 10, math.min(x_vp_start, max_x_vp_start))
 
             float inv_fade_range = 1.0 / (40 * row_height)
 
@@ -1362,18 +1347,20 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     float s_delta = s_buy - s_sell
                     color s_base_c = vp_type == "Normal" ? col_poc : (s_delta > 0 ? c_buy : (s_delta < 0 ? c_sell : col_poc))
                     float pct_s = b_s_vol * inv_max_s_vol
-                    int t_s = get_profile_alpha(pct_s, level_bottom, close, inv_fade_range, high_vol_trans, low_vol_trans)
+                    int t_s = get_profile_alpha(pct_s, level_bottom, close, inv_fade_range)
                     int len_s = math.round(width_scaler_s * pct_s)
                     string txt_s_delta = show_vp_labels ? ((s_delta > 0 ? "+" : "") + format_vol(s_delta)) : ""
                     string vp_s_txt = show_vp_labels ? (format_vol(b_s_vol) + (vp_type == "Delta" ? " | " + txt_s_delta : "")) : ""
-                    box bs = box.new(x_s_start, level_top, x_s_start + len_s, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
+                    // Render in reverse direction (to the left from the shared spine)
+                    box bs = box.new(x_vp_start - len_s, level_top, x_vp_start, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
                     array.push(vp_s_boxes, bs)
                     
                     if i == poc_s_idx
                         float poc_s_p = level_bottom + (row_height/2)
-                        line l_poc_s = line.new(x_s_start, poc_s_p, x_s_start + width_scaler_s, poc_s_p, color=col_poc, width=1)
+                        int x_s_left = x_vp_start - width_scaler_s
+                        line l_poc_s = line.new(x_s_left, poc_s_p, x_vp_start, poc_s_p, color=col_poc, width=1)
                         array.push(vp_s_lines, l_poc_s)
-                        lbl_poc_s = label.new(x_s_start + width_scaler_s, poc_s_p, "POC[S]: " + format_vol(max_s_vol), color=color.new(col_poc, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
+                        lbl_poc_s = label.new(x_s_left, poc_s_p, "POC[S]: " + format_vol(max_s_vol), color=color.new(col_poc, 90), textcolor=white, size=size.tiny, style=label.style_label_right)
                         array.push(vp_s_labels, lbl_poc_s)
 
                 // --- MAIN VP RENDERING ---
@@ -1386,7 +1373,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     // 1. Total VP (Buy Color -> Sell Color based on Delta or Normal)
                     color base_c = vp_type == "Normal" ? col_poc : (b_delta > 0 ? c_buy : (b_delta < 0 ? c_sell : col_poc))
                     float pct_total = b_vol * inv_max_total_vol
-                    int t_vp = get_profile_alpha(pct_total, level_bottom, close, inv_fade_range, high_vol_trans, low_vol_trans)
+                    int t_vp = get_profile_alpha(pct_total, level_bottom, close, inv_fade_range)
                     color c_bar_vp = color.new(base_c, t_vp)
                     
                     int len_total = math.round(width_scaler_vp * pct_total)
@@ -1399,18 +1386,18 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             
             if show_vp_short
                 float poc_s_p = lowest_p + (poc_s_idx * row_height) + (row_height/2)
-                int x_s_end = x_s_start + width_scaler_s
+                int x_s_left = x_vp_start - width_scaler_s
                 
-                line l_vah_s = line.new(x_s_start, vah_s_price, x_s_end, vah_s_price, color=color.new(white, 20), width=1, style=line.style_dotted)
+                line l_vah_s = line.new(x_s_left, vah_s_price, x_vp_start, vah_s_price, color=color.new(white, 20), width=1, style=line.style_dotted)
                 array.push(vp_s_lines, l_vah_s)
                 float vah_s_vol = va_top_s < n_rows ? array.get(bucket_s_total, va_top_s) : 0
-                lbl_vah_s = label.new(x_s_end, vah_s_price, "VAH[S]: " + str.tostring(vah_s_price, format.mintick) + " (" + format_vol(vah_s_vol) + ")", color=color.new(white, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
+                lbl_vah_s = label.new(x_s_left, vah_s_price, "VAH[S]: " + str.tostring(vah_s_price, format.mintick) + " (" + format_vol(vah_s_vol) + ")", color=color.new(white, 90), textcolor=white, size=size.tiny, style=label.style_label_right)
                 array.push(vp_s_labels, lbl_vah_s)
 
-                line l_val_s = line.new(x_s_start, val_s_price, x_s_end, val_s_price, color=color.new(white, 20), width=1, style=line.style_dotted)
+                line l_val_s = line.new(x_s_left, val_s_price, x_vp_start, val_s_price, color=color.new(white, 20), width=1, style=line.style_dotted)
                 array.push(vp_s_lines, l_val_s)
                 float val_s_vol = va_bot_s >= 0 ? array.get(bucket_s_total, va_bot_s) : 0
-                lbl_val_s = label.new(x_s_end, val_s_price, "VAL[S]: " + str.tostring(val_s_price, format.mintick) + " (" + format_vol(val_s_vol) + ")", color=color.new(white, 90), textcolor=white, size=size.tiny, style=label.style_label_left)
+                lbl_val_s = label.new(x_s_left, val_s_price, "VAL[S]: " + str.tostring(val_s_price, format.mintick) + " (" + format_vol(val_s_vol) + ")", color=color.new(white, 90), textcolor=white, size=size.tiny, style=label.style_label_right)
                 array.push(vp_s_labels, lbl_val_s)
                 
                 if show_lvn and array.size(lvn_s_indices) > 0
@@ -1422,7 +1409,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         color lvn_border_c = color.new(color_lvn, 30)
                         color lvn_bg_c = color.new(color_lvn, 90)
                         string lvn_txt = "LVN"//"[S]: " + str.tostring(lp, format.mintick) + " (" + format_vol(l_vol) + ")"
-                        box b_lvn = box.new(left=x_s_start, top=l_top, right=x_s_end, bottom=l_bottom,
+                        box b_lvn = box.new(left=x_s_left, top=l_top, right=x_vp_start, bottom=l_bottom,
                                             border_color=lvn_border_c, border_width=1, border_style=line.style_dashed,
                                             bgcolor=lvn_bg_c, text=lvn_txt, text_color=white, text_size=size.auto,
                                             text_formatting=text.format_bold, text_halign=text.align_center, text_valign=text.align_center)
@@ -1437,7 +1424,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         color hvn_border_c = color.new(color_hvn, 30)
                         color hvn_bg_c = color.new(color_hvn, 90)
                         string hvn_txt = "HVN"//"[S]: " + str.tostring(hp, format.mintick) + " (" + format_vol(h_vol) + ")"
-                        box b_hvn = box.new(left=x_s_start, top=h_top, right=x_s_end, bottom=h_bottom,
+                        box b_hvn = box.new(left=x_s_left, top=h_top, right=x_vp_start, bottom=h_bottom,
                                             border_color=hvn_border_c, border_width=1, border_style=line.style_solid,
                                             bgcolor=hvn_bg_c, text=hvn_txt, text_color=white, text_size=size.auto,
                                             text_formatting=text.format_bold, text_halign=text.align_center, text_valign=text.align_center)
