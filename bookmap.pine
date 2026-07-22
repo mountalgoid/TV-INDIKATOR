@@ -1333,8 +1333,8 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             int max_x_vp_start = bar_index + 416 - width_scaler_vp - vp_gap
             x_vp_start := math.max(bar_index + 10, math.min(x_vp_start, max_x_vp_start))
 
-            // Configure Short VP coordinates dynamically next to the Main VP
-            int x_s_spine = short_vp_align == "Left" ? (bar_index - short_vp_left_offset) : (x_vp_start - width_scaler_s - 10)
+            // Configure Short VP coordinates dynamically next to the Main VP with a safe gap to prevent any overlap
+            int x_s_spine = short_vp_align == "Left" ? (bar_index - short_vp_left_offset) : (x_vp_start - width_scaler_s - 35)
             int gap = 2
             int x_s_line_start = x_s_spine - gap - width_scaler_s
             int x_s_line_end = x_s_spine + gap + width_scaler_s
@@ -1399,9 +1399,13 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             if show_vp_short
                 float poc_s_p = lowest_p + (poc_s_idx * row_height) + (row_height/2)
                 
-                // Draw middle divider line
-                line l_divider = line.new(x_s_spine, lowest_p, x_s_spine, highest_p, color=color.new(col_poc, 40), width=2, style=line.style_solid)
-                array.push(vp_s_lines, l_divider)
+                // Draw segmented 3-part divider line
+                line l_div_mid = line.new(x_s_spine, val_s_price, x_s_spine, vah_s_price, color=color.new(col_poc, 20), width=3, style=line.style_solid)
+                line l_div_top = line.new(x_s_spine, vah_s_price, x_s_spine, highest_p, color=color.new(col_poc, 50), width=1, style=line.style_dashed)
+                line l_div_bot = line.new(x_s_spine, lowest_p, x_s_spine, val_s_price, color=color.new(col_poc, 50), width=1, style=line.style_dashed)
+                array.push(vp_s_lines, l_div_mid)
+                array.push(vp_s_lines, l_div_top)
+                array.push(vp_s_lines, l_div_bot)
 
                 line l_vah_s = line.new(x_s_line_start, vah_s_price, x_s_line_end, vah_s_price, color=color.new(white, 20), width=1, style=line.style_dotted)
                 array.push(vp_s_lines, l_vah_s)
