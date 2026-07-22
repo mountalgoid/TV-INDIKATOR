@@ -1333,28 +1333,12 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             int max_x_vp_start = bar_index + 416 - width_scaler_vp - vp_gap
             x_vp_start := math.max(bar_index + 10, math.min(x_vp_start, max_x_vp_start))
 
-            // Configure Short VP coordinates dynamically
-            int x_s_start = 0
-            int x_s_end = 0
-            int x_s_line_start = 0
-            int x_s_line_end = 0
-            string s_lbl_style = label.style_label_left
-            int x_s_lbl_pos = 0
-
-            if short_vp_align == "Left"
-                x_s_start := bar_index - short_vp_left_offset - width_scaler_s
-                x_s_end := x_s_start + width_scaler_s
-                x_s_line_start := x_s_start
-                x_s_line_end := x_s_end
-                s_lbl_style := label.style_label_left
-                x_s_lbl_pos := x_s_end
-            else
-                x_s_start := x_vp_start - width_scaler_s
-                x_s_end := x_vp_start
-                x_s_line_start := x_s_start
-                x_s_line_end := x_s_end
-                s_lbl_style := label.style_label_right
-                x_s_lbl_pos := x_s_start
+            // Configure Short VP and adjoining Total VP coordinates dynamically
+            int x_s_spine = short_vp_align == "Left" ? (bar_index - short_vp_left_offset) : x_vp_start
+            int x_s_line_start = x_s_spine - width_scaler_s
+            int x_s_line_end = x_s_spine
+            string s_lbl_style = label.style_label_right
+            int x_s_lbl_pos = x_s_spine - width_scaler_s
 
             float inv_fade_range = 1.0 / (40 * row_height)
 
@@ -1364,7 +1348,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 float level_bottom = lowest_p + (i * row_height)
                 float level_top = level_bottom + row_height
 
-                // --- SHORT VP RENDERING ---
+                // --- SHORT VP RENDERING & ADJOINING TOTAL VP ---
                 if show_vp_short and b_s_vol > 0
                     float s_buy = array.get(bucket_s_buy, i)
                     float s_sell = array.get(bucket_s_sell, i)
@@ -1377,11 +1361,26 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     // Show ONLY total volume for the short VP
                     string vp_s_txt = show_vp_labels ? format_vol(b_s_vol) : ""
 
-                    int b_s_left = short_vp_align == "Left" ? x_s_start : (x_vp_start - len_s)
-                    int b_s_right = short_vp_align == "Left" ? (x_s_start + len_s) : x_vp_start
-                    box bs = box.new(b_s_left, level_top, b_s_right, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
+                    // Short VP always extends LEFT from the spine (reverse direction)
+                    box bs = box.new(x_s_spine - len_s, level_top, x_s_spine, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
                     array.push(vp_s_boxes, bs)
                     
+                    // Adjoining Total VP always extends RIGHT from the spine
+                    if b_vol > 0
+                        float b_buy = array.get(bucket_vol_buy, i)
+                        float b_sell = array.get(bucket_vol_sell, i)
+                        float b_delta = b_buy - b_sell
+                        color base_c = vp_type == "Normal" ? col_poc : (b_delta > 0 ? c_buy : (b_delta < 0 ? c_sell : col_poc))
+                        float pct_total = b_vol * inv_max_total_vol
+                        int t_vp = get_profile_alpha(pct_total, level_bottom, close, inv_fade_range)
+                        color c_bar_vp = color.new(base_c, t_vp)
+                        int len_total = math.round(width_scaler_vp * pct_total)
+                        string txt_delta = show_vp_labels ? ((b_delta > 0 ? "+" : "") + format_vol(b_delta)) : ""
+                        string vp_txt = show_vp_labels ? (format_vol(b_vol) + (vp_type == "Delta" ? " | " + txt_delta : "")) : ""
+
+                        box bt = box.new(x_s_spine, level_top, x_s_spine + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
+                        array.push(vp_s_boxes, bt)
+
                     if i == poc_s_idx
                         float poc_s_p = level_bottom + (row_height/2)
                         line l_poc_s = line.new(x_s_line_start, poc_s_p, x_s_line_end, poc_s_p, color=col_poc, width=1)
@@ -1389,23 +1388,20 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         lbl_poc_s = label.new(x_s_lbl_pos, poc_s_p, "POC[S]: " + format_vol(max_s_vol), color=color.new(col_poc, 90), textcolor=white, size=size.tiny, style=s_lbl_style)
                         array.push(vp_s_labels, lbl_poc_s)
 
-                // --- MAIN VP RENDERING ---
-                if b_vol > 0
-                    float b_buy = array.get(bucket_vol_buy, i)
-                    float b_sell = array.get(bucket_vol_sell, i)
-                    float b_delta = b_buy - b_sell
-                    
-                    // --- DELTA-BASED COLORING ---
-                    // 1. Total VP (Buy Color -> Sell Color based on Delta or Normal)
-                    color base_c = vp_type == "Normal" ? col_poc : (b_delta > 0 ? c_buy : (b_delta < 0 ? c_sell : col_poc))
-                    float pct_total = b_vol * inv_max_total_vol
-                    int t_vp = get_profile_alpha(pct_total, level_bottom, close, inv_fade_range)
-                    color c_bar_vp = color.new(base_c, t_vp)
-                    
-                    int len_total = math.round(width_scaler_vp * pct_total)
-                    string txt_delta = show_vp_labels ? ((b_delta > 0 ? "+" : "") + format_vol(b_delta)) : ""
-                    
-                    if show_vp
+                // --- MAIN VP RENDERING (Standalone Right-Aligned, only drawn if show_vp is true and not overlapping on Right) ---
+                if show_vp and b_vol > 0
+                    if not (show_vp_short and short_vp_align == "Right")
+                        float b_buy = array.get(bucket_vol_buy, i)
+                        float b_sell = array.get(bucket_vol_sell, i)
+                        float b_delta = b_buy - b_sell
+                        color base_c = vp_type == "Normal" ? col_poc : (b_delta > 0 ? c_buy : (b_delta < 0 ? c_sell : col_poc))
+                        float pct_total = b_vol * inv_max_total_vol
+                        int t_vp = get_profile_alpha(pct_total, level_bottom, close, inv_fade_range)
+                        color c_bar_vp = color.new(base_c, t_vp)
+
+                        int len_total = math.round(width_scaler_vp * pct_total)
+                        string txt_delta = show_vp_labels ? ((b_delta > 0 ? "+" : "") + format_vol(b_delta)) : ""
+
                         string vp_txt = show_vp_labels ? (format_vol(b_vol) + (vp_type == "Delta" ? " | " + txt_delta : "")) : ""
                         box b = box.new(x_vp_start, level_top, x_vp_start + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt, text_formatting = text.format_bold,text_size=size.auto, text_color=dark)
                         array.push(vp_boxes, b)
