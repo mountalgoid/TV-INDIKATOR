@@ -536,7 +536,8 @@ if barstate.isconfirmed
 
 // Historical Rolling POC Calculation (Sync with Volume Profile logic)
 var float hpoc_val = na
-if show_hpoc and (barstate.isconfirmed or barstate.islast)
+bool should_calc_hpoc = show_hpoc and (barstate.islast or (barstate.isconfirmed and bar_index % 5 == 0))
+if should_calc_hpoc
     int data_size = array.size(hist_close)
     if data_size > 10
         float h_p = math.max(array.max(hist_high), high)
