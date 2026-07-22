@@ -143,8 +143,8 @@ color color_hvn     = input.color(color.new(#ff9800, 90), "HVN Color", group=grp
 // --- Advanced Filters & Layouts ---
 bool use_ema_filter = input.bool(true, "Use EMA Filter for HVN/LVN", group=grp_vp)
 int  ema_filter_len = input.int(5, "EMA Filter Length", minval=2, maxval=50, group=grp_vp)
-int  high_vol_trans = input.int(30, "High Volume Opacity/Trans", minval=0, maxval=100, tooltip="Lower value = more solid/vibrant", group=grp_vp)
-int  low_vol_trans  = input.int(95, "Low Volume Opacity/Trans", minval=0, maxval=100, tooltip="Higher value = more transparent/faded", group=grp_vp)
+int  high_vol_trans = input.int(15, "High Volume Opacity/Trans", minval=0, maxval=100, tooltip="Lower value = more solid/vibrant", group=grp_vp)
+int  low_vol_trans  = input.int(75, "Low Volume Opacity/Trans", minval=0, maxval=100, tooltip="Higher value = more transparent/faded", group=grp_vp)
 string short_vp_align = input.string("Right", "Short VP Position", options=["Right", "Left"], group=grp_vp)
 int short_vp_left_offset = input.int(20, "Short VP Left Distance (Bars)", minval=0, group=grp_vp, tooltip="Distance from current bar when positioned on the Left")
 
