@@ -112,6 +112,7 @@ HTFtime_opt     = input.string("1H", 'Manual HTF Timeframe', tooltip="Only works
 string grp_vp   = "Volume Profile Grid Settings"
 vp_anchor_source = input.string("MTF Sessions", "Volume Profile Anchor Source", options=["MTF Sessions", "EMA Cross", "EMA Cross & Nearest Pivot"], group=grp_vp, tooltip="Choose how Volume Profile segments are anchored. MTF Sessions uses multi-timeframe sessions. EMA Cross uses successive EMA crosses. EMA Cross & Nearest Pivot uses the distance between the EMA cross and the nearest Pivot High/Low.")
 pivot_len       = input.int(10, "Pivot Lookback Length (Nearest Pivot Mode)", minval=2, group=grp_vp, tooltip="The lookback length used for identifying Pivot Highs and Lows in 'EMA Cross & Nearest Pivot' anchor mode.")
+profile_shape   = input.string("Classic Glass Grid", "Volume Profile Shape Mode", options=["Classic Glass Grid", "Solid Histogram"], group=grp_vp, tooltip="Choose the shape of the Volume Profile. Classic Glass Grid renders individual blocks. Solid Histogram renders a continuous solid horizontal bar for each price level.")
 profile_mode    = input.string("Current Session", "Profile Mode", options=["Current Session", "Previous Session", "Both (Current & Previous)", "Session Staircase"], group=grp_vp)
 profile_align   = input.string("Right Aligned", "Profile Layout Alignment", options=["Right Aligned", "Overlay on Session"], group=grp_vp, tooltip="Overlay on Session attaches/sticks the profile directly onto the chart layout at the start of each session, while Right Aligned shifts it cleanly to the right side.")
 vp_resolution   = input.int(20, 'Profile Resolution (Rows)', minval=5, maxval=100, group=grp_vp)
@@ -613,8 +614,12 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
     array.push(grid_boxes, htf_body)
     array.push(grid_boxes, htf_wick)
 
-    // Draw Glass Blocks
+    // Draw Glass Blocks / Solid Histogram
     float pad_y = row_h * (gap_y_perc / 100.0)
+
+    // Variables for contour outline curve (Solid Histogram Mode)
+    int prev_hist_x = bar_index + x_align_offset
+    float prev_hist_y = session_low
 
     for r = 0 to vp_resolution - 1
         float r_tot_vol = array.get(bucket_total, r)
@@ -638,35 +643,64 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
                     line lg_vol_ln = line.new(bar_index + x_align_offset, center_p, profile_right_boundary, center_p, color=line_col, width=3, style=line.style_dotted)
                     array.push(level_lines, lg_vol_ln)
 
-            for b = 0 to num_blocks_to_draw - 1
-                int x_left = bar_index + x_align_offset + b * block_step
-                int x_right = x_left + block_size
+            // Calculate colors once for either block or solid histogram
+            color blk_fill = color.new(#ffffff, 50)
+            color blk_border = color.new(#ffffff, 40)
 
-                // Color mapping logic - Saturated/Pekat Opacity
-                color blk_fill = color.new(#ffffff, 50)
-                color blk_border = color.new(#ffffff, 40)
+            if block_style == "Classic Glass Grid"
+                if r == poc_idx
+                    blk_fill := color.new(col_bear, 35) // High saturation pink/magenta POC blocks
+                    blk_border := color.new(col_bear, 20)
+                else
+                    blk_fill := color.new(#ffffff, 50)
+                    blk_border := color.new(#ffffff, 40)
+            else if block_style == "Theme Gradient"
+                float buy_ratio = r_tot_vol > 0 ? r_buy_vol / r_tot_vol : 0.5
+                color mix_base = color.from_gradient(buy_ratio, 0, 1, col_bear, col_bull)
+                blk_fill := color.new(mix_base, 50)
+                blk_border := color.new(mix_base, 30)
+            else if block_style == "Delta Volume"
+                color mix_base = r_delta >= 0 ? col_bull : col_bear
+                float delta_intensity = math.max(0.1, math.min(1.0, math.abs(r_delta) / math.max(1.0, r_tot_vol)))
+                blk_fill := color.new(mix_base, math.round(65 - delta_intensity * 40))
+                blk_border := color.new(mix_base, math.round(55 - delta_intensity * 35))
 
-                if block_style == "Classic Glass Grid"
-                    if r == poc_idx
-                        blk_fill := color.new(col_bear, 35) // High saturation pink/magenta POC blocks
-                        blk_border := color.new(col_bear, 20)
-                    else
-                        // Normal gray glass block
-                        blk_fill := color.new(#ffffff, 50)
-                        blk_border := color.new(#ffffff, 40)
-                else if block_style == "Theme Gradient"
-                    float buy_ratio = r_tot_vol > 0 ? r_buy_vol / r_tot_vol : 0.5
-                    color mix_base = color.from_gradient(buy_ratio, 0, 1, col_bear, col_bull)
-                    blk_fill := color.new(mix_base, 50)
-                    blk_border := color.new(mix_base, 30)
-                else if block_style == "Delta Volume"
-                    color mix_base = r_delta >= 0 ? col_bull : col_bear
-                    float delta_intensity = math.max(0.1, math.min(1.0, math.abs(r_delta) / math.max(1.0, r_tot_vol)))
-                    blk_fill := color.new(mix_base, math.round(65 - delta_intensity * 40))
-                    blk_border := color.new(mix_base, math.round(55 - delta_intensity * 35))
+            if profile_shape == "Classic Glass Grid"
+                for b = 0 to num_blocks_to_draw - 1
+                    int x_left = bar_index + x_align_offset + b * block_step
+                    int x_right = x_left + block_size
+
+                    // Highlight HVN / LVNs uniquely as premium full-width translucent area boxes
+                    if show_hvn_lvn and r != poc_idx and b == 0
+                        float avg_vol = total_vol / vp_resolution
+                        bool is_hvn = false
+                        bool is_lvn = false
+                        if r > 0 and r < vp_resolution - 1
+                            float prev_v = array.get(bucket_total, r - 1)
+                            float next_v = array.get(bucket_total, r + 1)
+                            if r_tot_vol > prev_v and r_tot_vol > next_v and r_tot_vol > avg_vol * 1.3
+                                is_hvn := true
+                            if r_tot_vol < prev_v and r_tot_vol < next_v and r_tot_vol < avg_vol * 0.5
+                                is_lvn := true
+
+                        if is_hvn
+                            box hvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bull, 92), border_color=color.new(col_bull, 45), border_width=1, border_style=line.style_solid, text="HVN", text_color=col_bull, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                            array.push(container_boxes, hvn_box)
+                        else if is_lvn
+                            box lvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bear, 94), border_color=color.new(col_bear, 45), border_width=1, border_style=line.style_dashed, text="LVN", text_color=col_bear, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
+                            array.push(container_boxes, lvn_box)
+
+                    string blk_text = show_block_values ? f_formatNumber(r_tot_vol) : get_alphabet_letter(box_draw_count)
+                    box_draw_count += 1
+                    color blk_text_color = r == poc_idx ? (color_theme == "Gear Protocol" ? col_bear : dark) : white
+                    box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
+                    array.push(grid_boxes, blk)
+            else // "Solid Histogram"
+                int x_left = bar_index + x_align_offset
+                int x_right = x_left + num_blocks_to_draw * block_step
 
                 // Highlight HVN / LVNs uniquely as premium full-width translucent area boxes
-                if show_hvn_lvn and r != poc_idx and b == 0
+                if show_hvn_lvn and r != poc_idx
                     float avg_vol = total_vol / vp_resolution
                     bool is_hvn = false
                     bool is_lvn = false
@@ -685,11 +719,22 @@ f_render_session_profile(int start_offset, int duration, int x_align_offset, boo
                         box lvn_box = box.new(left=bar_index + x_align_offset, top=p_level_top, right=profile_right_boundary, bottom=p_level_bot, bgcolor=color.new(col_bear, 94), border_color=color.new(col_bear, 45), border_width=1, border_style=line.style_dashed, text="LVN", text_color=col_bear, text_size=size.tiny, text_halign=text.align_center, text_valign=text.align_center)
                         array.push(container_boxes, lvn_box)
 
-                string blk_text = show_block_values ? f_formatNumber(r_tot_vol) : get_alphabet_letter(box_draw_count)
-                box_draw_count += 1
+                // Silhouette contour curve tracing
+                float curr_hist_y = p_level_bot + row_h / 2
+                line curve_line = line.new(prev_hist_x, prev_hist_y, x_right, curr_hist_y, color=color.new(blk_border, 10), width=1)
+                array.push(level_lines, curve_line)
+                prev_hist_x := x_right
+                prev_hist_y := curr_hist_y
+
+                string blk_text = show_block_values ? f_formatNumber(r_tot_vol) : ""
                 color blk_text_color = r == poc_idx ? (color_theme == "Gear Protocol" ? col_bear : dark) : white
-                box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center)
+                box blk = box.new(left=x_left, top=p_level_top - pad_y, right=x_right, bottom=p_level_bot + pad_y, bgcolor=blk_fill, border_color=blk_border, border_width=border_width_in, text=blk_text, text_color=blk_text_color, text_size=size.auto, text_halign=text.align_left, text_valign=text.align_center)
                 array.push(grid_boxes, blk)
+
+    // Complete the outline contour curve back to the spine
+    if profile_shape == "Solid Histogram"
+        line final_cap = line.new(prev_hist_x, prev_hist_y, bar_index + x_align_offset, session_high, color=col_bear, width=1)
+        array.push(level_lines, final_cap)
 
     // Render Glowing Value Area Container Glass Box
     if show_va_box
