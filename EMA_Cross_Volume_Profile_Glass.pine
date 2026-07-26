@@ -103,13 +103,15 @@ ema_fast_len    = input.int(20, "Fast EMA Length", minval=1, group=grp_ema)
 ema_mid_len     = input.int(50, "Medium EMA Length", minval=1, group=grp_ema)
 ema_slow_len    = input.int(100, "Slow EMA Length", minval=1, group=grp_ema)
 show_ema_cross  = input.bool(true, "Show EMA Cross Signals (Shapes)", group=grp_ema)
-cross_type_opt  = input.string("Fast & Medium (20/50)", "Cross Detection Mode", options=["Fast & Medium (20/50)", "Fast & Slow (20/100)", "Medium & Slow (50/100)", "Triple EMA Alignment"], group=grp_ema)
+cross_type_opt  = input.string("EMA 20 & 50 with 100", "Cross Detection Mode", options=["EMA 20 & 50 with 100", "Fast & Medium (20/50)", "Fast & Slow (20/100)", "Medium & Slow (50/100)", "Triple EMA Alignment"], group=grp_ema)
 
 string grp_mtf  = "Multi-Timeframe Configuration"
 auto_htf_mode   = input.bool(true, 'Auto HTF Mode', tooltip="Selects HTF session dynamically based on current timeframe multiplier", group=grp_mtf)
 HTFtime_opt     = input.string("1H", 'Manual HTF Timeframe', tooltip="Only works if Auto HTF Mode is OFF", options=["15m","30m","45m","1H","2H","4H","1D","1W"], group=grp_mtf)
 
 string grp_vp   = "Volume Profile Grid Settings"
+vp_anchor_source = input.string("MTF Sessions", "Volume Profile Anchor Source", options=["MTF Sessions", "EMA Cross", "EMA Cross & Nearest Pivot"], group=grp_vp, tooltip="Choose how Volume Profile segments are anchored. MTF Sessions uses multi-timeframe sessions. EMA Cross uses successive EMA crosses. EMA Cross & Nearest Pivot uses the distance between the EMA cross and the nearest Pivot High/Low.")
+pivot_len       = input.int(10, "Pivot Lookback Length (Nearest Pivot Mode)", minval=2, group=grp_vp, tooltip="The lookback length used for identifying Pivot Highs and Lows in 'EMA Cross & Nearest Pivot' anchor mode.")
 profile_mode    = input.string("Current Session", "Profile Mode", options=["Current Session", "Previous Session", "Both (Current & Previous)", "Session Staircase"], group=grp_vp)
 profile_align   = input.string("Right Aligned", "Profile Layout Alignment", options=["Right Aligned", "Overlay on Session"], group=grp_vp, tooltip="Overlay on Session attaches/sticks the profile directly onto the chart layout at the start of each session, while Right Aligned shifts it cleanly to the right side.")
 vp_resolution   = input.int(20, 'Profile Resolution (Rows)', minval=5, maxval=100, group=grp_vp)
@@ -160,7 +162,10 @@ plot(show_emas ? ema_slow : na, "Slow EMA", color=col_bear, linewidth=2)
 bool bull_cross = false
 bool bear_cross = false
 
-if cross_type_opt == "Fast & Medium (20/50)"
+if cross_type_opt == "EMA 20 & 50 with 100"
+    bull_cross := (ta.crossover(ema_fast, ema_slow) and ema_mid > ema_slow) or (ta.crossover(ema_mid, ema_slow) and ema_fast > ema_slow)
+    bear_cross := (ta.crossunder(ema_fast, ema_slow) and ema_mid < ema_slow) or (ta.crossunder(ema_mid, ema_slow) and ema_fast < ema_slow)
+else if cross_type_opt == "Fast & Medium (20/50)"
     bull_cross := ta.crossover(ema_fast, ema_mid)
     bear_cross := ta.crossunder(ema_fast, ema_mid)
 else if cross_type_opt == "Fast & Slow (20/100)"
@@ -350,22 +355,65 @@ f_cleanup_drawings() =>
     while array.size(level_labels) > 0
         label.delete(array.pop(level_labels))
 
+// Find nearest Pivot helper
+f_find_nearest_pivot(int target_bar, int[] p_bars) =>
+    int nearest = target_bar - 50 // Fallback lookback of 50 bars
+    int p_size = array.size(p_bars)
+    if p_size > 0
+        for i = p_size - 1 to 0
+            int p_bar = array.get(p_bars, i)
+            if p_bar < target_bar
+                nearest := p_bar
+                break
+    nearest
+
+// Pivot Calculations for "EMA Cross & Nearest Pivot" Mode
+ph = ta.pivothigh(high, pivot_len, pivot_len)
+pl = ta.pivotlow(low, pivot_len, pivot_len)
+
+var int[] pivot_bars = array.new<int>()
+if not na(ph)
+    array.push(pivot_bars, bar_index - pivot_len)
+    if array.size(pivot_bars) > 20
+        array.shift(pivot_bars)
+if not na(pl)
+    array.push(pivot_bars, bar_index - pivot_len)
+    if array.size(pivot_bars) > 20
+        array.shift(pivot_bars)
+
 // Track indices for real-time tracking using persistent state arrays
 var int[] session_start_indices = array.new<int>()
-if is_new_session or bar_index == 0
-    if array.size(session_start_indices) == 0 or array.get(session_start_indices, array.size(session_start_indices) - 1) != bar_index
-        array.push(session_start_indices, bar_index)
+
+bool trigger_new_segment = false
+int segment_start_bar = bar_index
+
+if vp_anchor_source == "MTF Sessions"
+    trigger_new_segment := is_new_session
+    segment_start_bar := bar_index
+else if vp_anchor_source == "EMA Cross"
+    trigger_new_segment := (bull_cross or bear_cross)
+    segment_start_bar := bar_index
+else if vp_anchor_source == "EMA Cross & Nearest Pivot"
+    trigger_new_segment := (bull_cross or bear_cross)
+    segment_start_bar := f_find_nearest_pivot(bar_index, pivot_bars)
+
+if (trigger_new_segment or bar_index == 0)
+    int n_size = array.size(session_start_indices)
+    if n_size == 0 or (segment_start_bar > array.get(session_start_indices, n_size - 1))
+        array.push(session_start_indices, segment_start_bar)
         if array.size(session_start_indices) > 10
             array.shift(session_start_indices)
 
-int bars_since_start = ta.barssince(is_new_session)
+// Calculate bars_since_start relative to current active start index
+int active_start_idx = array.size(session_start_indices) > 0 ? array.get(session_start_indices, array.size(session_start_indices) - 1) : bar_index
+int bars_since_start = bar_index - active_start_idx
 
 // Previous session persistent variables
 var float prev_session_delta_bias = 0.0
 var float prev_session_vah_level  = na
 var float prev_session_val_level  = na
 
-if is_new_session
+if trigger_new_segment
     // The previous session closed on the previous bar (offset 1)
     // Its duration was bars_since_start[1] + 1
     int prev_dur = nz(bars_since_start[1]) + 1
