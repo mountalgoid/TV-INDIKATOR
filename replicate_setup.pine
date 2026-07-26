@@ -1,0 +1,219 @@
+//@version=5
+indicator("Setup Replication & Volume Profile", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// ===== 1. CHART STYLING & CANDLESTICKS =====
+grp_cand = "1. Chart Styling & Candlesticks"
+bg_color   = input.color(#0d1117, "Chart Dark Background", group=grp_cand)
+bull_color = input.color(#f3ba2f, "Bullish Candle Fill", group=grp_cand)
+bear_color = input.color(#1a1d24, "Bearish Candle Fill", group=grp_cand)
+bull_border = input.color(#4a5c68, "Bullish Candle Border/Wick", group=grp_cand)
+bear_border = input.color(#2a2e39, "Bearish Candle Border/Wick", group=grp_cand)
+
+// Apply dark background
+bgcolor(bg_color, title="Chart Background")
+
+// Custom Candlestick colors
+plotcandle(open, high, low, close, title="Custom Candles",
+           color=close >= open ? bull_color : bear_color,
+           wickcolor=close >= open ? bull_border : bear_border,
+           bordercolor=close >= open ? bull_border : bear_border)
+
+// ===== 2. LEFT-SIDE VOLUME PROFILE =====
+grp_vp = "2. Left-Side Volume Profile"
+vp_start_offset = input.int(220, "VP Start Bar Offset", minval=10, group=grp_vp, tooltip="Bars back from current bar for VP start boundary")
+vp_end_offset   = input.int(110, "VP End Bar Offset", minval=5, group=grp_vp, tooltip="Bars back from current bar for VP end boundary")
+vp_rows         = input.int(45, "VP Smoothness (Rows)", minval=10, group=grp_vp)
+vp_va_pct       = input.float(0.70, "Value Area %", minval=0.1, maxval=1.0, step=0.05, group=grp_vp)
+vp_width_bars   = input.int(45, "Histogram Max Width (Bars)", minval=5, group=grp_vp)
+
+col_va_bars    = input.color(#f3ba2f, "Value Area Bars Color", group=grp_vp)
+col_non_va     = input.color(#4a5e6e, "Outside Value Area Bars Color", group=grp_vp)
+col_box_border = input.color(#62647a, "VP Box Border Color", group=grp_vp)
+col_box_bg     = input.color(color.new(#131722, 90), "VP Box Background Fill", group=grp_vp)
+
+// ===== 3. GLOBAL KEY LEVEL =====
+grp_poc = "3. Global Key Level"
+col_poc_line   = input.color(#e53935, "POC Global Line Color", group=grp_poc)
+poc_line_width = input.int(2, "POC Global Line Width", minval=1, group=grp_poc)
+
+// ===== 4. RIGHT-SIDE SHORT POSITION =====
+grp_short = "4. Right-Side Short Position"
+short_start_off = input.int(55, "Position Tool Start Offset", minval=1, group=grp_short, tooltip="Bars back to start the short position boxes")
+short_end_off   = input.int(20, "Position Tool Right Extend", minval=0, group=grp_short, tooltip="Bars forward to extend short position boxes")
+sl_multiplier   = input.float(1.5, "Stop Loss ATR Multiplier", minval=0.1, step=0.1, group=grp_short)
+tp_multiplier   = input.float(3.5, "Take Profit ATR Multiplier", minval=0.1, step=0.1, group=grp_short)
+atr_len         = input.int(14, "ATR Length for Targets", minval=1, group=grp_short)
+
+col_sl_bg      = input.color(color.new(#ef5350, 85), "Stop Loss Box BG", group=grp_short)
+col_tp_bg      = input.color(color.new(#005a54, 80), "Take Profit Box BG", group=grp_short)
+
+// ===== 5. POSITION DETAIL - TARGET LINE =====
+grp_target = "5. Position Target Line"
+target_start_off = input.int(40, "Target Line Start Offset", minval=1, group=grp_target, tooltip="Offset for specific candle to start dashed target line")
+col_target_line  = input.color(#85929e, "Target Line Color", group=grp_target)
+
+// ===== STORAGE FOR PERSISTENT DRAWINGS =====
+var box[] liveBoxes   = array.new_box(0)
+var line[] liveLines  = array.new_line(0)
+var label[] liveLabels = array.new_label(0)
+
+// Function to clear all temporary drawings
+clear_drawings() =>
+    while array.size(liveBoxes) > 0
+        box.delete(array.pop(liveBoxes))
+    while array.size(liveLines) > 0
+        line.delete(array.pop(liveLines))
+    while array.size(liveLabels) > 0
+        label.delete(array.pop(liveLabels))
+
+// ===== MAIN EXECUTION =====
+atr = ta.atr(atr_len)
+
+// Dynamic boundary calculations
+start_idx = vp_start_offset
+end_idx = vp_end_offset
+
+// Safety bounds correction
+if start_idx < end_idx
+    int temp = start_idx
+    start_idx := end_idx
+    end_idx := temp
+
+if barstate.islast and bar_index >= start_idx
+    // 1. Clear previous drawings to prevent overlap
+    clear_drawings()
+
+    // 2. Identify Highest High and Lowest Low in the specified window
+    float vp_high = na
+    float vp_low = na
+    for i = end_idx to start_idx
+        if na(vp_high) or high[i] > vp_high
+            vp_high := high[i]
+        if na(vp_low) or low[i] < vp_low
+            vp_low := low[i]
+
+    // 3. Populate Volume Profile Bins
+    float vp_range = math.max(vp_high - vp_low, syminfo.mintick * 10)
+    float step = vp_range / vp_rows
+    float[] volBins = array.new_float(vp_rows, 0.0)
+
+    for i = end_idx to start_idx
+        float bar_h = high[i]
+        float bar_l = low[i]
+        float bar_v = volume[i]
+        if bar_v > 0
+            for r = 0 to vp_rows - 1
+                float r_bot = vp_low + r * step
+                float r_top = vp_low + (r + 1) * step
+                float overlap_bot = math.max(bar_l, r_bot)
+                float overlap_top = math.min(bar_h, r_top)
+                if overlap_top > overlap_bot and (bar_h - bar_l) > 0
+                    float pct = (overlap_top - overlap_bot) / (bar_h - bar_l)
+                    array.set(volBins, r, array.get(volBins, r) + bar_v * pct)
+                else if (bar_h - bar_l) <= 0 and bar_h >= r_bot and bar_h <= r_top
+                    array.set(volBins, r, array.get(volBins, r) + bar_v)
+
+    // 4. Calculate POC & Value Area Boundaries
+    float maxVol = array.max(volBins)
+    float totalVol = array.sum(volBins)
+    int pocIdx = array.indexof(volBins, maxVol)
+    float pocPrice = vp_low + pocIdx * step + step * 0.5
+
+    float targetVA = totalVol * vp_va_pct
+    float currentVA = maxVol
+    int va_low_idx = pocIdx
+    int va_high_idx = pocIdx
+
+    int loop_guard = 0
+    while currentVA < targetVA and loop_guard < vp_rows
+        float vUp = (va_high_idx < vp_rows - 1) ? array.get(volBins, va_high_idx + 1) : 0.0
+        float vDn = (va_low_idx > 0) ? array.get(volBins, va_low_idx - 1) : 0.0
+        if vUp == 0.0 and vDn == 0.0
+            break
+        if vUp >= vDn and va_high_idx < vp_rows - 1
+            currentVA += vUp
+            va_high_idx += 1
+        else if va_low_idx > 0
+            currentVA += vDn
+            va_low_idx -= 1
+        else if va_high_idx < vp_rows - 1
+            currentVA += vUp
+            va_high_idx += 1
+        loop_guard += 1
+
+    // 5. Draw VP Outer Frame Box
+    int vp_box_left  = bar_index - start_idx
+    int vp_box_right = bar_index - end_idx
+    vp_box = box.new(left=vp_box_left, top=vp_high, right=vp_box_right, bottom=vp_low,
+                     border_color=col_box_border, border_width=1, border_style=line.style_solid,
+                     bgcolor=col_box_bg)
+    array.push(liveBoxes, vp_box)
+
+    // 6. Draw Volume Profile Histogram Rows
+    for r = 0 to vp_rows - 1
+        float v = array.get(volBins, r)
+        float pct = maxVol == 0 ? 0 : v / maxVol
+        int bar_width = int(pct * vp_width_bars)
+        int row_left = vp_box_left
+        int row_right = math.min(row_left + bar_width, vp_box_right)
+
+        float r_bot = vp_low + r * step
+        float r_top = vp_low + (r + 1) * step
+
+        bool is_va = r >= va_low_idx and r <= va_high_idx
+        color row_color = is_va ? col_va_bars : col_non_va
+
+        if v > 0 and row_right > row_left
+            row_box = box.new(left=row_left, bottom=r_bot, right=row_right, top=r_top,
+                               bgcolor=color.new(row_color, 40), border_color=color.new(row_color, 60),
+                               border_width=1, border_style=line.style_solid)
+            array.push(liveBoxes, row_box)
+
+    // 7. Draw Global Horizontal Key Level Line (POC)
+    l_global_poc = line.new(x1=vp_box_left - 100, y1=pocPrice, x2=bar_index + short_end_off + 100, y2=pocPrice,
+                            color=col_poc_line, width=poc_line_width, style=line.style_solid, extend=extend.both)
+    array.push(liveLines, l_global_poc)
+
+    // 8. Draw Right-Side Short Position Visual Tool
+    int short_left  = bar_index - short_start_off
+    int short_right = bar_index + short_end_off
+
+    // Dynamic stop and target prices from POC entry
+    float entry_price = pocPrice
+    float stop_price  = entry_price + atr * sl_multiplier
+    float tp_price    = entry_price - atr * tp_multiplier
+
+    // Stop Loss Box (semi-transparent red)
+    sl_box = box.new(left=short_left, bottom=entry_price, right=short_right, top=stop_price,
+                      bgcolor=col_sl_bg, border_color=color.new(col_sl_bg, 30), border_width=1)
+    array.push(liveBoxes, sl_box)
+
+    // Take Profit Box (semi-transparent dark teal)
+    tp_box = box.new(left=short_left, bottom=tp_price, right=short_right, top=entry_price,
+                      bgcolor=col_tp_bg, border_color=color.new(col_tp_bg, 30), border_width=1)
+    array.push(liveBoxes, tp_box)
+
+    // 9. Draw Position Detail - Target Line & Arrow
+    int target_start_x = bar_index - target_start_off
+    float target_start_y = high[target_start_off]
+    int target_end_x = bar_index
+    float target_end_y = tp_price
+
+    // Dashed line
+    arrow_line = line.new(x1=target_start_x, y1=target_start_y, x2=target_end_x, y2=target_end_y,
+                          color=col_target_line, width=1, style=line.style_dashed)
+    array.push(liveLines, arrow_line)
+
+    // Terminal vertical arrow pointing down at lower boundary
+    float stem_y_start = tp_price + atr * 0.15
+    stem_line = line.new(x1=target_end_x, y1=stem_y_start, x2=target_end_x, y2=target_end_y,
+                         color=col_target_line, width=1, style=line.style_solid)
+    array.push(liveLines, stem_line)
+
+    float wing_y = tp_price + atr * 0.05
+    wing_left = line.new(x1=target_end_x, y1=target_end_y, x2=target_end_x - 1, y2=wing_y,
+                         color=col_target_line, width=1, style=line.style_solid)
+    wing_right = line.new(x1=target_end_x, y1=target_end_y, x2=target_end_x + 1, y2=wing_y,
+                          color=col_target_line, width=1, style=line.style_solid)
+    array.push(liveLines, wing_left)
+    array.push(liveLines, wing_right)
