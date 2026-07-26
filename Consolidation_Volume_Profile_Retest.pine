@@ -1,5 +1,5 @@
 //@version=6
-indicator("Consolidation Volume Profile with Retest Retarget 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="Consolidation VP Retest 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=2000)
+indicator("Consolidation Volume Profile with Retest Retarget 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο", shorttitle="Consolidation VP Retest 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜ο", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=2000)
 
 // ==========================================
 // 1. INPUTS & CONFIGURATION
@@ -97,6 +97,10 @@ col_bull_eff = theme_mode ? col_bull : green
 col_bear_eff = theme_mode ? col_bear : red
 col_poc_eff  = theme_mode ? col_poc : yellow
 
+// Global indicators for calculations (must execute on every bar)
+atr_val_global = ta.atr(atr_len)
+atr14_global = ta.atr(14)
+
 // ==========================================
 // 3. VOLUME DISTRIBUTION FUNCTION
 // ==========================================
@@ -175,7 +179,7 @@ var int trade_dir = 0 // 1 = Long, -1 = Short
 // Persisted Drawings (for Clean Drawing Mode option)
 var box cons_box_obj = na
 var line poc_line_obj = na
-var array<box> vp_boxes = array.new_box(0)
+var array<box> vp_boxes = array.new<box>()
 var box tp_box_obj = na
 var box sl_box_obj = na
 var label info_lbl_obj = na
@@ -183,8 +187,7 @@ var label info_lbl_obj = na
 // Scanning logic on each bar
 h_val = ta.highest(high, cons_len)
 l_val = ta.lowest(low, cons_len)
-atr_val = ta.atr(atr_len)
-is_consolidating = (h_val - l_val) <= cons_mult * atr_val
+is_consolidating = (h_val - l_val) <= cons_mult * atr_val_global
 
 // --- STATE 0: SCANNING FOR CONSOLIDATION ---
 if state == 0 and is_consolidating
@@ -214,7 +217,7 @@ if state == 0 and is_consolidating
     // Render Consolidation Container (Translucent Glass-Like Aesthetics)
     cons_box_obj := box.new(left=cons_start, top=cons_h, right=cons_end, bottom=cons_l,
                              bgcolor=color.new(gray, 94), border_color=color.new(white, 70),
-                             border_width=1, title="Consolidation Box")
+                             border_width=1)
 
     // Calculate Volume Profile inside consolidation window
     array<float> tempBins = array.new_float(rows, 0.0)
@@ -247,7 +250,7 @@ if state == 0 and is_consolidating
             // Draw gradient row from Bullish to Bearish theme colors or highlight POC
             color row_color = r == pocIdx ? color.new(col_poc_eff, 45) : color.new(col_bull_eff, 75)
             box b = box.new(left=cons_start, bottom=r_bot, right=row_end_x, top=r_top,
-                            bgcolor=row_color, border_color=na, title="VP Row")
+                            bgcolor=row_color, border_color=na)
             array.push(vp_boxes, b)
 
 // --- STATE 1: WAITING FOR BREAKOUT ---
@@ -291,17 +294,17 @@ else if state == 2
             trade_entry := cons_poc
 
             // Calculate Stop Loss & Take Profit
-            trade_sl := sl_mode == "Consolidation Boundary" ? cons_l : cons_poc - sl_atr_mult * ta.atr(14)
+            trade_sl := sl_mode == "Consolidation Boundary" ? cons_l : cons_poc - sl_atr_mult * atr14_global
             float risk = trade_entry - trade_sl
             trade_tp := trade_entry + risk * rr_ratio
 
             // Draw Risk-Reward Position Box cards
             tp_box_obj := box.new(left=retest_bar, top=trade_tp, right=retest_bar + 1, bottom=trade_entry,
                                   bgcolor=color.new(col_bull_eff, 82), border_color=color.new(col_bull_eff, 50),
-                                  border_width=1, title="Take Profit Box")
+                                  border_width=1)
             sl_box_obj := box.new(left=retest_bar, top=trade_entry, right=retest_bar + 1, bottom=trade_sl,
                                   bgcolor=color.new(col_bear_eff, 82), border_color=color.new(col_bear_eff, 50),
-                                  border_width=1, title="Stop Loss Box")
+                                  border_width=1)
 
             info_lbl_obj := label.new(x=retest_bar, y=trade_tp, text="LONG POSITION\nTarget: " + str.tostring(trade_tp, format.mintick) + "\nStop: " + str.tostring(trade_sl, format.mintick) + "\nR:R: " + str.tostring(rr_ratio, "#.##"),
                                       style=label.style_label_down, color=color.new(dark, 15), textcolor=col_bull_eff, size=size.small)
@@ -320,17 +323,17 @@ else if state == 2
             trade_entry := cons_poc
 
             // Calculate Stop Loss & Take Profit
-            trade_sl := sl_mode == "Consolidation Boundary" ? cons_h : cons_poc + sl_atr_mult * ta.atr(14)
+            trade_sl := sl_mode == "Consolidation Boundary" ? cons_h : cons_poc + sl_atr_mult * atr14_global
             float risk = trade_sl - trade_entry
             trade_tp := trade_entry - risk * rr_ratio
 
             // Draw Risk-Reward Position Box cards
             tp_box_obj := box.new(left=retest_bar, top=trade_entry, right=retest_bar + 1, bottom=trade_tp,
                                   bgcolor=color.new(col_bull_eff, 82), border_color=color.new(col_bull_eff, 50),
-                                  border_width=1, title="Take Profit Box")
+                                  border_width=1)
             sl_box_obj := box.new(left=retest_bar, top=trade_sl, right=retest_bar + 1, bottom=trade_entry,
                                   bgcolor=color.new(col_bear_eff, 82), border_color=color.new(col_bear_eff, 50),
-                                  border_width=1, title="Stop Loss Box")
+                                  border_width=1)
 
             info_lbl_obj := label.new(x=retest_bar, y=trade_sl, text="SHORT POSITION\nTarget: " + str.tostring(trade_tp, format.mintick) + "\nStop: " + str.tostring(trade_sl, format.mintick) + "\nR:R: " + str.tostring(rr_ratio, "#.##"),
                                       style=label.style_label_up, color=color.new(dark, 15), textcolor=col_bear_eff, size=size.small)
