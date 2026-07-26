@@ -152,9 +152,9 @@ ema_fast = ta.ema(close, ema_fast_len)
 ema_mid  = ta.ema(close, ema_mid_len)
 ema_slow = ta.ema(close, ema_slow_len)
 
-plot(show_emas ? ema_fast : na, "Fast EMA", color=col_bull, width=1)
-plot(show_emas ? ema_mid : na, "Medium EMA", color=color.new(orange, 15), width=2)
-plot(show_emas ? ema_slow : na, "Slow EMA", color=col_bear, width=2)
+plot(show_emas ? ema_fast : na, "Fast EMA", color=col_bull, linewidth=1)
+plot(show_emas ? ema_mid : na, "Medium EMA", color=color.new(orange, 15), linewidth=2)
+plot(show_emas ? ema_slow : na, "Slow EMA", color=col_bear, linewidth=2)
 
 // Cross Detection Logic
 bool bull_cross = false
