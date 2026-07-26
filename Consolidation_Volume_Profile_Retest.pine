@@ -9,8 +9,9 @@ indicator("Consolidation Volume Profile with Retest Retarget 𝙈𝙤𝙪𝙣�
 grp_cons = "Consolidation Detection Settings"
 cons_len = input.int(30, "Consolidation Lookback Length", minval=10, group=grp_cons, tooltip="Number of bars required to form and evaluate a consolidation zone")
 atr_len  = input.int(14, "ATR Length", minval=5, group=grp_cons, tooltip="Period for Average True Range calculation")
-cons_mult = input.float(1.8, "Consolidation ATR Multiplier", minval=0.5, step=0.1, group=grp_cons, tooltip="Maximum allowed range height of consolidation as a multiplier of ATR")
-max_breakout_wait = input.int(50, "Max Bars to Wait for Breakout", minval=10, group=grp_cons, tooltip="Maximum number of bars to wait for a breakout before canceling the consolidation zone")
+cons_mult = input.float(2.5, "Consolidation ATR Multiplier", minval=0.5, step=0.1, group=grp_cons, tooltip="Maximum allowed range height of consolidation as a multiplier of ATR")
+cons_scale = input.float(1.0, "Consolidation Range Scale", minval=1.0, step=0.1, group=grp_cons, tooltip="Scaling factor to adjust lookback range relative to ATR")
+max_breakout_wait = input.int(100, "Max Bars to Wait for Breakout", minval=10, group=grp_cons, tooltip="Maximum number of bars to wait for a breakout before canceling the consolidation zone")
 
 // --- Trade & Risk Management ---
 grp_trade = "Risk Management & Trade Settings"
@@ -24,12 +25,19 @@ grp_vp = "Volume Profile Settings"
 rows = input.int(30, "Smoothness (Rows)", minval=10, maxval=100, group=grp_vp, tooltip="Number of rows for volume profile binning inside consolidation")
 width_pct = input.float(0.35, "Volume Profile Width %", minval=0.1, maxval=1.0, step=0.05, group=grp_vp, tooltip="Width of the profile relative to the consolidation length")
 
-// --- Visual Settings ---
+// --- Visual Settings & Themes ---
 grp_vis = "Visual Settings & Theme"
 clean_old_drawings = input.bool(false, "Display Only Most Recent Setup", group=grp_vis, tooltip="If enabled, older consolidation zones and trade boxes are deleted from the chart")
 theme_mode = input.bool(true, "Use Selected Color Theme", group=grp_vis)
 color_theme = input.string(defval='DEX Deep', title='Select Color Theme', options=['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=grp_vis)
 extend_poc_line = input.bool(true, "Extend POC Line to Right", group=grp_vis, tooltip="Extend the horizontal Point of Control line indefinitely to the right")
+show_plots = input.bool(true, "Show Helper Range Channel Lines", group=grp_vis, tooltip="Draw lookback range high/low and breakout bounds on the chart")
+show_hud = input.bool(true, "Show Premium Glass HUD Dashboard", group=grp_vis, tooltip="Display a real-time status table indicating the consolidation scanner parameters")
+
+// --- Manual Position Colors (Fallback) ---
+grp_colors = "Position Box Colors"
+manual_tp_color = input.color(color.new(#179c74, 82), "Manual Take Profit Box Color", group=grp_colors)
+manual_sl_color = input.color(color.new(#f23645, 82), "Manual Stop Loss Box Color", group=grp_colors)
 
 // ==========================================
 // 2. THEME SYSTEM COLOR MAPPING
@@ -97,6 +105,9 @@ col_bull_eff = theme_mode ? col_bull : green
 col_bear_eff = theme_mode ? col_bear : red
 col_poc_eff  = theme_mode ? col_poc : yellow
 
+tp_color_eff = theme_mode ? color.new(col_bull_eff, 82) : manual_tp_color
+sl_color_eff = theme_mode ? color.new(col_bear_eff, 82) : manual_sl_color
+
 // Global indicators for calculations (must execute on every bar)
 atr_val_global = ta.atr(atr_len)
 atr14_global = ta.atr(14)
@@ -105,7 +116,7 @@ atr14_global = ta.atr(14)
 // 3. VOLUME DISTRIBUTION FUNCTION
 // ==========================================
 
-distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, array<float> _bucket_total) =>
+distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float[] _bucket_total) =>
     float b_high = math.max(_o, _c)
     float b_low  = math.min(_o, _c)
     float _range_val = _h - _l
@@ -179,7 +190,7 @@ var int trade_dir = 0 // 1 = Long, -1 = Short
 // Persisted Drawings (for Clean Drawing Mode option)
 var box cons_box_obj = na
 var line poc_line_obj = na
-var array<box> vp_boxes = array.new<box>()
+var box[] vp_boxes = array.new<box>()
 var box tp_box_obj = na
 var box sl_box_obj = na
 var label info_lbl_obj = na
@@ -187,7 +198,9 @@ var label info_lbl_obj = na
 // Scanning logic on each bar
 h_val = ta.highest(high, cons_len)
 l_val = ta.lowest(low, cons_len)
-is_consolidating = (h_val - l_val) <= cons_mult * atr_val_global
+current_range_height = h_val - l_val
+max_allowed_range_height = cons_mult * atr_val_global * cons_scale
+is_consolidating = current_range_height <= max_allowed_range_height
 
 // --- STATE 0: SCANNING FOR CONSOLIDATION ---
 if state == 0 and is_consolidating
@@ -220,7 +233,7 @@ if state == 0 and is_consolidating
                              border_width=1)
 
     // Calculate Volume Profile inside consolidation window
-    array<float> tempBins = array.new_float(rows, 0.0)
+    float[] tempBins = array.new_float(rows, 0.0)
     float rng = math.max(cons_h - cons_l, syminfo.mintick * 10)
     float step = rng / rows
     float inv_step = 1.0 / step
@@ -300,10 +313,10 @@ else if state == 2
 
             // Draw Risk-Reward Position Box cards
             tp_box_obj := box.new(left=retest_bar, top=trade_tp, right=retest_bar + 1, bottom=trade_entry,
-                                  bgcolor=color.new(col_bull_eff, 82), border_color=color.new(col_bull_eff, 50),
+                                  bgcolor=tp_color_eff, border_color=color.new(col_bull_eff, 50),
                                   border_width=1)
             sl_box_obj := box.new(left=retest_bar, top=trade_entry, right=retest_bar + 1, bottom=trade_sl,
-                                  bgcolor=color.new(col_bear_eff, 82), border_color=color.new(col_bear_eff, 50),
+                                  bgcolor=sl_color_eff, border_color=color.new(col_bear_eff, 50),
                                   border_width=1)
 
             info_lbl_obj := label.new(x=retest_bar, y=trade_tp, text="LONG POSITION\nTarget: " + str.tostring(trade_tp, format.mintick) + "\nStop: " + str.tostring(trade_sl, format.mintick) + "\nR:R: " + str.tostring(rr_ratio, "#.##"),
@@ -329,16 +342,20 @@ else if state == 2
 
             // Draw Risk-Reward Position Box cards
             tp_box_obj := box.new(left=retest_bar, top=trade_entry, right=retest_bar + 1, bottom=trade_tp,
-                                  bgcolor=color.new(col_bull_eff, 82), border_color=color.new(col_bull_eff, 50),
+                                  bgcolor=tp_color_eff, border_color=color.new(col_bull_eff, 50),
                                   border_width=1)
             sl_box_obj := box.new(left=retest_bar, top=trade_sl, right=retest_bar + 1, bottom=trade_entry,
-                                  bgcolor=color.new(col_bear_eff, 82), border_color=color.new(col_bear_eff, 50),
+                                  bgcolor=sl_color_eff, border_color=color.new(col_bear_eff, 50),
                                   border_width=1)
 
             info_lbl_obj := label.new(x=retest_bar, y=trade_sl, text="SHORT POSITION\nTarget: " + str.tostring(trade_tp, format.mintick) + "\nStop: " + str.tostring(trade_sl, format.mintick) + "\nR:R: " + str.tostring(rr_ratio, "#.##"),
                                       style=label.style_label_up, color=color.new(dark, 15), textcolor=col_bear_eff, size=size.small)
 
             alert("POC Retest Triggered! Executing Short position on " + syminfo.ticker + " at " + str.tostring(trade_entry, format.mintick), alert.freq_once_per_bar)
+
+    // Prevent getting permanently stuck in State 2 (Waiting for Retest) if price moves away without retesting
+    else if bar_index > breakout_bar + max_breakout_wait
+        state := 0
 
 // --- STATE 3: TRADE POSITION ACTIVE ---
 else if state == 3
@@ -363,10 +380,63 @@ else if state == 3
         // Draw dynamic trade feedback labels
         string finish_text = tp_hit ? "TAKE PROFIT HIT!" : (sl_hit ? "STOP LOSS HIT" : "TIME STOP CLOSED")
         color label_color = tp_hit ? col_bull_eff : (sl_hit ? col_bear_eff : gray)
-        label.new(x=bar_index, y=trade_entry, text=finish_text, style=label.style_label_center,
+        label.new(x=bar_index, y=trade_entry, text=finish_text, style=label.style_none,
                   color=color.new(label_color, 20), textcolor=white, size=size.small)
 
         alert("Trade Completed on " + syminfo.ticker + "! Reason: " + finish_text, alert.freq_once_per_bar)
 
         // Reset state machine to scanning for next consolidation setup
         state := 0
+
+// ==========================================
+// 5. HELPER PLOTS & CHARTS CHANNELS
+// ==========================================
+
+// Plotting step channels to guarantee instant visual indicators are displayed
+plot_h = show_plots ? h_val : na
+plot_l = show_plots ? l_val : na
+plot_limit = show_plots ? max_allowed_range_height : na
+
+plot(plot_h, "Lookback Channel High", color=color.new(white, 60), style=plot.style_stepline)
+plot(plot_l, "Lookback Channel Low", color=color.new(white, 60), style=plot.style_stepline)
+
+// ==========================================
+// 6. PREMIUM GLASS HUD DASHBOARD
+// ==========================================
+
+var table hud = na
+if show_hud and barstate.islast
+    hud := table.new(position.top_right, 2, 8, bgcolor=color.new(dark, 50), border_color=color.new(col_poc_eff, 60), border_width=1, frame_color=color.new(col_poc_eff, 40), frame_width=1)
+
+    // Header
+    table.cell(hud, 0, 0, "SCANNER METRIC", bgcolor=color.new(col_poc_eff, 20), text_color=white, text_size=size.small, text_formatting=text.format_bold)
+    table.cell(hud, 1, 0, "CURRENT VALUE", bgcolor=color.new(col_poc_eff, 20), text_color=white, text_size=size.small, text_formatting=text.format_bold)
+
+    // Current state
+    string state_txt = state == 0 ? "SCANNING" : (state == 1 ? "CONSOLIDATING" : (state == 2 ? "AWAITING RETEST" : "POSITION ACTIVE"))
+    color state_col = state == 0 ? white : (state == 1 ? col_bull_eff : (state == 2 ? yellow : col_bear_eff))
+    table.cell(hud, 0, 1, "State Machine Status", text_color=white, text_size=size.small)
+    table.cell(hud, 1, 1, state_txt, bgcolor=color.new(state_col, 80), text_color=state_col, text_size=size.small, text_formatting=text.format_bold)
+
+    // Lookback height
+    table.cell(hud, 0, 2, "Current Range Height", text_color=white, text_size=size.small)
+    table.cell(hud, 1, 2, str.tostring(current_range_height, format.mintick), text_color=white, text_size=size.small)
+
+    // Max Height
+    table.cell(hud, 0, 3, "Max Allowed Height", text_color=white, text_size=size.small)
+    table.cell(hud, 1, 3, str.tostring(max_allowed_range_height, format.mintick), text_color=white, text_size=size.small)
+
+    // Consolidation Status
+    table.cell(hud, 0, 4, "Consolidation Condition", text_color=white, text_size=size.small)
+    table.cell(hud, 1, 4, is_consolidating ? "MET (CONGESTION)" : "NOT MET (TRENDING)", bgcolor=is_consolidating ? color.new(col_bull_eff, 85) : color.new(col_bear_eff, 85), text_color=is_consolidating ? col_bull_eff : col_bear_eff, text_size=size.small, text_formatting=text.format_bold)
+
+    // ATR
+    table.cell(hud, 0, 5, "ATR (" + str.tostring(atr_len) + ")", text_color=white, text_size=size.small)
+    table.cell(hud, 1, 5, str.tostring(atr_val_global, format.mintick), text_color=white, text_size=size.small)
+
+    // Setup Details
+    table.cell(hud, 0, 6, "Active Setup POC", text_color=white, text_size=size.small)
+    table.cell(hud, 1, 6, na(cons_poc) ? "NONE" : str.tostring(cons_poc, format.mintick), text_color=white, text_size=size.small)
+
+    table.cell(hud, 0, 7, "Lookback Length", text_color=white, text_size=size.small)
+    table.cell(hud, 1, 7, str.tostring(cons_len) + " bars", text_color=white, text_size=size.small)
