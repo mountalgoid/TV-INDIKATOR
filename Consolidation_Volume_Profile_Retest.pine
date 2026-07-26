@@ -1,0 +1,369 @@
+//@version=6
+indicator("Consolidation Volume Profile with Retest Retarget 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="Consolidation VP Retest 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=2000)
+
+// ==========================================
+// 1. INPUTS & CONFIGURATION
+// ==========================================
+
+// --- Consolidation Settings ---
+grp_cons = "Consolidation Detection Settings"
+cons_len = input.int(30, "Consolidation Lookback Length", minval=10, group=grp_cons, tooltip="Number of bars required to form and evaluate a consolidation zone")
+atr_len  = input.int(14, "ATR Length", minval=5, group=grp_cons, tooltip="Period for Average True Range calculation")
+cons_mult = input.float(1.8, "Consolidation ATR Multiplier", minval=0.5, step=0.1, group=grp_cons, tooltip="Maximum allowed range height of consolidation as a multiplier of ATR")
+max_breakout_wait = input.int(50, "Max Bars to Wait for Breakout", minval=10, group=grp_cons, tooltip="Maximum number of bars to wait for a breakout before canceling the consolidation zone")
+
+// --- Trade & Risk Management ---
+grp_trade = "Risk Management & Trade Settings"
+sl_mode = input.string("Consolidation Boundary", "Stop Loss Mode", options=["Consolidation Boundary", "ATR Based"], group=grp_trade, tooltip="How to place the Stop Loss level")
+sl_atr_mult = input.float(1.5, "SL ATR Multiplier", minval=0.5, step=0.1, group=grp_trade, tooltip="ATR multiplier for Stop Loss if ATR Based is selected")
+rr_ratio = input.float(2.0, "Risk-to-Reward Ratio (R:R)", minval=0.5, step=0.1, group=grp_trade, tooltip="Reward relative to the risk taken (e.g. 2.0 means Take Profit is twice the size of Stop Loss)")
+max_trade_dur = input.int(60, "Max Trade Duration (Bars)", minval=10, group=grp_trade, tooltip="Maximum duration to display and monitor the active trade position box")
+
+// --- Volume Profile Settings ---
+grp_vp = "Volume Profile Settings"
+rows = input.int(30, "Smoothness (Rows)", minval=10, maxval=100, group=grp_vp, tooltip="Number of rows for volume profile binning inside consolidation")
+width_pct = input.float(0.35, "Volume Profile Width %", minval=0.1, maxval=1.0, step=0.05, group=grp_vp, tooltip="Width of the profile relative to the consolidation length")
+
+// --- Visual Settings ---
+grp_vis = "Visual Settings & Theme"
+clean_old_drawings = input.bool(false, "Display Only Most Recent Setup", group=grp_vis, tooltip="If enabled, older consolidation zones and trade boxes are deleted from the chart")
+theme_mode = input.bool(true, "Use Selected Color Theme", group=grp_vis)
+color_theme = input.string(defval='DEX Deep', title='Select Color Theme', options=['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=grp_vis)
+extend_poc_line = input.bool(true, "Extend POC Line to Right", group=grp_vis, tooltip="Extend the horizontal Point of Control line indefinitely to the right")
+
+// ==========================================
+// 2. THEME SYSTEM COLOR MAPPING
+// ==========================================
+
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
+
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
+
+color col_poc = switch color_theme
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+
+// Fallback manual colors
+col_bull_eff = theme_mode ? col_bull : green
+col_bear_eff = theme_mode ? col_bear : red
+col_poc_eff  = theme_mode ? col_poc : yellow
+
+// ==========================================
+// 3. VOLUME DISTRIBUTION FUNCTION
+// ==========================================
+
+distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, array<float> _bucket_total) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        if _range_val <= 0
+            int idx = math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h)))
+            array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h - b_high) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * w_u
+
+            if v_l > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+            if v_b > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+            if v_u > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+
+// ==========================================
+// 4. STATE MACHINE & DETECTION LOGIC
+// ==========================================
+
+// State definitions:
+// 0: Scanning for Consolidation
+// 1: Consolidating (Waiting for Breakout)
+// 2: Breakout Confirmed (Waiting for POC Retest)
+// 3: Trade Position Active
+var int state = 0
+
+// Consolidation Boundaries & Details
+var int cons_start = na
+var int cons_end = na
+var float cons_h = na
+var float cons_l = na
+var float cons_poc = na
+
+// Breakout Details
+var int breakout_dir = 0 // 1 = Bullish, -1 = Bearish
+var int breakout_bar = na
+var int retest_bar = na
+
+// Position Details
+var float trade_entry = na
+var float trade_sl = na
+var float trade_tp = na
+var int trade_dir = 0 // 1 = Long, -1 = Short
+
+// Persisted Drawings (for Clean Drawing Mode option)
+var box cons_box_obj = na
+var line poc_line_obj = na
+var array<box> vp_boxes = array.new_box(0)
+var box tp_box_obj = na
+var box sl_box_obj = na
+var label info_lbl_obj = na
+
+// Scanning logic on each bar
+h_val = ta.highest(high, cons_len)
+l_val = ta.lowest(low, cons_len)
+atr_val = ta.atr(atr_len)
+is_consolidating = (h_val - l_val) <= cons_mult * atr_val
+
+// --- STATE 0: SCANNING FOR CONSOLIDATION ---
+if state == 0 and is_consolidating
+    state := 1
+    cons_start := bar_index - cons_len + 1
+    cons_end := bar_index
+    cons_h := h_val
+    cons_l := l_val
+
+    // Optional Drawings Clean-Up
+    if clean_old_drawings
+        if not na(cons_box_obj)
+            box.delete(cons_box_obj)
+        if not na(poc_line_obj)
+            line.delete(poc_line_obj)
+        if not na(tp_box_obj)
+            box.delete(tp_box_obj)
+        if not na(sl_box_obj)
+            box.delete(sl_box_obj)
+        if not na(info_lbl_obj)
+            label.delete(info_lbl_obj)
+        while array.size(vp_boxes) > 0
+            box.delete(array.pop(vp_boxes))
+    else
+        array.clear(vp_boxes)
+
+    // Render Consolidation Container (Translucent Glass-Like Aesthetics)
+    cons_box_obj := box.new(left=cons_start, top=cons_h, right=cons_end, bottom=cons_l,
+                             bgcolor=color.new(gray, 94), border_color=color.new(white, 70),
+                             border_width=1, title="Consolidation Box")
+
+    // Calculate Volume Profile inside consolidation window
+    array<float> tempBins = array.new_float(rows, 0.0)
+    float rng = math.max(cons_h - cons_l, syminfo.mintick * 10)
+    float step = rng / rows
+    float inv_step = 1.0 / step
+
+    for i = 0 to cons_len - 1
+        distribute_vol(rows, cons_l, inv_step, open[i], high[i], low[i], close[i], volume[i], tempBins)
+
+    float maxVol = array.max(tempBins)
+    int pocIdx = array.indexof(tempBins, maxVol)
+    cons_poc := cons_l + (pocIdx * step) + (step * 0.5)
+
+    // Project Point of Control (POC) line
+    poc_line_obj := line.new(x1=cons_start, y1=cons_poc, x2=bar_index + 30, y2=cons_poc,
+                             color=col_poc_eff, width=2, style=line.style_solid,
+                             extend=extend_poc_line ? extend.right : extend.none)
+
+    // Draw Volume Profile rows inside the Consolidation Box
+    int max_profile_width = math.max(3, int(cons_len * width_pct))
+    for r = 0 to rows - 1
+        float v = array.get(tempBins, r)
+        float pct = maxVol == 0 ? 0.0 : v / maxVol
+        if pct > 0
+            int row_end_x = cons_start + int(pct * max_profile_width)
+            float r_bot = cons_l + (r * step)
+            float r_top = cons_l + ((r + 1) * step)
+
+            // Draw gradient row from Bullish to Bearish theme colors or highlight POC
+            color row_color = r == pocIdx ? color.new(col_poc_eff, 45) : color.new(col_bull_eff, 75)
+            box b = box.new(left=cons_start, bottom=r_bot, right=row_end_x, top=r_top,
+                            bgcolor=row_color, border_color=na, title="VP Row")
+            array.push(vp_boxes, b)
+
+// --- STATE 1: WAITING FOR BREAKOUT ---
+else if state == 1
+    // Dynamically extend POC line to keep it relevant
+    if not extend_poc_line and not na(poc_line_obj)
+        line.set_x2(poc_line_obj, bar_index + 10)
+
+    bool is_bullish_breakout = close > cons_h
+    bool is_bearish_breakout = close < cons_l
+
+    if is_bullish_breakout
+        state := 2
+        breakout_dir := 1
+        breakout_bar := bar_index
+        alert("Consolidation Breakout (Bullish) detected on " + syminfo.ticker, alert.freq_once_per_bar)
+    else if is_bearish_breakout
+        state := 2
+        breakout_dir := -1
+        breakout_bar := bar_index
+        alert("Consolidation Breakout (Bearish) detected on " + syminfo.ticker, alert.freq_once_per_bar)
+    else if bar_index > cons_end + max_breakout_wait
+        // Breakout wait expired, cancel and scan for new consolidation
+        state := 0
+
+// --- STATE 2: WAITING FOR RETEST ---
+else if state == 2
+    if not extend_poc_line and not na(poc_line_obj)
+        line.set_x2(poc_line_obj, bar_index + 10)
+
+    // Evaluate Retest & Invalidation Conditions
+    if breakout_dir == 1 // Bullish Retest (Looking for Long entry at POC line)
+        // Invalidation: Price falls back and closes below the consolidation low
+        if close < cons_l
+            state := 0
+        // Retest: Price pulls back to touch or cross the POC line from above
+        else if low <= cons_poc and high >= cons_poc
+            state := 3
+            retest_bar := bar_index
+            trade_dir := 1
+            trade_entry := cons_poc
+
+            // Calculate Stop Loss & Take Profit
+            trade_sl := sl_mode == "Consolidation Boundary" ? cons_l : cons_poc - sl_atr_mult * ta.atr(14)
+            float risk = trade_entry - trade_sl
+            trade_tp := trade_entry + risk * rr_ratio
+
+            // Draw Risk-Reward Position Box cards
+            tp_box_obj := box.new(left=retest_bar, top=trade_tp, right=retest_bar + 1, bottom=trade_entry,
+                                  bgcolor=color.new(col_bull_eff, 82), border_color=color.new(col_bull_eff, 50),
+                                  border_width=1, title="Take Profit Box")
+            sl_box_obj := box.new(left=retest_bar, top=trade_entry, right=retest_bar + 1, bottom=trade_sl,
+                                  bgcolor=color.new(col_bear_eff, 82), border_color=color.new(col_bear_eff, 50),
+                                  border_width=1, title="Stop Loss Box")
+
+            info_lbl_obj := label.new(x=retest_bar, y=trade_tp, text="LONG POSITION\nTarget: " + str.tostring(trade_tp, format.mintick) + "\nStop: " + str.tostring(trade_sl, format.mintick) + "\nR:R: " + str.tostring(rr_ratio, "#.##"),
+                                      style=label.style_label_down, color=color.new(dark, 15), textcolor=col_bull_eff, size=size.small)
+
+            alert("POC Retest Triggered! Executing Long position on " + syminfo.ticker + " at " + str.tostring(trade_entry, format.mintick), alert.freq_once_per_bar)
+
+    else if breakout_dir == -1 // Bearish Retest (Looking for Short entry at POC line)
+        // Invalidation: Price closes above the consolidation high
+        if close > cons_h
+            state := 0
+        // Retest: Price pulls back to touch or cross the POC line from below
+        else if high >= cons_poc and low <= cons_poc
+            state := 3
+            retest_bar := bar_index
+            trade_dir := -1
+            trade_entry := cons_poc
+
+            // Calculate Stop Loss & Take Profit
+            trade_sl := sl_mode == "Consolidation Boundary" ? cons_h : cons_poc + sl_atr_mult * ta.atr(14)
+            float risk = trade_sl - trade_entry
+            trade_tp := trade_entry - risk * rr_ratio
+
+            // Draw Risk-Reward Position Box cards
+            tp_box_obj := box.new(left=retest_bar, top=trade_entry, right=retest_bar + 1, bottom=trade_tp,
+                                  bgcolor=color.new(col_bull_eff, 82), border_color=color.new(col_bull_eff, 50),
+                                  border_width=1, title="Take Profit Box")
+            sl_box_obj := box.new(left=retest_bar, top=trade_sl, right=retest_bar + 1, bottom=trade_entry,
+                                  bgcolor=color.new(col_bear_eff, 82), border_color=color.new(col_bear_eff, 50),
+                                  border_width=1, title="Stop Loss Box")
+
+            info_lbl_obj := label.new(x=retest_bar, y=trade_sl, text="SHORT POSITION\nTarget: " + str.tostring(trade_tp, format.mintick) + "\nStop: " + str.tostring(trade_sl, format.mintick) + "\nR:R: " + str.tostring(rr_ratio, "#.##"),
+                                      style=label.style_label_up, color=color.new(dark, 15), textcolor=col_bear_eff, size=size.small)
+
+            alert("POC Retest Triggered! Executing Short position on " + syminfo.ticker + " at " + str.tostring(trade_entry, format.mintick), alert.freq_once_per_bar)
+
+// --- STATE 3: TRADE POSITION ACTIVE ---
+else if state == 3
+    // Dynamic real-time extension of position card boxes
+    if not na(tp_box_obj)
+        box.set_right(tp_box_obj, bar_index)
+    if not na(sl_box_obj)
+        box.set_right(sl_box_obj, bar_index)
+
+    // Evaluate TP / SL resolution or Max Duration Timeout
+    bool tp_hit = (trade_dir == 1 and high >= trade_tp) or (trade_dir == -1 and low <= trade_tp)
+    bool sl_hit = (trade_dir == 1 and low <= trade_sl) or (trade_dir == -1 and high >= trade_sl)
+    bool trade_timeout = bar_index >= retest_bar + max_trade_dur
+
+    if tp_hit or sl_hit or trade_timeout
+        // Freeze risk-reward box right edge on trade completion
+        if not na(tp_box_obj)
+            box.set_right(tp_box_obj, bar_index)
+        if not na(sl_box_obj)
+            box.set_right(sl_box_obj, bar_index)
+
+        // Draw dynamic trade feedback labels
+        string finish_text = tp_hit ? "TAKE PROFIT HIT!" : (sl_hit ? "STOP LOSS HIT" : "TIME STOP CLOSED")
+        color label_color = tp_hit ? col_bull_eff : (sl_hit ? col_bear_eff : gray)
+        label.new(x=bar_index, y=trade_entry, text=finish_text, style=label.style_label_center,
+                  color=color.new(label_color, 20), textcolor=white, size=size.small)
+
+        alert("Trade Completed on " + syminfo.ticker + "! Reason: " + finish_text, alert.freq_once_per_bar)
+
+        // Reset state machine to scanning for next consolidation setup
+        state := 0
