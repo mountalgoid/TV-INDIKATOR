@@ -1,5 +1,5 @@
 //@version=5
-indicator("Setup Replication & Volume Profile", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+indicator("Setup Replication & Volume Profile with Historical Signals", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 // ===== 1. CHART STYLING & CANDLESTICKS =====
 grp_cand = "1. Chart Styling & Candlesticks"
@@ -36,54 +36,82 @@ grp_poc = "3. Global Key Level"
 col_poc_line   = input.color(#e53935, "POC Global Line Color", group=grp_poc)
 poc_line_width = input.int(2, "POC Global Line Width", minval=1, group=grp_poc)
 
-// ===== 4. RIGHT-SIDE SHORT POSITION =====
-grp_short = "4. Right-Side Short Position"
-short_start_off = input.int(55, "Position Tool Start Offset", minval=1, group=grp_short, tooltip="Bars back to start the short position boxes")
-short_end_off   = input.int(20, "Position Tool Right Extend", minval=0, group=grp_short, tooltip="Bars forward to extend short position boxes")
-sl_multiplier   = input.float(1.5, "Stop Loss ATR Multiplier", minval=0.1, step=0.1, group=grp_short)
-tp_multiplier   = input.float(3.5, "Take Profit ATR Multiplier", minval=0.1, step=0.1, group=grp_short)
-atr_len         = input.int(14, "ATR Length for Targets", minval=1, group=grp_short)
+// ===== 4. POSITION CONFIGURATION & HISTORICAL =====
+grp_setup = "4. Long/Short Setup & Historical Settings"
+position_mode   = input.string("Both", "Trade Mode", options=["Long", "Short", "Both", "Static Only"], group=grp_setup)
+trigger_type    = input.string("POC Breakout", "Signal Trigger Type", options=["POC Breakout", "EMA Crossover"], group=grp_setup)
+show_historical = input.bool(true, "Show Historical Setup Boxes", group=grp_setup)
+max_hist_trades = input.int(10, "Max Historical Setup Boxes to Plot", minval=1, maxval=50, group=grp_setup)
 
-col_sl_bg      = input.color(color.new(#ef5350, 85), "Stop Loss Box BG", group=grp_short)
-col_tp_bg      = input.color(color.new(#005a54, 80), "Take Profit Box BG", group=grp_short)
+sl_multiplier   = input.float(1.5, "Stop Loss ATR Multiplier", minval=0.1, step=0.1, group=grp_setup)
+tp_multiplier   = input.float(3.5, "Take Profit ATR Multiplier", minval=0.1, step=0.1, group=grp_setup)
+atr_len         = input.int(14, "ATR Length for Targets", minval=1, group=grp_setup)
+
+col_sl_bg      = input.color(color.new(#ef5350, 85), "Stop Loss Box BG", group=grp_setup)
+col_tp_bg      = input.color(color.new(#005a54, 80), "Take Profit Box BG (Long TP / Short TP)", group=grp_setup)
+col_tp_long_bg = input.color(color.new(#005a54, 80), "Long Take Profit Box BG", group=grp_setup)
 
 // ===== 5. POSITION DETAIL - TARGET LINE =====
 grp_target = "5. Position Target Line"
-target_start_off = input.int(40, "Target Line Start Offset", minval=1, group=grp_target, tooltip="Offset for specific candle to start dashed target line")
-col_target_line  = input.color(#85929e, "Target Line Color", group=grp_target)
+target_width_bars = input.int(15, "Target Line Box Width (Bars)", minval=1, group=grp_target)
+col_target_line   = input.color(#85929e, "Target Line Color", group=grp_target)
 
-// ===== STORAGE FOR PERSISTENT DRAWINGS =====
-var box[] liveBoxes   = array.new_box(0)
-var line[] liveLines  = array.new_line(0)
-var label[] liveLabels = array.new_label(0)
+// ===== CUSTOM USER DEFINED TYPE FOR POSITION DRAWINGS =====
+type TradePosition
+    box sl_box
+    box tp_box
+    line target_line
+    line stem_line
+    line wing_l
+    line wing_r
 
-// Function to clear all temporary drawings
-clear_drawings() =>
-    while array.size(liveBoxes) > 0
-        box.delete(array.pop(liveBoxes))
-    while array.size(liveLines) > 0
-        line.delete(array.pop(liveLines))
-    while array.size(liveLabels) > 0
-        label.delete(array.pop(liveLabels))
+// Storage for "Live" VP objects (to clean and redraw)
+var box[] liveVPBoxes   = array.new_box(0)
+var line[] liveVPLines  = array.new_line(0)
 
-// ===== MAIN EXECUTION =====
+// Persistent arrays for historical trades
+var TradePosition[] histPositions = array.new<TradePosition>(0)
+
+// Function to delete older drawings when historical trade count limit is reached
+prune_old_positions(int max_count) =>
+    while array.size(histPositions) > max_count
+        TradePosition oldest = array.shift(histPositions)
+        box.delete(oldest.sl_box)
+        box.delete(oldest.tp_box)
+        line.delete(oldest.target_line)
+        line.delete(oldest.stem_line)
+        line.delete(oldest.wing_l)
+        line.delete(oldest.wing_r)
+
+// ===== MAIN CALCULATION =====
 atr = ta.atr(atr_len)
 
-// Dynamic boundary calculations
+// Technical triggers
+ema_fast = ta.ema(close, 9)
+ema_slow = ta.ema(close, 21)
+ema_cross_up   = ta.crossover(ema_fast, ema_slow)
+ema_cross_down = ta.crossunder(ema_fast, ema_slow)
+
+// Dynamic boundary calculations for left-side VP
 start_idx = vp_start_offset
 end_idx = vp_end_offset
 
-// Safety bounds correction
 if start_idx < end_idx
     int temp = start_idx
     start_idx := end_idx
     end_idx := temp
 
-if barstate.islast and bar_index >= start_idx
-    // 1. Clear previous drawings to prevent overlap
-    clear_drawings()
+// Perform historical Volume Profile scanning for dynamic POC
+var float pocPrice = na
 
-    // 2. Identify Highest High and Lowest Low in the specified window
+if barstate.islast and bar_index >= start_idx
+    // Clear previous VP drawings
+    while array.size(liveVPBoxes) > 0
+        box.delete(array.pop(liveVPBoxes))
+    while array.size(liveVPLines) > 0
+        line.delete(array.pop(liveVPLines))
+
+    // Identify Highest High and Lowest Low in the specified window
     float vp_high = na
     float vp_low = na
     for i = end_idx to start_idx
@@ -92,7 +120,7 @@ if barstate.islast and bar_index >= start_idx
         if na(vp_low) or low[i] < vp_low
             vp_low := low[i]
 
-    // 3. Populate Volume Profile Bins
+    // Populate Volume Profile Bins
     float vp_range = math.max(vp_high - vp_low, syminfo.mintick * 10)
     float step = vp_range / vp_rows
     float[] volBins = array.new_float(vp_rows, 0.0)
@@ -113,11 +141,11 @@ if barstate.islast and bar_index >= start_idx
                 else if (bar_h - bar_l) <= 0 and bar_h >= r_bot and bar_h <= r_top
                     array.set(volBins, r, array.get(volBins, r) + bar_v)
 
-    // 4. Calculate POC & Value Area Boundaries
+    // Calculate POC & Value Area Boundaries
     float maxVol = array.max(volBins)
     float totalVol = array.sum(volBins)
     int pocIdx = array.indexof(volBins, maxVol)
-    float pocPrice = vp_low + pocIdx * step + step * 0.5
+    pocPrice := vp_low + pocIdx * step + step * 0.5
 
     float targetVA = totalVol * vp_va_pct
     float currentVA = maxVol
@@ -141,15 +169,15 @@ if barstate.islast and bar_index >= start_idx
             va_high_idx += 1
         loop_guard += 1
 
-    // 5. Draw VP Outer Frame Box
+    // Draw VP Outer Frame Box
     int vp_box_left  = bar_index - start_idx
     int vp_box_right = bar_index - end_idx
     vp_box = box.new(left=vp_box_left, top=vp_high, right=vp_box_right, bottom=vp_low,
                      border_color=col_box_border, border_width=1, border_style=line.style_solid,
                      bgcolor=col_box_bg)
-    array.push(liveBoxes, vp_box)
+    array.push(liveVPBoxes, vp_box)
 
-    // 6. Draw Volume Profile Histogram Rows
+    // Draw Volume Profile Histogram Rows
     for r = 0 to vp_rows - 1
         float v = array.get(volBins, r)
         float pct = maxVol == 0 ? 0 : v / maxVol
@@ -167,53 +195,123 @@ if barstate.islast and bar_index >= start_idx
             row_box = box.new(left=row_left, bottom=r_bot, right=row_right, top=r_top,
                                bgcolor=color.new(row_color, 40), border_color=color.new(row_color, 60),
                                border_width=1, border_style=line.style_solid)
-            array.push(liveBoxes, row_box)
+            array.push(liveVPBoxes, row_box)
 
-    // 7. Draw Global Horizontal Key Level Line (POC)
-    l_global_poc = line.new(x1=vp_box_left - 100, y1=pocPrice, x2=bar_index + short_end_off + 100, y2=pocPrice,
+    // Draw Global Horizontal Key Level Line (POC)
+    l_global_poc = line.new(x1=vp_box_left - 150, y1=pocPrice, x2=bar_index + 150, y2=pocPrice,
                             color=col_poc_line, width=poc_line_width, style=line.style_solid, extend=extend.both)
-    array.push(liveLines, l_global_poc)
+    array.push(liveVPLines, l_global_poc)
 
-    // 8. Draw Right-Side Short Position Visual Tool
-    int short_left  = bar_index - short_start_off
-    int short_right = bar_index + short_end_off
+// Get consistent POC price across historical checks
+var float hist_poc = na
+if not na(pocPrice)
+    hist_poc := pocPrice
 
-    // Dynamic stop and target prices from POC entry
-    float entry_price = pocPrice
+// ===== SIGNAL SCANNING & POSITION DRAWING LOGIC =====
+bool is_long_signal  = false
+bool is_short_signal = false
+
+if trigger_type == "POC Breakout" and not na(hist_poc)
+    is_long_signal  := ta.crossover(close, hist_poc)
+    is_short_signal := ta.crossunder(close, hist_poc)
+else if trigger_type == "EMA Crossover"
+    is_long_signal  := ema_cross_up
+    is_short_signal := ema_cross_down
+
+// Handle Long and Short Execution
+bool trigger_long  = is_long_signal and (position_mode == "Long" or position_mode == "Both")
+bool trigger_short = is_short_signal and (position_mode == "Short" or position_mode == "Both")
+
+// Execute and Draw Setup
+if show_historical and (trigger_long or trigger_short) and not na(atr)
+    float entry = close
+    float stop = trigger_long ? entry - atr * sl_multiplier : entry + atr * sl_multiplier
+    float target = trigger_long ? entry + atr * tp_multiplier : entry - atr * tp_multiplier
+
+    // Box dimensions
+    int b_left  = bar_index
+    int b_right = bar_index + target_width_bars
+
+    color bg_sl = col_sl_bg
+    color bg_tp = trigger_long ? col_tp_long_bg : col_tp_bg
+
+    box sl_box_obj = box.new(left=b_left, bottom=trigger_long ? stop : entry, right=b_right, top=trigger_long ? entry : stop,
+                             bgcolor=bg_sl, border_color=color.new(bg_sl, 30), border_width=1)
+
+    box tp_box_obj = box.new(left=b_left, bottom=trigger_long ? entry : target, right=b_right, top=trigger_long ? target : entry,
+                             bgcolor=bg_tp, border_color=color.new(bg_tp, 30), border_width=1)
+
+    // Arrow line and vertical terminal pointer
+    int target_start_x = bar_index
+    float target_start_y = trigger_long ? low : high
+    int target_end_x = b_right
+    float target_end_y = target
+
+    line arrow_line = line.new(x1=target_start_x, y1=target_start_y, x2=target_end_x, y2=target_end_y,
+                               color=col_target_line, width=1, style=line.style_dashed)
+
+    // Terminal vertical arrow pointing at target boundary
+    float stem_y_start = trigger_long ? target - atr * 0.15 : target + atr * 0.15
+    line stem_line = line.new(x1=target_end_x, y1=stem_y_start, x2=target_end_x, y2=target_end_y,
+                              color=col_target_line, width=1, style=line.style_solid)
+
+    float wing_y = trigger_long ? target - atr * 0.05 : target + atr * 0.05
+    line wing_l = line.new(x1=target_end_x, y1=target_end_y, x2=target_end_x - 1, y2=wing_y,
+                           color=col_target_line, width=1, style=line.style_solid)
+    line wing_r = line.new(x1=target_end_x, y1=target_end_y, x2=target_end_x + 1, y2=wing_y,
+                           color=col_target_line, width=1, style=line.style_solid)
+
+    TradePosition tp = TradePosition.new(sl_box_obj, tp_box_obj, arrow_line, stem_line, wing_l, wing_r)
+    array.push(histPositions, tp)
+
+    // Maintain trade drawing limits to prevent resource exhaustion
+    prune_old_positions(max_hist_trades)
+
+// ===== STATIC DEMO OPTION (Original hard-coded setup at hard-right edge) =====
+var box static_sl = na
+var box static_tp = na
+var line static_arrow = na
+var line static_stem = na
+var line static_wl = na
+var line static_wr = na
+
+if barstate.islast and (position_mode == "Static Only" or not show_historical)
+    // Clean old static drawings
+    box.delete(static_sl)
+    box.delete(static_tp)
+    line.delete(static_arrow)
+    line.delete(static_stem)
+    line.delete(static_wl)
+    line.delete(static_wr)
+
+    // Draw static short setup as fallback
+    float entry_price = na(hist_poc) ? close : hist_poc
     float stop_price  = entry_price + atr * sl_multiplier
     float tp_price    = entry_price - atr * tp_multiplier
 
-    // Stop Loss Box (semi-transparent red)
-    sl_box = box.new(left=short_left, bottom=entry_price, right=short_right, top=stop_price,
-                      bgcolor=col_sl_bg, border_color=color.new(col_sl_bg, 30), border_width=1)
-    array.push(liveBoxes, sl_box)
+    int short_left  = bar_index - 55
+    int short_right = bar_index + 20
 
-    // Take Profit Box (semi-transparent dark teal)
-    tp_box = box.new(left=short_left, bottom=tp_price, right=short_right, top=entry_price,
-                      bgcolor=col_tp_bg, border_color=color.new(col_tp_bg, 30), border_width=1)
-    array.push(liveBoxes, tp_box)
+    static_sl := box.new(left=short_left, bottom=entry_price, right=short_right, top=stop_price,
+                          bgcolor=col_sl_bg, border_color=color.new(col_sl_bg, 30), border_width=1)
 
-    // 9. Draw Position Detail - Target Line & Arrow
-    int target_start_x = bar_index - target_start_off
-    float target_start_y = high[target_start_off]
+    static_tp := box.new(left=short_left, bottom=tp_price, right=short_right, top=entry_price,
+                          bgcolor=col_tp_bg, border_color=color.new(col_tp_bg, 30), border_width=1)
+
+    int target_start_x = bar_index - 40
+    float target_start_y = high[40]
     int target_end_x = bar_index
     float target_end_y = tp_price
 
-    // Dashed line
-    arrow_line = line.new(x1=target_start_x, y1=target_start_y, x2=target_end_x, y2=target_end_y,
-                          color=col_target_line, width=1, style=line.style_dashed)
-    array.push(liveLines, arrow_line)
+    static_arrow := line.new(x1=target_start_x, y1=target_start_y, x2=target_end_x, y2=target_end_y,
+                             color=col_target_line, width=1, style=line.style_dashed)
 
-    // Terminal vertical arrow pointing down at lower boundary
     float stem_y_start = tp_price + atr * 0.15
-    stem_line = line.new(x1=target_end_x, y1=stem_y_start, x2=target_end_x, y2=target_end_y,
-                         color=col_target_line, width=1, style=line.style_solid)
-    array.push(liveLines, stem_line)
+    static_stem := line.new(x1=target_end_x, y1=stem_y_start, x2=target_end_x, y2=target_end_y,
+                            color=col_target_line, width=1, style=line.style_solid)
 
     float wing_y = tp_price + atr * 0.05
-    wing_left = line.new(x1=target_end_x, y1=target_end_y, x2=target_end_x - 1, y2=wing_y,
-                         color=col_target_line, width=1, style=line.style_solid)
-    wing_right = line.new(x1=target_end_x, y1=target_end_y, x2=target_end_x + 1, y2=wing_y,
+    static_wl := line.new(x1=target_end_x, y1=target_end_y, x2=target_end_x - 1, y2=wing_y,
                           color=col_target_line, width=1, style=line.style_solid)
-    array.push(liveLines, wing_left)
-    array.push(liveLines, wing_right)
+    static_wr := line.new(x1=target_end_x, y1=target_end_y, x2=target_end_x + 1, y2=wing_y,
+                          color=col_target_line, width=1, style=line.style_solid)
