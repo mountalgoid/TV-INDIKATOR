@@ -433,12 +433,12 @@ float sell_loc = rt_sell_poc
 
 // --- PRE-CALCULATED GLOBAL ENGINE METRICS ---
 // Historical Average Buy/Sell Calculations (Global for history)
-float rolling_buy_vol_g   = ta.sum(buy_volume, avg_plots_len)
-float rolling_buy_pvol_g  = ta.sum(buy_loc * buy_volume, avg_plots_len)
+float rolling_buy_vol_g   = math.sum(buy_volume, avg_plots_len)
+float rolling_buy_pvol_g  = math.sum(buy_loc * buy_volume, avg_plots_len)
 float hist_avg_buy_g      = rolling_buy_vol_g > 0 ? rolling_buy_pvol_g / rolling_buy_vol_g : na
 
-float rolling_sell_vol_g  = ta.sum(sell_volume, avg_plots_len)
-float rolling_sell_pvol_g = ta.sum(sell_loc * sell_volume, avg_plots_len)
+float rolling_sell_vol_g  = math.sum(sell_volume, avg_plots_len)
+float rolling_sell_pvol_g = math.sum(sell_loc * sell_volume, avg_plots_len)
 float hist_avg_sell_g     = rolling_sell_vol_g > 0 ? rolling_sell_pvol_g / rolling_sell_vol_g : na
 
 // Normalized Slopes (%) for Prediction Analysis
