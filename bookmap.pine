@@ -588,7 +588,6 @@ if barstate.isconfirmed
         array.shift(hist_sell_poc_arr)
 
 // Historical Rolling POC Calculation (Sync with Volume Profile logic)
-var float hpoc_val = na
 bool should_calc_hpoc = show_hpoc and (barstate.islast or (barstate.isconfirmed and bar_index % 5 == 0))
 if should_calc_hpoc
     int data_size = array.size(hist_close)
