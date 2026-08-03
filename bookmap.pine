@@ -44,6 +44,15 @@ type TradePosition
     box  tp1_box
     box  tp2_box
     line entry_line
+    line line_to_op
+    line line_to_tp
+    label circle_op_o
+    label circle_op_a
+    label circle_tp_o
+    label circle_tp_a
+    label lbl_tp1
+    label lbl_op
+    label lbl_sl
     int  entry_bar
     float entry_price
     float stop_loss
@@ -2199,7 +2208,19 @@ if show_positions
         box tp2_bx = box.new(bar_index, tp1_val, bar_index + 10, tp2_val, bgcolor=color.new(#179c74, 88), border_color=color.new(#179c74, 60), text="TP2", text_size=size.tiny, text_color=white)
         line ent_ln = line.new(bar_index, close, bar_index + 10, close, color=white, width=1, style=line.style_solid)
 
-        array.push(hist_trades, TradePosition.new(sl_bx, tp1_bx, tp2_bx, ent_ln, bar_index, close, sl_p, tp1_val, tp2_val, true, true, false))
+        line ln_to_op = line.new(bar_index - 15, close + (tp1_val - close) * 0.7, bar_index, close, color=white, width=2, style=line.style_dashed)
+        line ln_to_tp = line.new(bar_index, close, bar_index + 10, tp1_val, color=white, width=2, style=line.style_dashed)
+
+        label c_op_o = label.new(bar_index, close, "○", textcolor=white, style=label.style_none, size=size.huge)
+        label c_op_a = label.new(bar_index, close, "↘", textcolor=white, style=label.style_none, size=size.normal)
+        label c_tp_o = label.new(bar_index + 10, tp1_val, "○", textcolor=white, style=label.style_none, size=size.huge)
+        label c_tp_a = label.new(bar_index + 10, tp1_val, "↗", textcolor=white, style=label.style_none, size=size.normal)
+
+        label l_tp1 = label.new(bar_index + 12, tp1_val, "TP1(" + str.tostring(tp1_val, format.mintick) + ")", textcolor=white, style=label.style_none, size=size.normal)
+        label l_op = label.new(bar_index + 12, close, "OP(" + str.tostring(close, format.mintick) + ")", textcolor=white, style=label.style_none, size=size.normal)
+        label l_sl = label.new(bar_index + 12, sl_p, "SL(" + str.tostring(sl_p, format.mintick) + ")", textcolor=white, style=label.style_none, size=size.normal)
+
+        array.push(hist_trades, TradePosition.new(sl_bx, tp1_bx, tp2_bx, ent_ln, ln_to_op, ln_to_tp, c_op_o, c_op_a, c_tp_o, c_tp_a, l_tp1, l_op, l_sl, bar_index, close, sl_p, tp1_val, tp2_val, true, true, false))
 
     if short_setup_confirmed
         // Calculate Stop Loss
@@ -2257,7 +2278,19 @@ if show_positions
         box tp2_bx = box.new(bar_index, tp2_val, bar_index + 10, tp1_val, bgcolor=color.new(#179c74, 88), border_color=color.new(#179c74, 60), text="TP2", text_size=size.tiny, text_color=white)
         line ent_ln = line.new(bar_index, close, bar_index + 10, close, color=white, width=1, style=line.style_solid)
 
-        array.push(hist_trades, TradePosition.new(sl_bx, tp1_bx, tp2_bx, ent_ln, bar_index, close, sl_p, tp1_val, tp2_val, false, true, false))
+        line ln_to_op = line.new(bar_index - 15, close - (close - tp1_val) * 0.7, bar_index, close, color=white, width=2, style=line.style_dashed)
+        line ln_to_tp = line.new(bar_index, close, bar_index + 10, tp1_val, color=white, width=2, style=line.style_dashed)
+
+        label c_op_o = label.new(bar_index, close, "○", textcolor=white, style=label.style_none, size=size.huge)
+        label c_op_a = label.new(bar_index, close, "↗", textcolor=white, style=label.style_none, size=size.normal)
+        label c_tp_o = label.new(bar_index + 10, tp1_val, "○", textcolor=white, style=label.style_none, size=size.huge)
+        label c_tp_a = label.new(bar_index + 10, tp1_val, "↘", textcolor=white, style=label.style_none, size=size.normal)
+
+        label l_tp1 = label.new(bar_index + 12, tp1_val, "TP1(" + str.tostring(tp1_val, format.mintick) + ")", textcolor=white, style=label.style_none, size=size.normal)
+        label l_op = label.new(bar_index + 12, close, "OP(" + str.tostring(close, format.mintick) + ")", textcolor=white, style=label.style_none, size=size.normal)
+        label l_sl = label.new(bar_index + 12, sl_p, "SL(" + str.tostring(sl_p, format.mintick) + ")", textcolor=white, style=label.style_none, size=size.normal)
+
+        array.push(hist_trades, TradePosition.new(sl_bx, tp1_bx, tp2_bx, ent_ln, ln_to_op, ln_to_tp, c_op_o, c_op_a, c_tp_o, c_tp_a, l_tp1, l_op, l_sl, bar_index, close, sl_p, tp1_val, tp2_val, false, true, false))
 
     // Prune old trades
     if array.size(hist_trades) > max_hist_trades
@@ -2266,6 +2299,15 @@ if show_positions
         box.delete(old_t.tp1_box)
         box.delete(old_t.tp2_box)
         line.delete(old_t.entry_line)
+        line.delete(old_t.line_to_op)
+        line.delete(old_t.line_to_tp)
+        label.delete(old_t.circle_op_o)
+        label.delete(old_t.circle_op_a)
+        label.delete(old_t.circle_tp_o)
+        label.delete(old_t.circle_tp_a)
+        label.delete(old_t.lbl_tp1)
+        label.delete(old_t.lbl_op)
+        label.delete(old_t.lbl_sl)
 
 // -----------------------------------------------------------------------------
 // 8. INFO TABLE
