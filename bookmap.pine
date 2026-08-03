@@ -41,14 +41,17 @@ var array<HVT> targets_all = array.new<HVT>()
 
 type TradePosition
     box  sl_box
-    box  tp_box
+    box  tp1_box
+    box  tp2_box
     line entry_line
     int  entry_bar
     float entry_price
     float stop_loss
-    float take_profit
+    float tp1
+    float tp2
     bool is_long
     bool active
+    bool tp1_hit
 
 var array<TradePosition> hist_trades = array.new<TradePosition>()
 
@@ -691,7 +694,7 @@ if should_calc_hpoc
                 
                 hist_vah_s := l_p + (va_s_t * r_h) + r_h
                 hist_val_s := l_p + (va_s_b * r_h)
-                
+
                 array.clear(hist_lvn_s_prices)
                 float threshold_lvn_s = max_s_v * lvn_threshold
                 for i = 1 to n_rows - 2
@@ -2093,12 +2096,18 @@ if show_positions
             if t.active
                 // Update right boundaries of boxes
                 box.set_right(t.sl_box, bar_index)
-                box.set_right(t.tp_box, bar_index)
+                box.set_right(t.tp1_box, bar_index)
+                box.set_right(t.tp2_box, bar_index)
                 line.set_x2(t.entry_line, bar_index)
 
                 // Check stop/target hits
                 bool stop_hit = t.is_long ? (low <= t.stop_loss) : (high >= t.stop_loss)
-                bool target_hit = t.is_long ? (high >= t.take_profit) : (low <= t.take_profit)
+                bool tp1_hit = t.is_long ? (high >= t.tp1) : (low <= t.tp1)
+                bool tp2_hit = t.is_long ? (high >= t.tp2) : (low <= t.tp2)
+
+                if tp1_hit and not t.tp1_hit
+                    t.tp1_hit := true
+                    box.set_bgcolor(t.tp1_box, color.new(#179c74, 70))
 
                 // Early exit invalidation
                 bool early_exit = false
@@ -2112,21 +2121,26 @@ if show_positions
                 if stop_hit
                     t.active := false
                     box.set_bgcolor(t.sl_box, color.new(#f23645, 90))
-                    box.set_bgcolor(t.tp_box, color.new(#179c74, 96))
-                else if target_hit
+                    box.set_bgcolor(t.tp1_box, color.new(#179c74, 96))
+                    box.set_bgcolor(t.tp2_box, color.new(#179c74, 96))
+                else if tp2_hit
                     t.active := false
                     box.set_bgcolor(t.sl_box, color.new(#f23645, 96))
-                    box.set_bgcolor(t.tp_box, color.new(#179c74, 90))
+                    box.set_bgcolor(t.tp1_box, color.new(#179c74, 90))
+                    box.set_bgcolor(t.tp2_box, color.new(#179c74, 90))
                 else if early_exit
                     t.active := false
                     box.set_bgcolor(t.sl_box, color.new(#f23645, 95))
-                    box.set_bgcolor(t.tp_box, color.new(#179c74, 95))
+                    box.set_bgcolor(t.tp1_box, color.new(#179c74, 95))
+                    box.set_bgcolor(t.tp2_box, color.new(#179c74, 95))
                     box.set_border_style(t.sl_box, line.style_dashed)
-                    box.set_border_style(t.tp_box, line.style_dashed)
+                    box.set_border_style(t.tp1_box, line.style_dashed)
+                    box.set_border_style(t.tp2_box, line.style_dashed)
                 else if bar_index - t.entry_bar >= max_trade_dur
                     t.active := false
                     box.set_bgcolor(t.sl_box, color.new(#f23645, 95))
-                    box.set_bgcolor(t.tp_box, color.new(#179c74, 95))
+                    box.set_bgcolor(t.tp1_box, color.new(#179c74, 95))
+                    box.set_bgcolor(t.tp2_box, color.new(#179c74, 95))
 
     // Execute new trade
     if long_setup_confirmed
@@ -2142,26 +2156,50 @@ if show_positions
         float sl_p = na(lowest_buy_vol_bot) ? low : math.min(low, lowest_buy_vol_bot)
         sl_p := sl_p - (not na(mkt_atr_cur) ? mkt_atr_cur * 0.05 : syminfo.mintick * 5)
 
-        // Calculate Take Profit
-        float tp_p = na
-        float min_dist = na
+        // Calculate Take Profit (TP1 and TP2)
+        float tp1_val = na
+        float min_poc_hvn_dist = na
+        float min_any_dist = na
+        float closest_any_tp = na
+
         if array.size(hist_targets_merged) > 0
             for i = 0 to array.size(hist_targets_merged) - 1
                 HVT t = array.get(hist_targets_merged, i)
                 if t.price > close
-                    float d = math.abs(t.price - close)
-                    if na(min_dist) or d < min_dist
-                        min_dist := d
-                        tp_p := t.price
-        if na(tp_p)
-            tp_p := not na(hist_vah) ? hist_vah : (close + (not na(mkt_atr_cur) ? mkt_atr_cur * 2 : close * 0.02))
+                    float d = t.price - close
+                    bool is_poc_or_hvn = str.contains(t.description, "poc") or str.contains(t.description, "hvn")
+                    if is_poc_or_hvn
+                        if na(min_poc_hvn_dist) or d < min_poc_hvn_dist
+                            min_poc_hvn_dist := d
+                            tp1_val := t.price
+                    if na(min_any_dist) or d < min_any_dist
+                        min_any_dist := d
+                        closest_any_tp := t.price
+
+        if na(tp1_val)
+            tp1_val := closest_any_tp
+        if na(tp1_val)
+            tp1_val := close + (not na(mkt_atr_cur) ? mkt_atr_cur * 1.0 : close * 0.01)
+
+        float tp2_val = na
+        float max_tp_p = na
+        if array.size(hist_targets_merged) > 0
+            for i = 0 to array.size(hist_targets_merged) - 1
+                HVT t = array.get(hist_targets_merged, i)
+                if t.price > tp1_val
+                    if na(max_tp_p) or t.price > max_tp_p
+                        max_tp_p := t.price
+        tp2_val := na(max_tp_p) ? (not na(hist_vah) and hist_vah > tp1_val ? hist_vah : tp1_val + (not na(mkt_atr_cur) ? mkt_atr_cur * 1.5 : close * 0.015)) : max_tp_p
+        if not na(hist_vah) and hist_vah > tp2_val
+            tp2_val := hist_vah
 
         // Draw Long Position boxes
         box sl_bx = box.new(bar_index, sl_p, bar_index + 10, close, bgcolor=color.new(#f23645, 80), border_color=color.new(#f23645, 50), text="SL", text_size=size.tiny, text_color=white)
-        box tp_bx = box.new(bar_index, close, bar_index + 10, tp_p, bgcolor=color.new(#179c74, 80), border_color=color.new(#179c74, 50), text="TP", text_size=size.tiny, text_color=white)
+        box tp1_bx = box.new(bar_index, close, bar_index + 10, tp1_val, bgcolor=color.new(#179c74, 80), border_color=color.new(#179c74, 50), text="TP1", text_size=size.tiny, text_color=white)
+        box tp2_bx = box.new(bar_index, tp1_val, bar_index + 10, tp2_val, bgcolor=color.new(#179c74, 88), border_color=color.new(#179c74, 60), text="TP2", text_size=size.tiny, text_color=white)
         line ent_ln = line.new(bar_index, close, bar_index + 10, close, color=white, width=1, style=line.style_solid)
 
-        array.push(hist_trades, TradePosition.new(sl_bx, tp_bx, ent_ln, bar_index, close, sl_p, tp_p, true, true))
+        array.push(hist_trades, TradePosition.new(sl_bx, tp1_bx, tp2_bx, ent_ln, bar_index, close, sl_p, tp1_val, tp2_val, true, true, false))
 
     if short_setup_confirmed
         // Calculate Stop Loss
@@ -2176,32 +2214,57 @@ if show_positions
         float sl_p = na(highest_sell_vol_top) ? high : math.max(high, highest_sell_vol_top)
         sl_p := sl_p + (not na(mkt_atr_cur) ? mkt_atr_cur * 0.05 : syminfo.mintick * 5)
 
-        // Calculate Take Profit
-        float tp_p = na
-        float min_dist = na
+        // Calculate Take Profit (TP1 and TP2)
+        float tp1_val = na
+        float min_poc_hvn_dist = na
+        float min_any_dist = na
+        float closest_any_tp = na
+
         if array.size(hist_targets_merged) > 0
             for i = 0 to array.size(hist_targets_merged) - 1
                 HVT t = array.get(hist_targets_merged, i)
                 if t.price < close
-                    float d = math.abs(t.price - close)
-                    if na(min_dist) or d < min_dist
-                        min_dist := d
-                        tp_p := t.price
-        if na(tp_p)
-            tp_p := not na(hist_val) ? hist_val : (close - (not na(mkt_atr_cur) ? mkt_atr_cur * 2 : close * 0.02))
+                    float d = close - t.price
+                    bool is_poc_or_hvn = str.contains(t.description, "poc") or str.contains(t.description, "hvn")
+                    if is_poc_or_hvn
+                        if na(min_poc_hvn_dist) or d < min_poc_hvn_dist
+                            min_poc_hvn_dist := d
+                            tp1_val := t.price
+                    if na(min_any_dist) or d < min_any_dist
+                        min_any_dist := d
+                        closest_any_tp := t.price
+
+        if na(tp1_val)
+            tp1_val := closest_any_tp
+        if na(tp1_val)
+            tp1_val := close - (not na(mkt_atr_cur) ? mkt_atr_cur * 1.0 : close * 0.01)
+
+        float tp2_val = na
+        float min_tp_p = na
+        if array.size(hist_targets_merged) > 0
+            for i = 0 to array.size(hist_targets_merged) - 1
+                HVT t = array.get(hist_targets_merged, i)
+                if t.price < tp1_val
+                    if na(min_tp_p) or t.price < min_tp_p
+                        min_tp_p := t.price
+        tp2_val := na(min_tp_p) ? (not na(hist_val) and hist_val < tp1_val ? hist_val : tp1_val - (not na(mkt_atr_cur) ? mkt_atr_cur * 1.5 : close * 0.015)) : min_tp_p
+        if not na(hist_val) and hist_val < tp2_val
+            tp2_val := hist_val
 
         // Draw Short Position boxes
         box sl_bx = box.new(bar_index, close, bar_index + 10, sl_p, bgcolor=color.new(#f23645, 80), border_color=color.new(#f23645, 50), text="SL", text_size=size.tiny, text_color=white)
-        box tp_bx = box.new(bar_index, tp_p, bar_index + 10, close, bgcolor=color.new(#179c74, 80), border_color=color.new(#179c74, 50), text="TP", text_size=size.tiny, text_color=white)
+        box tp1_bx = box.new(bar_index, tp1_val, bar_index + 10, close, bgcolor=color.new(#179c74, 80), border_color=color.new(#179c74, 50), text="TP1", text_size=size.tiny, text_color=white)
+        box tp2_bx = box.new(bar_index, tp2_val, bar_index + 10, tp1_val, bgcolor=color.new(#179c74, 88), border_color=color.new(#179c74, 60), text="TP2", text_size=size.tiny, text_color=white)
         line ent_ln = line.new(bar_index, close, bar_index + 10, close, color=white, width=1, style=line.style_solid)
 
-        array.push(hist_trades, TradePosition.new(sl_bx, tp_bx, ent_ln, bar_index, close, sl_p, tp_p, false, true))
+        array.push(hist_trades, TradePosition.new(sl_bx, tp1_bx, tp2_bx, ent_ln, bar_index, close, sl_p, tp1_val, tp2_val, false, true, false))
 
     // Prune old trades
     if array.size(hist_trades) > max_hist_trades
         TradePosition old_t = array.shift(hist_trades)
         box.delete(old_t.sl_box)
-        box.delete(old_t.tp_box)
+        box.delete(old_t.tp1_box)
+        box.delete(old_t.tp2_box)
         line.delete(old_t.entry_line)
 
 // -----------------------------------------------------------------------------
