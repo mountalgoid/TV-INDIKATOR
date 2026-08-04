@@ -53,29 +53,6 @@ type TradePosition
     bool active
     bool tp1_hit
 
-type TradePosition
-    box  sl_box
-    box  tp1_box
-    box  tp2_box
-    line entry_line
-    line line_to_op
-    line line_to_tp
-    label circle_op_o
-    label circle_op_a
-    label circle_tp_o
-    label circle_tp_a
-    label lbl_tp1
-    label lbl_op
-    label lbl_sl
-    int  entry_bar
-    float entry_price
-    float stop_loss
-    float tp1
-    float tp2
-    bool is_long
-    bool active
-    bool tp1_hit
-
 var line[] predict_lines = array.new_line()
 var label[] predict_labels = array.new_label()
 var PredictHist[] predict_history = array.new<PredictHist>()
