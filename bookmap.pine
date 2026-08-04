@@ -556,6 +556,20 @@ if barstate.isconfirmed
 
 // Historical Rolling POC Calculation (Sync with Volume Profile logic)
 var float hpoc_val = na
+
+// -----------------------------------------------------------------------------
+// 3.7 PREDICTION TREND ENGINE
+// -----------------------------------------------------------------------------
+// Historical Average Buy/Sell Calculations (Global for history)
+// Use math.sum for precision and ensure it's synced with Volume Profile lookback
+float rolling_buy_vol_g   = math.sum(buy_volume, avg_plots_len)
+float rolling_buy_pvol_g  = math.sum(buy_loc * buy_volume, avg_plots_len)
+float hist_avg_buy_g      = rolling_buy_vol_g > 0 ? rolling_buy_pvol_g / rolling_buy_vol_g : na
+
+float rolling_sell_vol_g  = math.sum(sell_volume, avg_plots_len)
+float rolling_sell_pvol_g = math.sum(sell_loc * sell_volume, avg_plots_len)
+float hist_avg_sell_g     = rolling_sell_vol_g > 0 ? rolling_sell_pvol_g / rolling_sell_vol_g : na
+
 bool should_calc_hpoc = show_predict and (barstate.islast or (barstate.isconfirmed and bar_index % 5 == 0))
 if should_calc_hpoc
     int data_size = array.size(hist_close)
@@ -754,15 +768,7 @@ float p_agg_delta_pct = p_agg_total > 0 ? (p_agg_delta / p_agg_total) * 100 : 0
 // -----------------------------------------------------------------------------
 // 3.7 PREDICTION TREND ENGINE
 // -----------------------------------------------------------------------------
-// Historical Average Buy/Sell Calculations (Global for history)
-// Use math.sum for precision and ensure it's synced with Volume Profile lookback
-float rolling_buy_vol_g   = math.sum(buy_volume, avg_plots_len)
-float rolling_buy_pvol_g  = math.sum(buy_loc * buy_volume, avg_plots_len)
-float hist_avg_buy_g      = rolling_buy_vol_g > 0 ? rolling_buy_pvol_g / rolling_buy_vol_g : na
 
-float rolling_sell_vol_g  = math.sum(sell_volume, avg_plots_len)
-float rolling_sell_pvol_g = math.sum(sell_loc * sell_volume, avg_plots_len)
-float hist_avg_sell_g     = rolling_sell_vol_g > 0 ? rolling_sell_pvol_g / rolling_sell_vol_g : na
 
 // Normalized Slopes (%) for Prediction Analysis
 float hpoc_cont = fixnan(hpoc_val)
