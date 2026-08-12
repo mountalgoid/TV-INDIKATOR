@@ -489,7 +489,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     lv_border_width_sell := 3
                     lv_border_style_sell := line.style_dotted
 
-                int badge_width = math.max(3, math.round(total_width * 0.12))
+                int badge_width = math.max(2, math.round(total_width * 0.08))
                 int left_badge_x1 = hvn_lvn_left - badge_width
                 int left_badge_x2 = hvn_lvn_left
                 int right_badge_x1 = hvn_lvn_right
@@ -534,7 +534,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         float vah_price = s_low + (step * (va_up + 1))
         float val_price = s_low + (step * va_down)
         
-        int badge_width = math.max(3, math.round(total_width * 0.12))
+        int badge_width = math.max(2, math.round(total_width * 0.08))
         int left_badge_x1 = hvn_lvn_left - badge_width
         int left_badge_x2 = hvn_lvn_left
         int right_badge_x1 = hvn_lvn_right
