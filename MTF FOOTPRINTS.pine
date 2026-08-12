@@ -294,8 +294,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
             array.clear(future_lines)
 
     int axis_x = start_idx
-
-    int profile_axis_x = axis_x + profile_gap
+    int buyer_axis_x = axis_x + profile_gap
+    int seller_axis_x = axis_x - profile_gap
 
     if show_htf_plot_candle
         color htf_candle_color = s_close >= s_open ? col_bull : col_bear
@@ -316,15 +316,16 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
     // Draw Frame Boundary Box between Candle & Volume Profile
     if profile_gap > 0
-        int frame_left = axis_x
-        int frame_right = profile_axis_x
         color frame_border_col = color.new(col_poc, 60)
         color frame_bg_col = color.new(dark, 92)
         if is_future
-            bx_frame = box.new(frame_left, s_high, frame_right, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
-            array.push(future_boxes, bx_frame)
+            bx_frame_r = box.new(axis_x, s_high, buyer_axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            bx_frame_l = box.new(seller_axis_x, s_high, axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            array.push(future_boxes, bx_frame_r)
+            array.push(future_boxes, bx_frame_l)
         else
-            box.new(frame_left, s_high, frame_right, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            box.new(axis_x, s_high, buyer_axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            box.new(seller_axis_x, s_high, axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
 
     // 2. Draw Volume Profile Boxes
     if show_volume_profile
@@ -333,51 +334,61 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         
         color axis_col = color.new(gray, 70)
         if is_future
-            bx_axis = box.new(profile_axis_x, s_high, profile_axis_x, s_low, border_color=axis_col, bgcolor=na)
-            array.push(future_boxes, bx_axis)
+            bx_axis_b = box.new(buyer_axis_x, s_high, buyer_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            bx_axis_s = box.new(seller_axis_x, s_high, seller_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            array.push(future_boxes, bx_axis_b)
+            array.push(future_boxes, bx_axis_s)
         else
-            box.new(profile_axis_x, s_high, profile_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            box.new(buyer_axis_x, s_high, buyer_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            box.new(seller_axis_x, s_high, seller_axis_x, s_low, border_color=axis_col, bgcolor=na)
 
-        // Calculate average level volume for large volume nodes
-        float total_profile_vol = 0.0
+        // Calculate average level volume for seller and buyer
+        float total_buy_vol = 0.0
+        float total_sell_vol = 0.0
         for i = 0 to levels_count - 1
-            total_profile_vol += array.get(vol_dist, i)
-        float avg_level_vol = total_profile_vol / levels_count
+            total_buy_vol += array.get(buy_dist, i)
+            total_sell_vol += math.max(0.0, array.get(vol_dist, i) - array.get(buy_dist, i))
+        float avg_buy_level_vol = total_buy_vol / levels_count
+        float avg_sell_level_vol = total_sell_vol / levels_count
 
         for i = 0 to levels_count - 1
             vol_val = array.get(vol_dist, i)
             if vol_val > 0
                 buy_val = array.get(buy_dist, i)
+                sell_val = math.max(0.0, vol_val - buy_val)
                 level_low = s_low + (step * i)
                 level_high = s_low + (step * (i + 1))
                 level_mid = (level_high + level_low) / 2
                 
-                float width_ratio = max_vol > 0 ? vol_val / max_vol : 0
-                int line_len = math.max(1, math.round(width_ratio * total_width * box_width))
+                float buy_width_ratio = max_vol > 0 ? buy_val / max_vol : 0
+                float sell_width_ratio = max_vol > 0 ? sell_val / max_vol : 0
                 
-                int x1 = profile_axis_x
-                int x2 = profile_axis_x + line_len
+                int buy_line_len = buy_val > 0 ? math.max(1, math.round(buy_width_ratio * total_width * box_width)) : 0
+                int sell_line_len = sell_val > 0 ? math.max(1, math.round(sell_width_ratio * total_width * box_width)) : 0
+                
+                int x_buy_1 = buyer_axis_x
+                int x_buy_2 = buyer_axis_x + buy_line_len
+                
+                int x_sell_1 = seller_axis_x - sell_line_len
+                int x_sell_2 = seller_axis_x
                 
                 bool in_va = i >= va_down and i <= va_up
-                float buy_r = buy_val / vol_val
                 
-                // 1. Delta-based base color (Organic transition between buy/sell dominance)
-                color delta_col = color.from_gradient(buy_r, 0, 1, col_bear, col_bull)
+                // Color formatting with multi-stage alpha for buyer profile
+                float alpha_ratio_buy = math.pow(buy_width_ratio, 0.5)
+                int t_alpha_buy = math.round(96 - (alpha_ratio_buy * 86))
+                color final_col_buy = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_buy) : color.new(col_bull, t_alpha_buy)
                 
-                // 2. High-Quality Volume Heatmap (Priority for Bull/Bear clarity)
-                // We reserve the POC color for the actual POC to ensure Bull/Bear dominance
-                color heat_col = i == poc_idx and show_poc ? color_poc : delta_col
+                // Color formatting with multi-stage alpha for seller profile
+                float alpha_ratio_sell = math.pow(sell_width_ratio, 0.5)
+                int t_alpha_sell = math.round(96 - (alpha_ratio_sell * 86))
+                color final_col_sell = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_sell) : color.new(col_bear, t_alpha_sell)
                 
-                // 3. Super Smoothed Glass-Effect Transparency (Ensures low volumes fade seamlessly into the background)
-                // We use a multi-stage alpha calculation for a professional "Heatmap" look
-                float alpha_ratio = math.pow(width_ratio, 0.5)
-                int t_alpha = math.round(96 - (alpha_ratio * 86)) // Transitions from 96 (ultra-transparent) to 10 (high-quality focus)
-                color final_col = color.new(heat_col, t_alpha)
-                
-                float bin_delta = buy_val - (vol_val - buy_val)
-                string txt_vol = (show_buy_sell_volume and width_ratio > 0.15) ? (bin_delta >= 0 ? "+" : "") + str.tostring(math.round(bin_delta)) : ""
-                
-                // LVN Identification (Local minima & below threshold)
+                // Text Volume Labels
+                string txt_vol_buy = (show_buy_sell_volume and buy_width_ratio > 0.15) ? str.tostring(math.round(buy_val)) : ""
+                string txt_vol_sell = (show_buy_sell_volume and sell_width_ratio > 0.15) ? str.tostring(math.round(sell_val)) : ""
+
+                // LVN Identification (Local minima & below threshold based on total volume)
                 bool is_lvn = false
                 if show_lvn and i > 0 and i < levels_count - 1
                     v_prev = array.get(vol_dist, i - 1)
@@ -394,30 +405,49 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         is_hvn := true
 
                 // Large Volume Identification
-                bool is_large_vol = show_large_vol and vol_val > avg_level_vol * large_vol_mult
-                color lv_border_color = na
-                int lv_border_width = 0
-                string lv_border_style = line.style_solid
-                if is_large_vol
-                    lv_border_color := buy_val >= (vol_val - buy_val) ? col_bull : col_bear
-                    lv_border_width := 3
-                    lv_border_style := line.style_dotted
+                bool is_large_vol_buy = show_large_vol and buy_val > avg_buy_level_vol * large_vol_mult
+                color lv_border_color_buy = na
+                int lv_border_width_buy = 0
+                string lv_border_style_buy = line.style_solid
+                if is_large_vol_buy
+                    lv_border_color_buy := col_bull
+                    lv_border_width_buy := 3
+                    lv_border_style_buy := line.style_dotted
+
+                bool is_large_vol_sell = show_large_vol and sell_val > avg_sell_level_vol * large_vol_mult
+                color lv_border_color_sell = na
+                int lv_border_width_sell = 0
+                string lv_border_style_sell = line.style_solid
+                if is_large_vol_sell
+                    lv_border_color_sell := col_bear
+                    lv_border_width_sell := 3
+                    lv_border_style_sell := line.style_dotted
+
+                int hvn_lvn_left = seller_axis_x - profile_max_width
+                int hvn_lvn_right = buyer_axis_x + profile_max_width
 
                 if is_future
                     if is_lvn
-                        bx_lvn = box.new(profile_axis_x, level_high, profile_axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
+                        bx_lvn = box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
                         array.push(future_boxes, bx_lvn)
                     if is_hvn
-                        bx_hvn = box.new(profile_axis_x, level_high, profile_axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
+                        bx_hvn = box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
                         array.push(future_boxes, bx_hvn)
-                    bx_vol = box.new(x1, level_high, x2, level_low, border_color=lv_border_color, border_width=lv_border_width, border_style=lv_border_style, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
-                    array.push(future_boxes, bx_vol)
+                    if buy_val > 0
+                        bx_vol_buy = box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+                        array.push(future_boxes, bx_vol_buy)
+                    if sell_val > 0
+                        bx_vol_sell = box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+                        array.push(future_boxes, bx_vol_sell)
                 else
                     if is_lvn
-                        box.new(profile_axis_x, level_high, profile_axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
+                        box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
                     if is_hvn
-                        box.new(profile_axis_x, level_high, profile_axis_x + profile_max_width, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right,text_formatting = text.format_bold)
-                    box.new(x1, level_high, x2, level_low, border_color=lv_border_color, border_width=lv_border_width, border_style=lv_border_style, bgcolor=final_col, text=txt_vol, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+                        box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
+                    if buy_val > 0
+                        box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+                    if sell_val > 0
+                        box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
 
         // 3. Draw Extended POC & VAH/VAL Boxes
         float poc_price = s_low + (step * (poc_idx + 0.5))
@@ -426,17 +456,17 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         
         if is_future
             int end_x = end_idx
-            bx_p = box.new(profile_axis_x, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 60), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_p = box.new(seller_axis_x, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 60), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_p)
             
-            bx_vh = box.new(profile_axis_x, vah_price + step/16, end_x, vah_price - step/16, border_color=color_vah, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vh = box.new(seller_axis_x, vah_price + step/16, end_x, vah_price - step/16, border_color=color_vah, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vh)
-            bx_vl = box.new(profile_axis_x, val_price + step/16, end_x, val_price - step/16, border_color=color_val, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vl = box.new(seller_axis_x, val_price + step/16, end_x, val_price - step/16, border_color=color_val, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vl)
         else
-            box.new(profile_axis_x, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(profile_axis_x, vah_price + step/16, end_idx, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(profile_axis_x, val_price + step/16, end_idx, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            box.new(seller_axis_x, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            box.new(seller_axis_x, vah_price + step/16, end_idx, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            box.new(seller_axis_x, val_price + step/16, end_idx, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
 
 
     [s_high, s_low, s_open, s_close, s_vol, s_buy_vol, s_sell_vol, float(poc_idx), max_vol]
