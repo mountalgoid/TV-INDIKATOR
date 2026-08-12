@@ -477,8 +477,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 string lv_border_style_buy = line.style_solid
                 if is_large_vol_buy
                     lv_border_color_buy := col_bull
-                    lv_border_width_buy := 3
-                    lv_border_style_buy := line.style_dotted
+                    lv_border_width_buy := 2
+                    lv_border_style_buy := line.style_solid
                     
                 bool is_large_vol_sell = show_large_vol and sell_val > avg_sell_level_vol * large_vol_mult
                 color lv_border_color_sell = na
@@ -486,8 +486,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 string lv_border_style_sell = line.style_solid
                 if is_large_vol_sell
                     lv_border_color_sell := col_bear
-                    lv_border_width_sell := 3
-                    lv_border_style_sell := line.style_dotted
+                    lv_border_width_sell := 2
+                    lv_border_style_sell := line.style_solid
 
                 int badge_width = math.max(2, math.round(total_width * 0.08))
                 int left_badge_x1 = hvn_lvn_left - badge_width
@@ -500,13 +500,13 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     if is_lvn
                         color lvn_col = color.new(col_bear, 20)
                         bx_lvn_r = box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-                        ln_lvn = line.new(hvn_lvn_left, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        ln_lvn = line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                         array.push(future_boxes, bx_lvn_r)
                         array.push(future_lines, ln_lvn)
                     if is_hvn
                         color hvn_col = color.new(col_bull, 20)
                         bx_hvn_r = box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-                        ln_hvn = line.new(hvn_lvn_left, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        ln_hvn = line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                         array.push(future_boxes, bx_hvn_r)
                         array.push(future_lines, ln_hvn)
                     if buy_val > 0
@@ -519,11 +519,11 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     if is_lvn
                         color lvn_col = color.new(col_bear, 20)
                         box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-                        line.new(hvn_lvn_left, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                     if is_hvn
                         color hvn_col = color.new(col_bull, 20)
                         box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-                        line.new(hvn_lvn_left, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                     if buy_val > 0
                         box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                     if sell_val > 0
@@ -544,34 +544,48 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         if is_future
             // POC
             bx_p_r = box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            ln_poc = line.new(hvn_lvn_left, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
+            ln_poc = line.new(axis_x, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
             array.push(future_boxes, bx_p_r)
             array.push(future_lines, ln_poc)
             
             // VAH
             bx_vh_r = box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            ln_vah = line.new(hvn_lvn_left, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
+            ln_vah = line.new(axis_x, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
             array.push(future_boxes, bx_vh_r)
             array.push(future_lines, ln_vah)
 
             // VAL
             bx_vl_r = box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            ln_val = line.new(hvn_lvn_left, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
+            ln_val = line.new(axis_x, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
             array.push(future_boxes, bx_vl_r)
             array.push(future_lines, ln_val)
         else
             // POC
             box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            line.new(hvn_lvn_left, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
+            line.new(axis_x, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
 
             // VAH
             box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            line.new(hvn_lvn_left, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
+            line.new(axis_x, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
 
             // VAL
             box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            line.new(hvn_lvn_left, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
+            line.new(axis_x, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
 
+    // Draw HTF candle Delta and Delta Percentage Labels
+    if show_delta
+        float delta_val = s_buy_vol - s_sell_vol
+        float delta_pct = s_vol > 0 ? (delta_val / s_vol) * 100.0 : 0.0
+        string d_text = (delta_val >= 0 ? "+" : "") + str.tostring(math.round(delta_val)) + "\n(" + str.tostring(delta_pct, "#.##") + "%)"
+        color d_color = delta_val >= 0 ? col_bull : col_bear
+        string label_style = delta_val >= 0 ? label.style_label_up : label.style_label_down
+        float d_price = delta_val >= 0 ? s_low : s_high
+
+        if is_future
+            lbl_delta = label.new(axis_x, d_price, d_text, style=label_style, color=color.new(dark, 100), textcolor=d_color, size=size.normal)
+            array.push(future_labels, lbl_delta)
+        else
+            label.new(axis_x, d_price, d_text, style=label_style, color=color.new(dark, 100), textcolor=d_color, size=size.normal)
 
     [s_high, s_low, s_open, s_close, s_vol, s_buy_vol, s_sell_vol, float(poc_idx), max_vol]
 
