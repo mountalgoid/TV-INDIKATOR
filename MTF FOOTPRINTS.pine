@@ -336,6 +336,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
     if show_volume_profile
         int total_width = math.max(1, end_idx - start_idx)
         int profile_max_width = math.round(total_width * box_width)
+        int hvn_lvn_left = seller_axis_x - profile_max_width
+        int hvn_lvn_right = buyer_axis_x + profile_max_width
         
         color axis_col = color.new(gray, 70)
         if is_future
@@ -427,9 +429,6 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     lv_border_color_sell := col_bear
                     lv_border_width_sell := 3
                     lv_border_style_sell := line.style_dotted
-
-                int hvn_lvn_left = seller_axis_x - profile_max_width
-                int hvn_lvn_right = buyer_axis_x + profile_max_width
 
                 if is_future
                     if is_lvn
