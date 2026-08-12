@@ -1,7 +1,7 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 // © MLTFX
 //@version=6
-indicator("MTF footprints V2.18 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+indicator("MTF footprints V2.18 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=2000)
 
 //════════════════════════════════════════════════════════════════════════
 // COLOR TYPE
@@ -31,6 +31,7 @@ ema_length = input.int(200, title="Custom EMA Length", group=GlobalGroup)
 // HTF Settings
 auto_htf_mode = input.bool(true, title="Auto HTF Mode", group=GlobalGroup)
 manual_htf_timeframe = input.timeframe("60", title="Manual Higher TimeFrame", group=GlobalGroup)
+max_sessions_back = input.int(10, title="Max Sessions Back to Display", minval=1, maxval=50, group=GlobalGroup)
 
 get_auto_htf() =>
     if timeframe.isseconds
@@ -142,14 +143,44 @@ var array<box> future_boxes = array.new<box>()
 var array<label> future_labels = array.new<label>()
 var array<line> future_lines = array.new<line>()
 
+// Arrays for Completed Visuals (FIFO rolling limit)
+var array<box> completed_boxes = array.new<box>()
+var array<label> completed_labels = array.new<label>()
+var array<line> completed_lines = array.new<line>()
+
 // Calc Function
 get_buy_sell_vol(v, o, h, l, c) =>
-    range_ = h - l
-    if range_ == 0
-        [v * 0.5, v * 0.5]
+    range_size = h - l
+    float b_vol = 0.0
+    float s_vol = 0.0
+    if range_size > 0
+        float b_high = math.max(o, c)
+        float b_low  = math.min(o, c)
+        float body_size = b_high - b_low
+        float upper_wick = h - b_high
+        float lower_wick = b_low - l
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (o + c) / 2
+        float body_pos = (b_center - l) / range_size
+        float br_b = c > o ? math.min(0.9, 0.6 + body_pos * 0.3) : (c < o ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+        b_vol := v * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := v * (w_body * (1.0 - br_b) + w_upper * 0.9 + w_lower * 0.1)
     else
-        buy_ratio = (c - l) / range_
-        [v * buy_ratio, v * (1 - buy_ratio)]
+        b_vol := v * 0.5
+        s_vol := v * 0.5
+    [b_vol, s_vol]
+
+// ===== LTF PRECISION ENGINE =====
+get_ltf_v() =>
+    [b, s] = get_buy_sell_vol(volume, open, high, low, close)
+    [open, high, low, close, volume, b, s]
+
+[ltf_o, ltf_h, ltf_l, ltf_c, ltf_v, ltf_b, ltf_s] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_v())
 
 get_table_bg(int c, int r, int total_c, int total_r) =>
     float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
@@ -187,26 +218,82 @@ f_tf_to_ms(tf) =>
             else
                 val * 60000
 
+distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float[] _bucket_total, float[] _bucket_buy) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        if _range_val <= 0
+            int idx = math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h)))
+            array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
+            float v_half = _v_total * 0.5
+            array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + v_half)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h - b_high) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * w_u
+
+            float b_center = (_o + _c) * 0.5
+            float body_pos = (b_center - _l) * inv_range
+
+            float br_b = _c > _o ? math.min(0.9, 0.6 + body_pos * 0.3) : (_c < _o ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+            if v_l > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.90
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+            if v_b > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * br_b
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+            if v_u > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.10
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+
 //════════════════════════════════════════════════════════════════════════
 // DRAWING FUNCTION
 //════════════════════════════════════════════════════════════════════════
 draw_htf_profile(start_idx, end_idx, is_future) =>
+    int safe_start_idx = math.max(start_idx, end_idx - 1500)
     float s_high = -1.0e10
     float s_low = 1.0e10
     float s_vol = 0.0
     float s_buy_vol = 0.0
     float s_sell_vol = 0.0
     
-    if end_idx < start_idx
+    if end_idx < safe_start_idx
         [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0] 
 
-    for i = 0 to (end_idx - start_idx)
+    for i = 0 to (end_idx - safe_start_idx)
         idx = end_idx - i
         s_high := math.max(s_high, high[bar_index - idx])
         s_low := math.min(s_low, low[bar_index - idx])
         s_vol += volume[bar_index - idx]
         
-    s_open = open[bar_index - start_idx]
+    s_open = open[bar_index - safe_start_idx]
     s_close = close[bar_index - end_idx]
     
     float range_price = s_high - s_low
@@ -218,27 +305,42 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
     array<float> vol_dist = array.new<float>(levels_count, 0.0)
     array<float> buy_dist = array.new<float>(levels_count, 0.0)
     
-    for i = 0 to (end_idx - start_idx)
+    float inv_step = 1.0 / step
+    for i = 0 to (end_idx - safe_start_idx)
         idx = end_idx - i
-        b_high = high[bar_index - idx]
-        b_low = low[bar_index - idx]
-        b_vol = volume[bar_index - idx]
-        [b_buy, b_sell] = get_buy_sell_vol(b_vol, open[bar_index - idx], b_high, b_low, close[bar_index - idx])
-        
-        s_buy_vol += b_buy
-        s_sell_vol += b_sell
+        int offset = bar_index - idx
+        _o = open[offset]
+        _h = high[offset]
+        _l = low[offset]
+        _c = close[offset]
+        _v = volume[offset]
 
-        int bin_low = math.min(levels_count - 1, math.max(0, math.floor((b_low - s_low) / step)))
-        int bin_high = math.min(levels_count - 1, math.max(0, math.floor((b_high - s_low) / step)))
-        
-        if bin_low <= bin_high
-            int bins_covered = math.max(1, bin_high - bin_low + 1)
-            float vol_per_bin = b_vol / bins_covered
-            float buy_per_bin = b_buy / bins_covered
-            
-            for b_idx = bin_low to bin_high
-                array.set(vol_dist, b_idx, array.get(vol_dist, b_idx) + vol_per_bin)
-                array.set(buy_dist, b_idx, array.get(buy_dist, b_idx) + buy_per_bin)
+        // Retrieve lower timeframe arrays for precise sub-candle volume calculations
+        float[] ltf_o_arr = ltf_o[offset]
+        float[] ltf_h_arr = ltf_h[offset]
+        float[] ltf_l_arr = ltf_l[offset]
+        float[] ltf_c_arr = ltf_c[offset]
+        float[] ltf_v_arr = ltf_v[offset]
+        float[] ltf_b_arr = ltf_b[offset]
+
+        int ltf_count = not na(ltf_v_arr) ? array.size(ltf_v_arr) : 0
+        if ltf_count > 0
+            for j = 0 to ltf_count - 1
+                float sub_o = array.get(ltf_o_arr, j)
+                float sub_h = array.get(ltf_h_arr, j)
+                float sub_l = array.get(ltf_l_arr, j)
+                float sub_c = array.get(ltf_c_arr, j)
+                float sub_v = array.get(ltf_v_arr, j)
+                float sub_b = array.get(ltf_b_arr, j)
+
+                s_buy_vol += sub_b
+                s_sell_vol += math.max(0.0, sub_v - sub_b)
+                distribute_vol(levels_count, s_low, inv_step, sub_o, sub_h, sub_l, sub_c, sub_v, vol_dist, buy_dist)
+        else
+            [b_buy, b_sell] = get_buy_sell_vol(_v, _o, _h, _l, _c)
+            s_buy_vol += b_buy
+            s_sell_vol += b_sell
+            distribute_vol(levels_count, s_low, inv_step, _o, _h, _l, _c, _v, vol_dist, buy_dist)
 
     // Ensure no empty volume levels to maintain density
     for i = 0 to levels_count - 1
@@ -293,9 +395,13 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 line.delete(ln)
             array.clear(future_lines)
 
-    int axis_x = start_idx
+    int axis_x = safe_start_idx
     int buyer_axis_x = axis_x + profile_gap
     int seller_axis_x = axis_x - profile_gap
+    int total_width = math.max(1, end_idx - safe_start_idx)
+    int profile_max_width = math.round(total_width * box_width)
+    int hvn_lvn_left = seller_axis_x - profile_max_width
+    int hvn_lvn_right = buyer_axis_x + profile_max_width
 
     if show_htf_plot_candle
         color htf_candle_color = s_close >= s_open ? col_bull : col_bear
@@ -310,9 +416,12 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
             array.push(future_lines, ln_dn)
             array.push(future_lines, ln_body)
         else
-            line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
-            line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
-            line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=6)
+            ln_up = line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
+            ln_dn = line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
+            ln_body = line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=6)
+            array.push(completed_lines, ln_up)
+            array.push(completed_lines, ln_dn)
+            array.push(completed_lines, ln_body)
 
     // Draw Frame Boundary Box between Candle & Volume Profile
     if profile_gap > 0
@@ -324,14 +433,13 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
             array.push(future_boxes, bx_frame_r)
             array.push(future_boxes, bx_frame_l)
         else
-            box.new(axis_x, s_high, buyer_axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
-            box.new(seller_axis_x, s_high, axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            bx_frame_r = box.new(axis_x, s_high, buyer_axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            bx_frame_l = box.new(seller_axis_x, s_high, axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            array.push(completed_boxes, bx_frame_r)
+            array.push(completed_boxes, bx_frame_l)
 
     // 2. Draw Volume Profile Boxes
     if show_volume_profile
-        int total_width = math.max(1, end_idx - start_idx)
-        int profile_max_width = math.round(total_width * box_width)
-        
         color axis_col = color.new(gray, 70)
         if is_future
             bx_axis_b = box.new(buyer_axis_x, s_high, buyer_axis_x, s_low, border_color=axis_col, bgcolor=na)
@@ -339,8 +447,10 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
             array.push(future_boxes, bx_axis_b)
             array.push(future_boxes, bx_axis_s)
         else
-            box.new(buyer_axis_x, s_high, buyer_axis_x, s_low, border_color=axis_col, bgcolor=na)
-            box.new(seller_axis_x, s_high, seller_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            bx_axis_b = box.new(buyer_axis_x, s_high, buyer_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            bx_axis_s = box.new(seller_axis_x, s_high, seller_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            array.push(completed_boxes, bx_axis_b)
+            array.push(completed_boxes, bx_axis_s)
 
         // Calculate average level volume for seller and buyer
         float total_buy_vol = 0.0
@@ -376,12 +486,12 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 
                 // Color formatting with multi-stage alpha for buyer profile
                 float alpha_ratio_buy = math.pow(buy_width_ratio, 0.5)
-                int t_alpha_buy = math.round(96 - (alpha_ratio_buy * 86))
+                int t_alpha_buy = math.round(80 - (alpha_ratio_buy * 50))
                 color final_col_buy = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_buy) : color.new(col_bull, t_alpha_buy)
                 
                 // Color formatting with multi-stage alpha for seller profile
                 float alpha_ratio_sell = math.pow(sell_width_ratio, 0.5)
-                int t_alpha_sell = math.round(96 - (alpha_ratio_sell * 86))
+                int t_alpha_sell = math.round(80 - (alpha_ratio_sell * 50))
                 color final_col_sell = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_sell) : color.new(col_bear, t_alpha_sell)
                 
                 // Text Volume Labels
@@ -411,8 +521,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 string lv_border_style_buy = line.style_solid
                 if is_large_vol_buy
                     lv_border_color_buy := col_bull
-                    lv_border_width_buy := 3
-                    lv_border_style_buy := line.style_dotted
+                    lv_border_width_buy := 2
+                    lv_border_style_buy := line.style_solid
                     
                 bool is_large_vol_sell = show_large_vol and sell_val > avg_sell_level_vol * large_vol_mult
                 color lv_border_color_sell = na
@@ -420,33 +530,47 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 string lv_border_style_sell = line.style_solid
                 if is_large_vol_sell
                     lv_border_color_sell := col_bear
-                    lv_border_width_sell := 3
-                    lv_border_style_sell := line.style_dotted
+                    lv_border_width_sell := 2
+                    lv_border_style_sell := line.style_solid
 
-                int hvn_lvn_left = seller_axis_x - profile_max_width
-                int hvn_lvn_right = buyer_axis_x + profile_max_width
+                int badge_width = math.max(2, math.round(total_width * 0.08))
+                int left_badge_x1 = hvn_lvn_left - badge_width
+                int left_badge_x2 = hvn_lvn_left
+                int right_badge_x1 = hvn_lvn_right
+                int right_badge_x2 = hvn_lvn_right + badge_width
+                color badge_bg = color.new(dark, 30)
 
                 if is_future
                     if is_lvn
-                        bx_lvn = box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
-                        array.push(future_boxes, bx_lvn)
+                        color lvn_col = color.new(col_bear, 20)
+                        bx_lvn_r = box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        ln_lvn = line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        array.push(future_boxes, bx_lvn_r)
+                        array.push(future_lines, ln_lvn)
                     if is_hvn
-                        bx_hvn = box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
-                        array.push(future_boxes, bx_hvn)
-                    if buy_val > 0
+                        color hvn_col = color.new(col_bull, 20)
+                        bx_hvn_r = box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        ln_hvn = line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        array.push(future_boxes, bx_hvn_r)
+                        array.push(future_lines, ln_hvn)
+                    if buy_line_len > 0
                         bx_vol_buy = box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                         array.push(future_boxes, bx_vol_buy)
-                    if sell_val > 0
+                    if sell_line_len > 0
                         bx_vol_sell = box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                         array.push(future_boxes, bx_vol_sell)
                 else
                     if is_lvn
-                        box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
+                        color lvn_col = color.new(col_bear, 20)
+                        box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                     if is_hvn
-                        box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
-                    if buy_val > 0
+                        color hvn_col = color.new(col_bull, 20)
+                        box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                    if buy_line_len > 0
                         box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
-                    if sell_val > 0
+                    if sell_line_len > 0
                         box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
 
         // 3. Draw Extended POC & VAH/VAL Boxes
@@ -454,20 +578,58 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         float vah_price = s_low + (step * (va_up + 1))
         float val_price = s_low + (step * va_down)
         
-        if is_future
-            int end_x = end_idx
-            bx_p = box.new(seller_axis_x, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 60), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            array.push(future_boxes, bx_p)
-            
-            bx_vh = box.new(seller_axis_x, vah_price + step/16, end_x, vah_price - step/16, border_color=color_vah, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            array.push(future_boxes, bx_vh)
-            bx_vl = box.new(seller_axis_x, val_price + step/16, end_x, val_price - step/16, border_color=color_val, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            array.push(future_boxes, bx_vl)
-        else
-            box.new(seller_axis_x, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(seller_axis_x, vah_price + step/16, end_idx, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(seller_axis_x, val_price + step/16, end_idx, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+        int badge_width = math.max(2, math.round(total_width * 0.08))
+        int left_badge_x1 = hvn_lvn_left - badge_width
+        int left_badge_x2 = hvn_lvn_left
+        int right_badge_x1 = hvn_lvn_right
+        int right_badge_x2 = hvn_lvn_right + badge_width
+        color badge_bg = color.new(dark, 30)
 
+        if is_future
+            // POC
+            bx_p_r = box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            ln_poc = line.new(axis_x, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
+            array.push(future_boxes, bx_p_r)
+            array.push(future_lines, ln_poc)
+            
+            // VAH
+            bx_vh_r = box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            ln_vah = line.new(axis_x, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
+            array.push(future_boxes, bx_vh_r)
+            array.push(future_lines, ln_vah)
+
+            // VAL
+            bx_vl_r = box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            ln_val = line.new(axis_x, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
+            array.push(future_boxes, bx_vl_r)
+            array.push(future_lines, ln_val)
+        else
+            // POC
+            box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            line.new(axis_x, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
+
+            // VAH
+            box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            line.new(axis_x, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
+
+            // VAL
+            box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            line.new(axis_x, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
+
+    // Draw HTF candle Delta and Delta Percentage Labels
+    if show_delta
+        float delta_val = s_buy_vol - s_sell_vol
+        float delta_pct = s_vol > 0 ? (delta_val / s_vol) * 100.0 : 0.0
+        string d_text = (delta_val >= 0 ? "+" : "") + str.tostring(math.round(delta_val)) + "\n(" + str.tostring(delta_pct, "#.##") + "%)"
+        color d_color = delta_val >= 0 ? col_bull : col_bear
+        string label_style = delta_val >= 0 ? label.style_label_up : label.style_label_down
+        float d_price = delta_val >= 0 ? s_low : s_high
+
+        if is_future
+            lbl_delta = label.new(axis_x, d_price, d_text, style=label_style, color=color.new(dark, 100), textcolor=d_color, size=size.normal)
+            array.push(future_labels, lbl_delta)
+        else
+            label.new(axis_x, d_price, d_text, style=label_style, color=color.new(dark, 100), textcolor=d_color, size=size.normal)
 
     [s_high, s_low, s_open, s_close, s_vol, s_buy_vol, s_sell_vol, float(poc_idx), max_vol]
 
@@ -481,6 +643,19 @@ if bar_index == 0
 if is_new_htf
     if (bar_index - 1) >= htf_start_bar_index
         draw_htf_profile(htf_start_bar_index, bar_index - 1, false)
+
+        // Rolling completed visual cleanup to prevent exceeding 500 drawing limits
+        max_boxes_allowed = max_sessions_back * (levels_count * 2 + 10)
+        while array.size(completed_boxes) > max_boxes_allowed
+            box.delete(array.shift(completed_boxes))
+
+        max_lines_allowed = max_sessions_back * (levels_count + 10)
+        while array.size(completed_lines) > max_lines_allowed
+            line.delete(array.shift(completed_lines))
+
+        while array.size(completed_labels) > max_sessions_back
+            label.delete(array.shift(completed_labels))
+
     htf_start_bar_index := bar_index
 
 if barstate.islast
