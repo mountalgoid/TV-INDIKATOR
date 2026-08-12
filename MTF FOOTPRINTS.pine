@@ -368,7 +368,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 
                 int x_buy_1 = buyer_axis_x
                 int x_buy_2 = buyer_axis_x + buy_line_len
-                
+
                 int x_sell_1 = seller_axis_x - sell_line_len
                 int x_sell_2 = seller_axis_x
                 
@@ -454,19 +454,21 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         float vah_price = s_low + (step * (va_up + 1))
         float val_price = s_low + (step * va_down)
         
+        int poc_vah_val_left = seller_axis_x - profile_max_width
+
         if is_future
             int end_x = end_idx
-            bx_p = box.new(seller_axis_x, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 60), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_p = box.new(poc_vah_val_left, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 60), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_p)
             
-            bx_vh = box.new(seller_axis_x, vah_price + step/16, end_x, vah_price - step/16, border_color=color_vah, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vh = box.new(poc_vah_val_left, vah_price + step/16, end_x, vah_price - step/16, border_color=color_vah, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vh)
-            bx_vl = box.new(seller_axis_x, val_price + step/16, end_x, val_price - step/16, border_color=color_val, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            bx_vl = box.new(poc_vah_val_left, val_price + step/16, end_x, val_price - step/16, border_color=color_val, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
             array.push(future_boxes, bx_vl)
         else
-            box.new(seller_axis_x, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(seller_axis_x, vah_price + step/16, end_idx, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(seller_axis_x, val_price + step/16, end_idx, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            box.new(poc_vah_val_left, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            box.new(poc_vah_val_left, vah_price + step/16, end_idx, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            box.new(poc_vah_val_left, val_price + step/16, end_idx, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
 
 
     [s_high, s_low, s_open, s_close, s_vol, s_buy_vol, s_sell_vol, float(poc_idx), max_vol]
