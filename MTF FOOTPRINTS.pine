@@ -499,18 +499,14 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 if is_future
                     if is_lvn
                         color lvn_col = color.new(col_bear, 20)
-                        bx_lvn_l = box.new(left_badge_x1, level_high, left_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
                         bx_lvn_r = box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-                        ln_lvn = line.new(left_badge_x2, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
-                        array.push(future_boxes, bx_lvn_l)
+                        ln_lvn = line.new(hvn_lvn_left, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                         array.push(future_boxes, bx_lvn_r)
                         array.push(future_lines, ln_lvn)
                     if is_hvn
                         color hvn_col = color.new(col_bull, 20)
-                        bx_hvn_l = box.new(left_badge_x1, level_high, left_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
                         bx_hvn_r = box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-                        ln_hvn = line.new(left_badge_x2, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
-                        array.push(future_boxes, bx_hvn_l)
+                        ln_hvn = line.new(hvn_lvn_left, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                         array.push(future_boxes, bx_hvn_r)
                         array.push(future_lines, ln_hvn)
                     if buy_val > 0
@@ -522,14 +518,12 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 else
                     if is_lvn
                         color lvn_col = color.new(col_bear, 20)
-                        box.new(left_badge_x1, level_high, left_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
                         box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-                        line.new(left_badge_x2, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        line.new(hvn_lvn_left, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                     if is_hvn
                         color hvn_col = color.new(col_bull, 20)
-                        box.new(left_badge_x1, level_high, left_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
                         box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-                        line.new(left_badge_x2, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        line.new(hvn_lvn_left, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                     if buy_val > 0
                         box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                     if sell_val > 0
@@ -549,43 +543,34 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
         if is_future
             // POC
-            bx_p_l = box.new(left_badge_x1, poc_price + step/3, left_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC", text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            bx_p_r = box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text=str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            ln_poc = line.new(left_badge_x2, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
-            array.push(future_boxes, bx_p_l)
+            bx_p_r = box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            ln_poc = line.new(hvn_lvn_left, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
             array.push(future_boxes, bx_p_r)
             array.push(future_lines, ln_poc)
             
             // VAH
-            bx_vh_l = box.new(left_badge_x1, vah_price + step/3, left_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH", text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            bx_vh_r = box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text=str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            ln_vah = line.new(left_badge_x2, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
-            array.push(future_boxes, bx_vh_l)
+            bx_vh_r = box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            ln_vah = line.new(hvn_lvn_left, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
             array.push(future_boxes, bx_vh_r)
             array.push(future_lines, ln_vah)
 
             // VAL
-            bx_vl_l = box.new(left_badge_x1, val_price + step/3, left_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL", text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            bx_vl_r = box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text=str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            ln_val = line.new(left_badge_x2, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
-            array.push(future_boxes, bx_vl_l)
+            bx_vl_r = box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            ln_val = line.new(hvn_lvn_left, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
             array.push(future_boxes, bx_vl_r)
             array.push(future_lines, ln_val)
         else
             // POC
-            box.new(left_badge_x1, poc_price + step/3, left_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC", text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text=str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            line.new(left_badge_x2, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
+            box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            line.new(hvn_lvn_left, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
 
             // VAH
-            box.new(left_badge_x1, vah_price + step/3, left_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH", text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text=str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            line.new(left_badge_x2, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
+            box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            line.new(hvn_lvn_left, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
 
             // VAL
-            box.new(left_badge_x1, val_price + step/3, left_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL", text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text=str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            line.new(left_badge_x2, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
+            box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            line.new(hvn_lvn_left, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
 
 
     [s_high, s_low, s_open, s_close, s_vol, s_buy_vol, s_sell_vol, float(poc_idx), max_vol]
