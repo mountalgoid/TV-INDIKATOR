@@ -31,6 +31,7 @@ ema_length = input.int(200, title="Custom EMA Length", group=GlobalGroup)
 // HTF Settings
 auto_htf_mode = input.bool(true, title="Auto HTF Mode", group=GlobalGroup)
 manual_htf_timeframe = input.timeframe("60", title="Manual Higher TimeFrame", group=GlobalGroup)
+max_sessions_back = input.int(10, title="Max Sessions Back to Display", minval=1, maxval=50, group=GlobalGroup)
 
 get_auto_htf() =>
     if timeframe.isseconds
@@ -141,6 +142,11 @@ var int htf_start_bar_index = 0
 var array<box> future_boxes = array.new<box>() 
 var array<label> future_labels = array.new<label>()
 var array<line> future_lines = array.new<line>()
+
+// Arrays for Completed Visuals (FIFO rolling limit)
+var array<box> completed_boxes = array.new<box>()
+var array<label> completed_labels = array.new<label>()
+var array<line> completed_lines = array.new<line>()
 
 // Calc Function
 get_buy_sell_vol(v, o, h, l, c) =>
@@ -410,9 +416,12 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
             array.push(future_lines, ln_dn)
             array.push(future_lines, ln_body)
         else
-            line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
-            line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
-            line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=6)
+            ln_up = line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
+            ln_dn = line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
+            ln_body = line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=6)
+            array.push(completed_lines, ln_up)
+            array.push(completed_lines, ln_dn)
+            array.push(completed_lines, ln_body)
 
     // Draw Frame Boundary Box between Candle & Volume Profile
     if profile_gap > 0
@@ -424,8 +433,10 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
             array.push(future_boxes, bx_frame_r)
             array.push(future_boxes, bx_frame_l)
         else
-            box.new(axis_x, s_high, buyer_axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
-            box.new(seller_axis_x, s_high, axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            bx_frame_r = box.new(axis_x, s_high, buyer_axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            bx_frame_l = box.new(seller_axis_x, s_high, axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            array.push(completed_boxes, bx_frame_r)
+            array.push(completed_boxes, bx_frame_l)
 
     // 2. Draw Volume Profile Boxes
     if show_volume_profile
@@ -436,8 +447,10 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
             array.push(future_boxes, bx_axis_b)
             array.push(future_boxes, bx_axis_s)
         else
-            box.new(buyer_axis_x, s_high, buyer_axis_x, s_low, border_color=axis_col, bgcolor=na)
-            box.new(seller_axis_x, s_high, seller_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            bx_axis_b = box.new(buyer_axis_x, s_high, buyer_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            bx_axis_s = box.new(seller_axis_x, s_high, seller_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            array.push(completed_boxes, bx_axis_b)
+            array.push(completed_boxes, bx_axis_s)
 
         // Calculate average level volume for seller and buyer
         float total_buy_vol = 0.0
@@ -473,12 +486,12 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 
                 // Color formatting with multi-stage alpha for buyer profile
                 float alpha_ratio_buy = math.pow(buy_width_ratio, 0.5)
-                int t_alpha_buy = math.round(96 - (alpha_ratio_buy * 86))
+                int t_alpha_buy = math.round(80 - (alpha_ratio_buy * 50))
                 color final_col_buy = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_buy) : color.new(col_bull, t_alpha_buy)
                 
                 // Color formatting with multi-stage alpha for seller profile
                 float alpha_ratio_sell = math.pow(sell_width_ratio, 0.5)
-                int t_alpha_sell = math.round(96 - (alpha_ratio_sell * 86))
+                int t_alpha_sell = math.round(80 - (alpha_ratio_sell * 50))
                 color final_col_sell = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_sell) : color.new(col_bear, t_alpha_sell)
                 
                 // Text Volume Labels
@@ -540,10 +553,10 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         ln_hvn = line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                         array.push(future_boxes, bx_hvn_r)
                         array.push(future_lines, ln_hvn)
-                    if buy_val > 0
+                    if buy_line_len > 0
                         bx_vol_buy = box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                         array.push(future_boxes, bx_vol_buy)
-                    if sell_val > 0
+                    if sell_line_len > 0
                         bx_vol_sell = box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                         array.push(future_boxes, bx_vol_sell)
                 else
@@ -555,9 +568,9 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         color hvn_col = color.new(col_bull, 20)
                         box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
                         line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
-                    if buy_val > 0
+                    if buy_line_len > 0
                         box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
-                    if sell_val > 0
+                    if sell_line_len > 0
                         box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
 
         // 3. Draw Extended POC & VAH/VAL Boxes
@@ -630,6 +643,19 @@ if bar_index == 0
 if is_new_htf
     if (bar_index - 1) >= htf_start_bar_index
         draw_htf_profile(htf_start_bar_index, bar_index - 1, false)
+
+        // Rolling completed visual cleanup to prevent exceeding 500 drawing limits
+        max_boxes_allowed = max_sessions_back * (levels_count * 2 + 10)
+        while array.size(completed_boxes) > max_boxes_allowed
+            box.delete(array.shift(completed_boxes))
+
+        max_lines_allowed = max_sessions_back * (levels_count + 10)
+        while array.size(completed_lines) > max_lines_allowed
+            line.delete(array.shift(completed_lines))
+
+        while array.size(completed_labels) > max_sessions_back
+            label.delete(array.shift(completed_labels))
+
     htf_start_bar_index := bar_index
 
 if barstate.islast
