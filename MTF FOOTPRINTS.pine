@@ -232,13 +232,15 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         int bin_high = math.min(levels_count - 1, math.max(0, math.floor((b_high - s_low) / step)))
         
         if bin_low <= bin_high
-            int bins_covered = math.max(1, bin_high - bin_low + 1)
-            float vol_per_bin = b_vol / bins_covered
-            float buy_per_bin = b_buy / bins_covered
-            
+            float bar_range = b_high - b_low
             for b_idx = bin_low to bin_high
-                array.set(vol_dist, b_idx, array.get(vol_dist, b_idx) + vol_per_bin)
-                array.set(buy_dist, b_idx, array.get(buy_dist, b_idx) + buy_per_bin)
+                float bin_low_p = s_low + (step * b_idx)
+                float bin_high_p = s_low + (step * (b_idx + 1))
+                float intersect_width = math.max(0.0, math.min(b_high, bin_high_p) - math.max(b_low, bin_low_p))
+                float proportion = bar_range > 0 ? intersect_width / bar_range : 1.0 / math.max(1, bin_high - bin_low + 1)
+
+                array.set(vol_dist, b_idx, array.get(vol_dist, b_idx) + (b_vol * proportion))
+                array.set(buy_dist, b_idx, array.get(buy_dist, b_idx) + (b_buy * proportion))
 
     // Ensure no empty volume levels to maintain density
     for i = 0 to levels_count - 1
@@ -258,7 +260,10 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
             poc_idx := i
             
     // VA Logic
-    float target_vol = s_vol * (value_area_pct / 100.0)
+    float total_profile_vol = 0.0
+    for i = 0 to levels_count - 1
+        total_profile_vol += array.get(vol_dist, i)
+    float target_vol = total_profile_vol * (value_area_pct / 100.0)
     float current_va_vol = max_vol
     int va_up = poc_idx
     int va_down = poc_idx
@@ -428,11 +433,11 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
                 if is_future
                     if is_lvn
-                        bx_lvn = box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
-                        array.push(future_boxes, bx_lvn)
+                        lbl_lvn = label.new(hvn_lvn_right + 1, level_mid, "LVN", color=color.new(col_poc, 80), textcolor=col_poc, style=label.style_label_right, size=size.small)
+                        array.push(future_labels, lbl_lvn)
                     if is_hvn
-                        bx_hvn = box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
-                        array.push(future_boxes, bx_hvn)
+                        lbl_hvn = label.new(hvn_lvn_right + 1, level_mid, "HVN", color=color.new(col_poc, 40), textcolor=white, style=label.style_label_right, size=size.small)
+                        array.push(future_labels, lbl_hvn)
                     if buy_val > 0
                         bx_vol_buy = box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                         array.push(future_boxes, bx_vol_buy)
@@ -441,34 +446,56 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         array.push(future_boxes, bx_vol_sell)
                 else
                     if is_lvn
-                        box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_dashed, bgcolor=color.new(col_poc, 95), text="LVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
+                        label.new(hvn_lvn_right + 1, level_mid, "LVN", color=color.new(col_poc, 80), textcolor=col_poc, style=label.style_label_right, size=size.small)
                     if is_hvn
-                        box.new(hvn_lvn_left, level_high, hvn_lvn_right, level_low, border_color=color.new(col_poc, 30), border_width=1, border_style=line.style_solid, bgcolor=color.new(col_poc, 90), text="HVN", text_color=col_poc, text_size=size.auto, text_halign=text.align_right, text_formatting = text.format_bold)
+                        label.new(hvn_lvn_right + 1, level_mid, "HVN", color=color.new(col_poc, 40), textcolor=white, style=label.style_label_right, size=size.small)
                     if buy_val > 0
                         box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                     if sell_val > 0
                         box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
 
-        // 3. Draw Extended POC & VAH/VAL Boxes
+        // 3. Draw Extended POC & VAH/VAL Lines and Badges
         float poc_price = s_low + (step * (poc_idx + 0.5))
         float vah_price = s_low + (step * (va_up + 1))
         float val_price = s_low + (step * va_down)
         
         int poc_vah_val_left = seller_axis_x - profile_max_width
+        int badge_x = math.max(end_idx + 2, hvn_lvn_right + 4)
 
         if is_future
             int end_x = end_idx
-            bx_p = box.new(poc_vah_val_left, poc_price + step/8, end_x, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 60), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            array.push(future_boxes, bx_p)
             
-            bx_vh = box.new(poc_vah_val_left, vah_price + step/16, end_x, vah_price - step/16, border_color=color_vah, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            array.push(future_boxes, bx_vh)
-            bx_vl = box.new(poc_vah_val_left, val_price + step/16, end_x, val_price - step/16, border_color=color_val, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            array.push(future_boxes, bx_vl)
+            // POC
+            if show_poc
+                ln_p = line.new(poc_vah_val_left, poc_price, end_x, poc_price, color=color_poc, style=line.style_solid, width=2)
+                lbl_p = label.new(badge_x, poc_price, "POC", color=color.new(color_poc, 20), textcolor=dark, style=label.style_label_right, size=size.small)
+                array.push(future_lines, ln_p)
+                array.push(future_labels, lbl_p)
+
+            // VAH
+            ln_vh = line.new(poc_vah_val_left, vah_price, end_x, vah_price, color=color_vah, style=line.style_dashed, width=1)
+            lbl_vh = label.new(badge_x, vah_price, "VAH", color=color.new(color_vah, 20), textcolor=dark, style=label.style_label_right, size=size.small)
+            array.push(future_lines, ln_vh)
+            array.push(future_labels, lbl_vh)
+
+            // VAL
+            ln_vl = line.new(poc_vah_val_left, val_price, end_x, val_price, color=color_val, style=line.style_dashed, width=1)
+            lbl_vl = label.new(badge_x, val_price, "VAL", color=color.new(color_val, 20), textcolor=dark, style=label.style_label_right, size=size.small)
+            array.push(future_lines, ln_vl)
+            array.push(future_labels, lbl_vl)
         else
-            box.new(poc_vah_val_left, poc_price + step/8, end_idx, poc_price - step/8, border_color=na, bgcolor=color.new(color_poc, 50), text="POC", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(poc_vah_val_left, vah_price + step/16, end_idx, vah_price - step/16, border_color=na, bgcolor=color.new(color_vah, 0), text="VAH", text_color=dark, text_size=size.auto, text_halign=text.align_right)
-            box.new(poc_vah_val_left, val_price + step/16, end_idx, val_price - step/16, border_color=na, bgcolor=color.new(color_val, 0), text="VAL", text_color=dark, text_size=size.auto, text_halign=text.align_right)
+            // POC
+            if show_poc
+                line.new(poc_vah_val_left, poc_price, end_idx, poc_price, color=color_poc, style=line.style_solid, width=2)
+                label.new(badge_x, poc_price, "POC", color=color.new(color_poc, 20), textcolor=dark, style=label.style_label_right, size=size.small)
+
+            // VAH
+            line.new(poc_vah_val_left, vah_price, end_idx, vah_price, color=color_vah, style=line.style_dashed, width=1)
+            label.new(badge_x, vah_price, "VAH", color=color.new(color_vah, 20), textcolor=dark, style=label.style_label_right, size=size.small)
+
+            // VAL
+            line.new(poc_vah_val_left, val_price, end_idx, val_price, color=color_val, style=line.style_dashed, width=1)
+            label.new(badge_x, val_price, "VAL", color=color.new(color_val, 20), textcolor=dark, style=label.style_label_right, size=size.small)
 
 
     [s_high, s_low, s_open, s_close, s_vol, s_buy_vol, s_sell_vol, float(poc_idx), max_vol]
