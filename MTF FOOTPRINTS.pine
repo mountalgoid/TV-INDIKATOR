@@ -57,6 +57,19 @@ show_volume_profile = input.bool(true, title="Show Volume Profile")
 show_poc = input.bool(true, title="Show POC")
 show_delta = input.bool(true, title="Show Delta")
 show_buy_sell_volume = input.bool(true, title="Show Buy/Sell Volume Labels")
+
+// Footprint Type
+footprint_type = input.string("Bid/Ask Footprint", title="Jenis Grafik Footprint", options=["Bid/Ask Footprint", "Delta Footprint", "Volume Footprint"], group=GlobalGroup)
+
+// Imbalance Settings
+grp_imbalance = 'Footprint Imbalance Settings'
+show_imbalance = input.bool(true, title="Show Imbalances", group=grp_imbalance)
+imbalance_mode = input.string("Diagonal", title="Imbalance Mode", options=["Diagonal", "Horizontal"], group=grp_imbalance)
+imbalance_ratio = input.float(3.0, title="Imbalance Ratio Threshold", minval=1.0, step=0.5, group=grp_imbalance)
+imbalance_min_vol = input.float(10.0, title="Imbalance Minimum Volume", minval=0.0, group=grp_imbalance, tooltip="Minimum volume required at the level to qualify for imbalance")
+col_imb_buy = input.color(#179c74, title="Buy Imbalance Color", group=grp_imbalance)
+col_imb_sell = input.color(#f23645, title="Sell Imbalance Color", group=grp_imbalance)
+
 box_width = input.float(0.6, title="Profile Width Ratio", minval=0.1, maxval=10.0, step = 0.1, group=GlobalGroup)
 rt_offset = 2 // input.int(2, title="Realtime Profile Offset (Bars)", minval=1, maxval=20)
 levels_count = input.int(20, title="Volume Profile Levels", minval=5, maxval=100)
@@ -176,6 +189,19 @@ get_table_bg(int c, int r, int total_c, int total_r) =>
     int t_alpha = math.round(50 + ratio * 40)
     color.new(base, t_alpha)
 
+format_vol(float v) =>
+    float abs_v = math.abs(v)
+    string res = ""
+    if abs_v >= 1000000000
+        res := str.tostring(v / 1000000000, "#.##") + "B"
+    else if abs_v >= 1000000
+        res := str.tostring(v / 1000000, "#.##") + "M"
+    else if abs_v >= 1000
+        res := str.tostring(v / 1000, "#.#") + "K"
+    else
+        res := str.tostring(v, "0.##")
+    res
+
 f_tf_to_ms(tf) =>
     if tf == "D" or tf == "1D"
         86400000
@@ -260,6 +286,62 @@ distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h,
                         array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
 
+distribute_vol_ltf(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float[] _bucket_total, float[] _bucket_buy) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        bool is_buy_candle = _c >= _o
+        if _range_val <= 0
+            int idx = math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h)))
+            array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
+            if is_buy_candle
+                array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + _v_total)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h - b_high) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * w_u
+
+            if v_l > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    float v_j_buy = is_buy_candle ? v_j : 0.0
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+            if v_b > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    float v_j_buy = is_buy_candle ? v_j : 0.0
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+            if v_u > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    float v_j_buy = is_buy_candle ? v_j : 0.0
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+
+//════════════════════════════════════════════════════════════════════════
+// LOWER TIMEFRAME (LTF) SECURITY REQUEST
+//════════════════════════════════════════════════════════════════════════
+[ltf_o_series, ltf_h_series, ltf_l_series, ltf_c_series, ltf_v_series] = request.security_lower_tf(syminfo.tickerid, "1", [open, high, low, close, volume])
+
 //════════════════════════════════════════════════════════════════════════
 // DRAWING FUNCTION
 //════════════════════════════════════════════════════════════════════════
@@ -299,11 +381,37 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         _l = low[bar_index - idx]
         _c = close[bar_index - idx]
         _v = volume[bar_index - idx]
-        [b_buy, b_sell] = get_buy_sell_vol(_v, _o, _h, _l, _c)
-        s_buy_vol += b_buy
-        s_sell_vol += b_sell
 
-        distribute_vol(levels_count, s_low, inv_step, _o, _h, _l, _c, _v, vol_dist, buy_dist)
+        float[] o_arr = ltf_o_series[bar_index - idx]
+        float[] h_arr = ltf_h_series[bar_index - idx]
+        float[] l_arr = ltf_l_series[bar_index - idx]
+        float[] c_arr = ltf_c_series[bar_index - idx]
+        float[] v_arr = ltf_v_series[bar_index - idx]
+
+        bool has_ltf = not na(v_arr)
+        if has_ltf
+            if array.size(v_arr) <= 0
+                has_ltf := false
+
+        if has_ltf
+            int ltf_sz = array.size(v_arr)
+            for j = 0 to ltf_sz - 1
+                float l_o = array.get(o_arr, j)
+                float l_h = array.get(h_arr, j)
+                float l_l = array.get(l_arr, j)
+                float l_c = array.get(c_arr, j)
+                float l_v = array.get(v_arr, j)
+
+                [b_buy, b_sell] = get_buy_sell_vol(l_v, l_o, l_h, l_l, l_c)
+                s_buy_vol += b_buy
+                s_sell_vol += b_sell
+
+                distribute_vol_ltf(levels_count, s_low, inv_step, l_o, l_h, l_l, l_c, l_v, vol_dist, buy_dist)
+        else
+            [b_buy, b_sell] = get_buy_sell_vol(_v, _o, _h, _l, _c)
+            s_buy_vol += b_buy
+            s_sell_vol += b_sell
+            distribute_vol(levels_count, s_low, inv_step, _o, _h, _l, _c, _v, vol_dist, buy_dist)
 
     // Ensure no empty volume levels to maintain density
     for i = 0 to levels_count - 1
@@ -426,33 +534,93 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 level_high = s_low + (step * (i + 1))
                 level_mid = (level_high + level_low) / 2
                 
-                float buy_width_ratio = max_vol > 0 ? buy_val / max_vol : 0
-                float sell_width_ratio = max_vol > 0 ? sell_val / max_vol : 0
-                
-                int buy_line_len = buy_val > 0 ? math.max(1, math.round(buy_width_ratio * total_width * box_width)) : 0
-                int sell_line_len = sell_val > 0 ? math.max(1, math.round(sell_width_ratio * total_width * box_width)) : 0
+                // Imbalance Calculation
+                bool is_buy_imbalance = false
+                bool is_sell_imbalance = false
+
+                if show_imbalance
+                    if imbalance_mode == "Diagonal"
+                        // Diagonal: Compare buy_val at level i with sell_val at level i-1
+                        // and sell_val at level i with buy_val at level i+1
+                        float sell_below = i > 0 ? math.max(0.0, array.get(vol_dist, i - 1) - array.get(buy_dist, i - 1)) : 0.0
+                        float buy_above = i < levels_count - 1 ? array.get(buy_dist, i + 1) : 0.0
+
+                        if buy_val >= sell_below * imbalance_ratio and buy_val >= imbalance_min_vol and sell_below > 0
+                            is_buy_imbalance := true
+                        if sell_val >= buy_above * imbalance_ratio and sell_val >= imbalance_min_vol and buy_above > 0
+                            is_sell_imbalance := true
+                    else // "Horizontal"
+                        if buy_val >= sell_val * imbalance_ratio and buy_val >= imbalance_min_vol and sell_val > 0
+                            is_buy_imbalance := true
+                        if sell_val >= buy_val * imbalance_ratio and sell_val >= imbalance_min_vol and buy_val > 0
+                            is_sell_imbalance := true
+
+                // Style Configuration based on Footprint Type ("Bid/Ask Footprint", "Delta Footprint", "Volume Footprint")
+                float buy_width_ratio = 0.0
+                float sell_width_ratio = 0.0
+                string txt_vol_buy = ""
+                string txt_vol_sell = ""
+                color final_col_buy = na
+                color final_col_sell = na
+
+                if footprint_type == "Bid/Ask Footprint"
+                    buy_width_ratio := max_vol > 0 ? buy_val / max_vol : 0
+                    sell_width_ratio := max_vol > 0 ? sell_val / max_vol : 0
+
+                    float alpha_ratio_buy = math.pow(buy_width_ratio, 0.5)
+                    int t_alpha_buy = math.round(96 - (alpha_ratio_buy * 86))
+                    final_col_buy := is_buy_imbalance ? color.new(col_imb_buy, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_buy) : color.new(col_bull, t_alpha_buy))
+
+                    float alpha_ratio_sell = math.pow(sell_width_ratio, 0.5)
+                    int t_alpha_sell = math.round(96 - (alpha_ratio_sell * 86))
+                    final_col_sell := is_sell_imbalance ? color.new(col_imb_sell, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_sell) : color.new(col_bear, t_alpha_sell))
+
+                    txt_vol_buy := show_buy_sell_volume ? (is_buy_imbalance ? "*" + format_vol(buy_val) + "*" : format_vol(buy_val)) : ""
+                    txt_vol_sell := show_buy_sell_volume ? (is_sell_imbalance ? "*" + format_vol(sell_val) + "*" : format_vol(sell_val)) : ""
+
+                else if footprint_type == "Delta Footprint"
+                    float delta_val = buy_val - sell_val
+                    float abs_delta_ratio = max_vol > 0 ? math.abs(delta_val) / max_vol : 0
+                    float alpha_ratio = math.pow(abs_delta_ratio, 0.5)
+                    int t_alpha = math.round(96 - (alpha_ratio * 86))
+
+                    if delta_val >= 0
+                        buy_width_ratio := abs_delta_ratio
+                        sell_width_ratio := 0.0
+                        final_col_buy := is_buy_imbalance ? color.new(col_imb_buy, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha) : color.new(col_bull, t_alpha))
+                        txt_vol_buy := show_buy_sell_volume ? (is_buy_imbalance ? "*" + format_vol(delta_val) + "*" : format_vol(delta_val)) : ""
+                    else
+                        buy_width_ratio := 0.0
+                        sell_width_ratio := abs_delta_ratio
+                        final_col_sell := is_sell_imbalance ? color.new(col_imb_sell, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha) : color.new(col_bear, t_alpha))
+                        txt_vol_sell := show_buy_sell_volume ? (is_sell_imbalance ? "*" + format_vol(delta_val) + "*" : format_vol(delta_val)) : ""
+
+                else if footprint_type == "Volume Footprint"
+                    buy_width_ratio := max_vol > 0 ? vol_val / max_vol : 0
+                    sell_width_ratio := 0.0
+
+                    float alpha_ratio = math.pow(buy_width_ratio, 0.5)
+                    int t_alpha = math.round(96 - (alpha_ratio * 86))
+
+                    color base_col = buy_val >= sell_val ? col_bull : col_bear
+                    color imb_col = is_buy_imbalance ? col_imb_buy : is_sell_imbalance ? col_imb_sell : na
+
+                    final_col_buy := not na(imb_col) ? color.new(imb_col, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha) : color.new(base_col, t_alpha))
+                    final_col_sell := na
+
+                    txt_vol_buy := show_buy_sell_volume ? (is_buy_imbalance or is_sell_imbalance ? "*" + format_vol(vol_val) + "*" : format_vol(vol_val)) : ""
+                    txt_vol_sell := ""
+
+                int buy_line_len = buy_width_ratio > 0 ? math.max(1, math.round(buy_width_ratio * total_width * box_width)) : 0
+                int sell_line_len = sell_width_ratio > 0 ? math.max(1, math.round(sell_width_ratio * total_width * box_width)) : 0
                 
                 int x_buy_1 = buyer_axis_x
                 int x_buy_2 = buyer_axis_x + buy_line_len
                 
                 int x_sell_1 = seller_axis_x - sell_line_len
                 int x_sell_2 = seller_axis_x
-                
+
                 bool in_va = i >= va_down and i <= va_up
-                
-                // Color formatting with multi-stage alpha for buyer profile
-                float alpha_ratio_buy = math.pow(buy_width_ratio, 0.5)
-                int t_alpha_buy = math.round(96 - (alpha_ratio_buy * 86))
-                color final_col_buy = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_buy) : color.new(col_bull, t_alpha_buy)
-                
-                // Color formatting with multi-stage alpha for seller profile
-                float alpha_ratio_sell = math.pow(sell_width_ratio, 0.5)
-                int t_alpha_sell = math.round(96 - (alpha_ratio_sell * 86))
-                color final_col_sell = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_sell) : color.new(col_bear, t_alpha_sell)
-                
-                // Text Volume Labels
-                string txt_vol_buy = (show_buy_sell_volume and buy_width_ratio > 0.15) ? str.tostring(math.round(buy_val)) : ""
-                string txt_vol_sell = (show_buy_sell_volume and sell_width_ratio > 0.15) ? str.tostring(math.round(sell_val)) : ""
                 
                 // LVN Identification (Local minima & below threshold based on total volume)
                 bool is_lvn = false
@@ -472,20 +640,28 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
                 // Large Volume Identification
                 bool is_large_vol_buy = show_large_vol and buy_val > avg_buy_level_vol * large_vol_mult
-                color lv_border_color_buy = na
-                int lv_border_width_buy = 0
+                color lv_border_color_buy = is_buy_imbalance ? col_imb_buy : na
+                int lv_border_width_buy = is_buy_imbalance ? 2 : 0
                 string lv_border_style_buy = line.style_solid
-                if is_large_vol_buy
+                if is_large_vol_buy and not is_buy_imbalance
                     lv_border_color_buy := col_bull
+                    lv_border_width_buy := 2
+                    lv_border_style_buy := line.style_solid
+                else if is_buy_imbalance
+                    lv_border_color_buy := col_imb_buy
                     lv_border_width_buy := 2
                     lv_border_style_buy := line.style_solid
                     
                 bool is_large_vol_sell = show_large_vol and sell_val > avg_sell_level_vol * large_vol_mult
-                color lv_border_color_sell = na
-                int lv_border_width_sell = 0
+                color lv_border_color_sell = is_sell_imbalance ? col_imb_sell : na
+                int lv_border_width_sell = is_sell_imbalance ? 2 : 0
                 string lv_border_style_sell = line.style_solid
-                if is_large_vol_sell
+                if is_large_vol_sell and not is_sell_imbalance
                     lv_border_color_sell := col_bear
+                    lv_border_width_sell := 2
+                    lv_border_style_sell := line.style_solid
+                else if is_sell_imbalance
+                    lv_border_color_sell := col_imb_sell
                     lv_border_width_sell := 2
                     lv_border_style_sell := line.style_solid
 
@@ -509,10 +685,10 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         ln_hvn = line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
                         array.push(future_boxes, bx_hvn_r)
                         array.push(future_lines, ln_hvn)
-                    if buy_val > 0
+                    if buy_width_ratio > 0
                         bx_vol_buy = box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                         array.push(future_boxes, bx_vol_buy)
-                    if sell_val > 0
+                    if sell_width_ratio > 0
                         bx_vol_sell = box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
                         array.push(future_boxes, bx_vol_sell)
                 else
@@ -524,9 +700,9 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         color hvn_col = color.new(col_bull, 20)
                         box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
                         line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
-                    if buy_val > 0
+                    if buy_width_ratio > 0
                         box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
-                    if sell_val > 0
+                    if sell_width_ratio > 0
                         box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
 
         // 3. Draw Extended POC & VAH/VAL Boxes
