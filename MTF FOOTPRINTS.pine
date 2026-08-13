@@ -4,6 +4,19 @@
 indicator("MTF footprints V2.18 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
 
 //════════════════════════════════════════════════════════════════════════
+// USER DEFINED TYPES
+//════════════════════════════════════════════════════════════════════════
+type SRLevel
+    line ln
+    label lbl
+    float price
+    bool is_support
+    bool active
+    int bar_idx
+
+var SRLevel[] htf_sr_levels = array.new<SRLevel>()
+
+//════════════════════════════════════════════════════════════════════════
 // COLOR TYPE
 //════════════════════════════════════════════════════════════════════════
 color dark   = #000000
@@ -80,6 +93,13 @@ imbalance_ratio = input.float(defval = 3.0, title = 'Imbalance Ratio (Multiplier
 imbalance_min_vol = input.float(defval = 0.0, title = 'Imbalance Min Volume', minval = 0.0, group = FootprintGroup)
 imbalance_margin_pct = input.float(defval = 25.0, title = 'Imbalance Line Top/Bottom Gap (%)', minval = 0.0, maxval = 49.0, step = 5.0, group = FootprintGroup)
 imbalance_line_width = input.int(defval = 2, title = 'Imbalance Line Width', minval = 1, maxval = 10, group = FootprintGroup)
+
+// S/R footprint settings
+SRGroup = "Advanced Support & Resistance (Footprints)"
+show_sr_footprints = input.bool(defval = true, title = 'Show Footprints S/R Levels', group = SRGroup)
+sr_source          = input.string(defval = 'Imbalances', title = 'S/R Level Source', options = ['Imbalances', 'Large Volume', 'Both'], group = SRGroup)
+max_sr_levels      = input.int(defval = 10, title = 'Max Active S/R Levels', minval = 1, maxval = 100, group = SRGroup)
+keep_mitigated_sr  = input.bool(defval = false, title = 'Keep Mitigated S/R (Faded Style)', group = SRGroup)
 
 // Colors Assignment
 col_bull = switch color_theme
@@ -628,6 +648,22 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         int imb_x = is_buy_imbalance ? x_buy_2 : x_sell_1
                         ln_imb = line.new(imb_x, imb_y1, imb_x, imb_y2, color=imb_color, width=imbalance_line_width, style=line.style_solid)
                         array.push(future_lines, ln_imb)
+
+                    // S/R candidate logic
+                    bool is_support_candidate = (sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))
+                    bool is_resistance_candidate = (sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))
+
+                    if show_sr_footprints
+                        if is_support_candidate
+                            line temp_ln = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 50), width=1, style=line.style_dashed)
+                            label temp_lbl = label.new(bar_index + 120, level_mid, "RT SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
+                            array.push(future_lines, temp_ln)
+                            array.push(future_labels, temp_lbl)
+                        if is_resistance_candidate
+                            line temp_ln = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 50), width=1, style=line.style_dashed)
+                            label temp_lbl = label.new(bar_index + 120, level_mid, "RT RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
+                            array.push(future_lines, temp_ln)
+                            array.push(future_labels, temp_lbl)
                 else
                     if is_lvn
                         color lvn_col = color.new(col_bear, 20)
@@ -650,6 +686,20 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         color imb_color = is_buy_imbalance ? col_bull : col_bear
                         int imb_x = is_buy_imbalance ? x_buy_2 : x_sell_1
                         line.new(imb_x, imb_y1, imb_x, imb_y2, color=imb_color, width=imbalance_line_width, style=line.style_solid)
+
+                    // S/R candidate logic
+                    bool is_support_candidate = (sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))
+                    bool is_resistance_candidate = (sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))
+
+                    if show_sr_footprints
+                        if is_support_candidate
+                            line ln_sr = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 30), width=2, style=line.style_solid)
+                            label lbl_sr = label.new(bar_index + 120, level_mid, "Footprint SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
+                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, true, true, bar_index))
+                        if is_resistance_candidate
+                            line ln_sr = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 30), width=2, style=line.style_solid)
+                            label lbl_sr = label.new(bar_index + 120, level_mid, "Footprint RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
+                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, false, true, bar_index))
 
         // 3. Draw Extended POC & VAH/VAL Boxes
         float poc_price = s_low + (step * (poc_idx + 0.5))
@@ -987,3 +1037,44 @@ if show_logo and barstate.islast
     label glow2 = label.new(bar_index + l_off + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc, size=size.huge)
     array.push(brand_labels, glow1)
     array.push(brand_labels, glow2)
+
+//════════════════════════════════════════════════════════════════════════
+// ADVANCED S/R MITIGATION ENGINE
+//════════════════════════════════════════════════════════════════════════
+if show_sr_footprints and array.size(htf_sr_levels) > 0
+    for i = array.size(htf_sr_levels) - 1 to 0
+        SRLevel item = array.get(htf_sr_levels, i)
+        if item.active
+            // Extend the active S/R lines and label markers
+            line.set_x2(item.ln, bar_index + 30)
+            label.set_x(item.lbl, bar_index + 30)
+
+            // Dynamic mitigation checking:
+            // Support: mitigated when current low drops below support price
+            // Resistance: mitigated when current high rallies above resistance price
+            bool is_mitigated = false
+            if item.is_support and low <= item.price
+                is_mitigated := true
+            else if not item.is_support and high >= item.price
+                is_mitigated := true
+
+            if is_mitigated
+                if keep_mitigated_sr
+                    item.active := false
+                    color faded_col = item.is_support ? color.new(col_bull, 80) : color.new(col_bear, 80)
+                    line.set_color(item.ln, faded_col)
+                    line.set_style(item.ln, line.style_dotted)
+                    line.set_width(item.ln, 1)
+
+                    label.set_textcolor(item.lbl, faded_col)
+                    label.set_text(item.lbl, (item.is_support ? "Mitigated SUP" : "Mitigated RES") + "\n" + str.tostring(item.price, format.mintick))
+                else
+                    line.delete(item.ln)
+                    label.delete(item.lbl)
+                    array.remove(htf_sr_levels, i)
+
+    // Bound array size to prevent memory bottleneck and conform to max S/R levels
+    while array.size(htf_sr_levels) > max_sr_levels
+        SRLevel oldest = array.shift(htf_sr_levels)
+        line.delete(oldest.ln)
+        label.delete(oldest.lbl)
