@@ -97,7 +97,9 @@ maint_margin = input.float(0.5, "Maintenance Margin (%)", minval=0.0, maxval=5.0
 // -----------------------------------------------------------------------------
 float s_high = ta.highest(high, vp_lookback)
 float s_low = ta.lowest(low, vp_lookback)
-float s_vol = ta.sum(volume, vp_lookback)
+float s_vol = 0.0
+for idx = 0 to vp_lookback - 1
+    s_vol += nz(volume[idx])
 
 float range_price = s_high - s_low
 float step = range_price / levels_count
@@ -230,7 +232,7 @@ get_heatmap_color(float s, bool is_long, float level) =>
     // Mid strength: pure theme color (col_bull/col_bear)
     // High strength: brilliant white/hotspot highlight (col_poc)
     color t_col  = is_long ? col_bull : col_bear
-    color c_low  = color.mix(dark, t_col, 25)
+    color c_low  = color.from_gradient(25, 0, 100, dark, t_col)
     color c_mid  = t_col
     color c_high = col_poc
 
