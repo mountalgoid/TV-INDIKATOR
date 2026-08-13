@@ -488,6 +488,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
         for i = 0 to levels_count - 1
             vol_val = array.get(vol_dist, i)
+            bool is_large_vol_buy = false
+            bool is_large_vol_sell = false
             if vol_val > 0
                 buy_val = array.get(buy_dist, i)
                 sell_val = math.max(0.0, vol_val - buy_val)
@@ -596,7 +598,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         is_hvn := true
 
                 // Large Volume Identification
-                bool is_large_vol_buy = show_large_vol and buy_val > avg_buy_level_vol * large_vol_mult
+                is_large_vol_buy := show_large_vol and buy_val > avg_buy_level_vol * large_vol_mult
                 color lv_border_color_buy = na
                 int lv_border_width_buy = 0
                 string lv_border_style_buy = line.style_solid
@@ -605,7 +607,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     lv_border_width_buy := 2
                     lv_border_style_buy := line.style_solid
                     
-                bool is_large_vol_sell = show_large_vol and sell_val > avg_sell_level_vol * large_vol_mult
+                is_large_vol_sell := show_large_vol and sell_val > avg_sell_level_vol * large_vol_mult
                 color lv_border_color_sell = na
                 int lv_border_width_sell = 0
                 string lv_border_style_sell = line.style_solid
@@ -659,12 +661,12 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
                     if show_sr_footprints
                         if is_support_candidate
-                            line temp_ln = line.new(axis_x, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 50), width=1, style=line.style_dashed)
+                            line temp_ln = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 50), width=1, style=line.style_dashed)
                             label temp_lbl = label.new(bar_index + 120, level_mid, "RT SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
                             array.push(future_lines, temp_ln)
                             array.push(future_labels, temp_lbl)
                         if is_resistance_candidate
-                            line temp_ln = line.new(axis_x, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 50), width=1, style=line.style_dashed)
+                            line temp_ln = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 50), width=1, style=line.style_dashed)
                             label temp_lbl = label.new(bar_index + 120, level_mid, "RT RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
                             array.push(future_lines, temp_ln)
                             array.push(future_labels, temp_lbl)
@@ -697,11 +699,11 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
                     if show_sr_footprints
                         if is_support_candidate
-                            line ln_sr = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 30), width=2, style=line.style_solid)
+                            line ln_sr = line.new(end_idx, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 30), width=2, style=line.style_solid)
                             label lbl_sr = label.new(bar_index + 120, level_mid, "Footprint SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
                             array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, true, true, bar_index))
                         if is_resistance_candidate
-                            line ln_sr = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 30), width=2, style=line.style_solid)
+                            line ln_sr = line.new(end_idx, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 30), width=2, style=line.style_solid)
                             label lbl_sr = label.new(bar_index + 120, level_mid, "Footprint RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
                             array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, false, true, bar_index))
 
