@@ -531,7 +531,15 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 // Color formatting with multi-stage alpha for buyer profile
                 float alpha_ratio_buy = math.pow(active_buy_ratio, 0.5)
                 int t_alpha_buy = math.round(96 - (alpha_ratio_buy * 86))
-                color final_col_buy = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_buy) : color.new(col_bull, t_alpha_buy)
+
+                // Determine base color for buyer profile.
+                // Under "Volume Footprint" mode, use delta gradient (from bear to bull based on buy volume ratio).
+                color base_col_buy = col_bull
+                if footprint_type == "Volume Footprint"
+                    float buy_ratio_gradient = vol_val > 0 ? buy_val / vol_val : 0.5
+                    base_col_buy := color.from_gradient(buy_ratio_gradient, 0.0, 1.0, col_bear, col_bull)
+
+                color final_col_buy = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_buy) : color.new(base_col_buy, t_alpha_buy)
                 
                 // Color formatting with multi-stage alpha for seller profile
                 float alpha_ratio_sell = math.pow(active_sell_ratio, 0.5)
