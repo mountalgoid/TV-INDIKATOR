@@ -13,6 +13,7 @@ type SRLevel
     bool is_support
     bool active
     int bar_idx
+    bool pending_mitigation
 
 var SRLevel[] htf_sr_levels = array.new<SRLevel>()
 var line[] mitigated_sr_lines = array.new<line>()
@@ -102,6 +103,7 @@ show_sr_footprints = input.bool(defval = true, title = 'Show Footprints S/R Leve
 sr_source          = input.string(defval = 'Imbalances', title = 'S/R Level Source', options = ['Imbalances', 'Large Volume', 'Both'], group = SRGroup)
 max_sr_levels      = input.int(defval = 10, title = 'Max Active S/R Levels', minval = 1, maxval = 100, group = SRGroup)
 keep_mitigated_sr  = input.bool(defval = false, title = 'Keep Mitigated S/R (Faded Style)', group = SRGroup)
+mitigation_type    = input.string(defval = 'HTF Wick', title = 'Mitigation Source Type', options = ['HTF Wick', 'HTF Body Close'], group = SRGroup)
 mitigated_sr_color = input.color(defval = #b2bbd0, title = "Mitigated S/R Color", group = SRGroup)
 mitigated_sr_width = input.int(defval = 1, title = "Mitigated S/R Width", minval = 1, maxval = 10, group = SRGroup)
 
@@ -655,19 +657,19 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         ln_imb = line.new(imb_x, imb_y1, imb_x, imb_y2, color=imb_color, width=imbalance_line_width, style=line.style_solid)
                         array.push(future_lines, ln_imb)
 
-                    // S/R candidate logic
-                    bool is_support_candidate = (sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))
-                    bool is_resistance_candidate = (sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))
+                    // S/R candidate logic (Filter: Support must be below current price, Resistance must be above)
+                    bool is_support_candidate = ((sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))) and (level_mid < close)
+                    bool is_resistance_candidate = ((sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))) and (level_mid > close)
 
                     if show_sr_footprints
                         if is_support_candidate
-                            line temp_ln = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 50), width=1, style=line.style_dashed)
-                            label temp_lbl = label.new(bar_index + 120, level_mid, "RT SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
+                            line temp_ln = line.new(start_idx, level_mid, end_idx, level_mid, color=color.new(col_bull, 50), width=1, style=line.style_dashed)
+                            label temp_lbl = label.new(end_idx, level_mid, "RT SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
                             array.push(future_lines, temp_ln)
                             array.push(future_labels, temp_lbl)
                         if is_resistance_candidate
-                            line temp_ln = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 50), width=1, style=line.style_dashed)
-                            label temp_lbl = label.new(bar_index + 120, level_mid, "RT RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
+                            line temp_ln = line.new(start_idx, level_mid, end_idx, level_mid, color=color.new(col_bear, 50), width=1, style=line.style_dashed)
+                            label temp_lbl = label.new(end_idx, level_mid, "RT RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
                             array.push(future_lines, temp_ln)
                             array.push(future_labels, temp_lbl)
                 else
@@ -693,19 +695,19 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         int imb_x = is_buy_imbalance ? x_buy_2 : x_sell_1
                         line.new(imb_x, imb_y1, imb_x, imb_y2, color=imb_color, width=imbalance_line_width, style=line.style_solid)
 
-                    // S/R candidate logic
-                    bool is_support_candidate = (sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))
-                    bool is_resistance_candidate = (sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))
+                    // S/R candidate logic (Filter: Support must be below current price, Resistance must be above)
+                    bool is_support_candidate = ((sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))) and (level_mid < close)
+                    bool is_resistance_candidate = ((sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))) and (level_mid > close)
 
                     if show_sr_footprints
                         if is_support_candidate
-                            line ln_sr = line.new(end_idx, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 30), width=2, style=line.style_solid)
-                            label lbl_sr = label.new(bar_index + 120, level_mid, "Footprint SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
-                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, true, true, bar_index))
+                            line ln_sr = line.new(start_idx, level_mid, end_idx, level_mid, color=color.new(col_bull, 30), width=2, style=line.style_solid)
+                            label lbl_sr = label.new(end_idx, level_mid, "Footprint SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
+                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, true, true, bar_index, false))
                         if is_resistance_candidate
-                            line ln_sr = line.new(end_idx, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 30), width=2, style=line.style_solid)
-                            label lbl_sr = label.new(bar_index + 120, level_mid, "Footprint RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
-                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, false, true, bar_index))
+                            line ln_sr = line.new(start_idx, level_mid, end_idx, level_mid, color=color.new(col_bear, 30), width=2, style=line.style_solid)
+                            label lbl_sr = label.new(end_idx, level_mid, "Footprint RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
+                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, false, true, bar_index, false))
 
         // 3. Draw Extended POC & VAH/VAL Boxes
         float poc_price = s_low + (step * (poc_idx + 0.5))
@@ -775,9 +777,63 @@ if bar_index == 0
     htf_start_bar_index := 0
 
 if is_new_htf
+    int prev_htf_start = htf_start_bar_index
     if (bar_index - 1) >= htf_start_bar_index
         draw_htf_profile(htf_start_bar_index, bar_index - 1, false)
     htf_start_bar_index := bar_index
+
+    // Finalize pending S/R mitigations exactly at the box of the completed HTF candle that mitigated them
+    if show_sr_footprints and array.size(htf_sr_levels) > 0
+        // Calculate the exact rightmost box boundary of the completed mitigating HTF candle
+        total_width_mit = math.max(1, (bar_index - 1) - prev_htf_start)
+        profile_max_width_mit = math.round(total_width_mit * box_width)
+        badge_width_mit = math.max(2, math.round(total_width_mit * 0.08))
+        right_badge_x2_mit = prev_htf_start + profile_gap + profile_max_width_mit + badge_width_mit
+
+        for i = array.size(htf_sr_levels) - 1 to 0
+            SRLevel item = array.get(htf_sr_levels, i)
+            if item.active
+                bool trigger_finalize = false
+
+                if mitigation_type == "HTF Wick" and item.pending_mitigation
+                    trigger_finalize := true
+                else if mitigation_type == "HTF Body Close"
+                    // Check if the close of the completed HTF candle (close[1]) crossed the level
+                    if item.is_support and close[1] <= item.price
+                        trigger_finalize := true
+                    else if not item.is_support and close[1] >= item.price
+                        trigger_finalize := true
+
+                if trigger_finalize
+                    if keep_mitigated_sr
+                        item.active := false
+                        // Freeze exactly at the right boundary of the completed HTF candle that mitigated it
+                        line.set_x2(item.ln, right_badge_x2_mit)
+                        line.set_color(item.ln, mitigated_sr_color)
+                        line.set_style(item.ln, line.style_dotted)
+                        line.set_width(item.ln, mitigated_sr_width)
+
+                        label.set_x(item.lbl, right_badge_x2_mit)
+                        label.set_textcolor(item.lbl, mitigated_sr_color)
+                        label.set_text(item.lbl, (item.is_support ? "S X" : "R X") + "\n" + str.tostring(item.price, format.mintick))
+
+                        array.push(mitigated_sr_lines, item.ln)
+                        array.push(mitigated_sr_labels, item.lbl)
+                        array.remove(htf_sr_levels, i)
+                    else
+                        line.delete(item.ln)
+                        label.delete(item.lbl)
+                        array.remove(htf_sr_levels, i)
+                else if mitigation_type == "HTF Body Close" and item.pending_mitigation
+                    // Reset false alarm in real-time (price pulled back before HTF candle close)
+                    item.pending_mitigation := false
+                    color active_col = item.is_support ? col_bull : col_bear
+                    line.set_color(item.ln, color.new(active_col, 30))
+                    line.set_style(item.ln, line.style_solid)
+                    line.set_width(item.ln, 2)
+
+                    label.set_textcolor(item.lbl, active_col)
+                    label.set_text(item.lbl, (item.is_support ? "Footprint SUP" : "Footprint RES") + "\n" + str.tostring(item.price, format.mintick))
 
 if barstate.islast
     [c_h, c_l, c_o, c_c, c_v, c_bv, c_sv, c_poc, c_mv] = draw_htf_profile(htf_start_bar_index, bar_index, true)
@@ -1051,37 +1107,40 @@ if show_sr_footprints and array.size(htf_sr_levels) > 0
     for i = array.size(htf_sr_levels) - 1 to 0
         SRLevel item = array.get(htf_sr_levels, i)
         if item.active
-            // Extend the active S/R lines and label markers
-            line.set_x2(item.ln, bar_index + 30)
-            label.set_x(item.lbl, bar_index + 30)
+            // Extend the active S/R lines and label markers to the current developing HTF candle's htf_box_right
+            total_width_calc = math.max(1, bar_index - htf_start_bar_index)
+            profile_max_width_calc = math.round(total_width_calc * box_width)
+            badge_width_calc = math.max(2, math.round(total_width_calc * 0.08))
+            htf_box_right = htf_start_bar_index + profile_gap + profile_max_width_calc + badge_width_calc
+
+            line.set_x2(item.ln, htf_box_right)
+            label.set_x(item.lbl, htf_box_right)
 
             // Dynamic mitigation checking:
-            // Support: mitigated when current low drops below support price
-            // Resistance: mitigated when current high rallies above resistance price
+            // Support: mitigated when current low drops below support price (or close on HTF Body Close)
+            // Resistance: mitigated when current high rallies above resistance price (or close on HTF Body Close)
             bool is_mitigated = false
-            if item.is_support and low <= item.price
-                is_mitigated := true
-            else if not item.is_support and high >= item.price
-                is_mitigated := true
+            if mitigation_type == "HTF Wick"
+                if item.is_support and low <= item.price
+                    is_mitigated := true
+                else if not item.is_support and high >= item.price
+                    is_mitigated := true
+            else if mitigation_type == "HTF Body Close"
+                if item.is_support and close <= item.price
+                    is_mitigated := true
+                else if not item.is_support and close >= item.price
+                    is_mitigated := true
 
             if is_mitigated
                 if keep_mitigated_sr
-                    item.active := false
-                    // Freeze the line at the exact mitigation bar
-                    line.set_x2(item.ln, bar_index)
+                    item.pending_mitigation := true
+                    // Update visual style immediately so the user gets instant real-time feedback
                     line.set_color(item.ln, mitigated_sr_color)
                     line.set_style(item.ln, line.style_dotted)
                     line.set_width(item.ln, mitigated_sr_width)
 
-                    // Freeze label position and adjust visual formatting
-                    label.set_x(item.lbl, bar_index)
                     label.set_textcolor(item.lbl, mitigated_sr_color)
-                    label.set_text(item.lbl, (item.is_support ? "Mitigated SUP" : "Mitigated RES") + "\n" + str.tostring(item.price, format.mintick))
-
-                    // Move to historical FIFO tracking arrays and remove from active tracking
-                    array.push(mitigated_sr_lines, item.ln)
-                    array.push(mitigated_sr_labels, item.lbl)
-                    array.remove(htf_sr_levels, i)
+                    label.set_text(item.lbl, (item.is_support ? "S X" : "R X") + "\n" + str.tostring(item.price, format.mintick))
                 else
                     line.delete(item.ln)
                     label.delete(item.lbl)
