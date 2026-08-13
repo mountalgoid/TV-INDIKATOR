@@ -1093,6 +1093,13 @@ if show_sr_footprints and array.size(htf_sr_levels) > 0
             if is_mitigated
                 if keep_mitigated_sr
                     item.pending_mitigation := true
+                    // Update visual style immediately so the user gets instant real-time feedback
+                    line.set_color(item.ln, mitigated_sr_color)
+                    line.set_style(item.ln, line.style_dotted)
+                    line.set_width(item.ln, mitigated_sr_width)
+
+                    label.set_textcolor(item.lbl, mitigated_sr_color)
+                    label.set_text(item.lbl, (item.is_support ? "S X" : "R X") + "\n" + str.tostring(item.price, format.mintick))
                 else
                     line.delete(item.ln)
                     label.delete(item.lbl)
