@@ -217,7 +217,7 @@ float poc_price = s_low + (step * (poc_idx + 0.5))
 // LIQUIDATION ENGINE BASED ON POC
 // -----------------------------------------------------------------------------
 var array<LiqZone> liq_zones = array.new<LiqZone>()
-var array<line> liq_lines_hist = array.new_line()
+var array<line> liq_lines_hist = array.new<line>()
 var array<linefill> liq_fills_hist = array.new<linefill>()
 
 float liq_step = step

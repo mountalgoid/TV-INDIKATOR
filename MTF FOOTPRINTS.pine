@@ -15,6 +15,8 @@ type SRLevel
     int bar_idx
 
 var SRLevel[] htf_sr_levels = array.new<SRLevel>()
+var line[] mitigated_sr_lines = array.new<line>()
+var label[] mitigated_sr_labels = array.new<label>()
 
 //════════════════════════════════════════════════════════════════════════
 // COLOR TYPE
@@ -657,12 +659,12 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
                     if show_sr_footprints
                         if is_support_candidate
-                            line temp_ln = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 50), width=1, style=line.style_dashed)
+                            line temp_ln = line.new(axis_x, level_mid, bar_index + 120, level_mid, color=color.new(col_bull, 50), width=1, style=line.style_dashed)
                             label temp_lbl = label.new(bar_index + 120, level_mid, "RT SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
                             array.push(future_lines, temp_ln)
                             array.push(future_labels, temp_lbl)
                         if is_resistance_candidate
-                            line temp_ln = line.new(bar_index, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 50), width=1, style=line.style_dashed)
+                            line temp_ln = line.new(axis_x, level_mid, bar_index + 120, level_mid, color=color.new(col_bear, 50), width=1, style=line.style_dashed)
                             label temp_lbl = label.new(bar_index + 120, level_mid, "RT RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
                             array.push(future_lines, temp_ln)
                             array.push(future_labels, temp_lbl)
