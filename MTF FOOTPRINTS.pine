@@ -100,6 +100,8 @@ show_sr_footprints = input.bool(defval = true, title = 'Show Footprints S/R Leve
 sr_source          = input.string(defval = 'Imbalances', title = 'S/R Level Source', options = ['Imbalances', 'Large Volume', 'Both'], group = SRGroup)
 max_sr_levels      = input.int(defval = 10, title = 'Max Active S/R Levels', minval = 1, maxval = 100, group = SRGroup)
 keep_mitigated_sr  = input.bool(defval = false, title = 'Keep Mitigated S/R (Faded Style)', group = SRGroup)
+mitigated_sr_color = input.color(defval = #b2bbd0, title = "Mitigated S/R Color", group = SRGroup)
+mitigated_sr_width = input.int(defval = 1, title = "Mitigated S/R Width", minval = 1, maxval = 10, group = SRGroup)
 
 // Colors Assignment
 col_bull = switch color_theme
@@ -1061,20 +1063,34 @@ if show_sr_footprints and array.size(htf_sr_levels) > 0
             if is_mitigated
                 if keep_mitigated_sr
                     item.active := false
-                    color faded_col = item.is_support ? color.new(col_bull, 80) : color.new(col_bear, 80)
-                    line.set_color(item.ln, faded_col)
+                    // Freeze the line at the exact mitigation bar
+                    line.set_x2(item.ln, bar_index)
+                    line.set_color(item.ln, mitigated_sr_color)
                     line.set_style(item.ln, line.style_dotted)
-                    line.set_width(item.ln, 1)
+                    line.set_width(item.ln, mitigated_sr_width)
 
-                    label.set_textcolor(item.lbl, faded_col)
+                    // Freeze label position and adjust visual formatting
+                    label.set_x(item.lbl, bar_index)
+                    label.set_textcolor(item.lbl, mitigated_sr_color)
                     label.set_text(item.lbl, (item.is_support ? "Mitigated SUP" : "Mitigated RES") + "\n" + str.tostring(item.price, format.mintick))
+
+                    // Move to historical FIFO tracking arrays and remove from active tracking
+                    array.push(mitigated_sr_lines, item.ln)
+                    array.push(mitigated_sr_labels, item.lbl)
+                    array.remove(htf_sr_levels, i)
                 else
                     line.delete(item.ln)
                     label.delete(item.lbl)
                     array.remove(htf_sr_levels, i)
 
-    // Bound array size to prevent memory bottleneck and conform to max S/R levels
+    // Bound array size to prevent memory bottleneck and conform to max active S/R levels
     while array.size(htf_sr_levels) > max_sr_levels
         SRLevel oldest = array.shift(htf_sr_levels)
         line.delete(oldest.ln)
         label.delete(oldest.lbl)
+
+    // FIFO Pruning for historical mitigated lines/labels to prevent TradingView drawing overflow
+    while array.size(mitigated_sr_lines) > 150
+        line.delete(array.shift(mitigated_sr_lines))
+    while array.size(mitigated_sr_labels) > 150
+        label.delete(array.shift(mitigated_sr_labels))
