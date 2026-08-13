@@ -1,0 +1,867 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © MLTFX
+//@version=6
+indicator("MTF footprints V2.18 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+//════════════════════════════════════════════════════════════════════════
+// COLOR TYPE
+//════════════════════════════════════════════════════════════════════════
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
+
+//════════════════════════════════════════════════════════════════════════
+// GROUP & INPUTS
+//════════════════════════════════════════════════════════════════════════
+GlobalGroup = 'Visual Themes & Global'
+color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group = GlobalGroup)
+type_ltf_plot_candle = input.string(defval = 'Regular Candles', title = 'Type LTF Plot Candle', options = ['Regular Candles', 'Custom Candles'], group = GlobalGroup)
+type_ltf_color_candle = input.string(defval = 'Based Stochastic RSI', title = 'Type LTF Color Candle', options = ['Regular Color Candles', 'Based Stochastic RSI', 'Based Delta', 'Based EMA'], group = GlobalGroup)
+show_ltf_plot_candle = input.bool(defval = true, title = 'Show LTF Plot Candle', group = GlobalGroup)
+show_htf_plot_candle = input.bool(defval = true, title = 'Show HTF Plot Candle', group = GlobalGroup)
+ema_length = input.int(200, title="Custom EMA Length", group=GlobalGroup)
+
+// HTF Settings
+auto_htf_mode = input.bool(true, title="Auto HTF Mode", group=GlobalGroup)
+manual_htf_timeframe = input.timeframe("60", title="Manual Higher TimeFrame", group=GlobalGroup)
+
+get_auto_htf() =>
+    if timeframe.isseconds
+        "15"
+    else if timeframe.isminutes
+        int m = timeframe.multiplier
+        if m <= 2
+            "60"
+        else if m <= 4
+            "60"
+        else if m <= 14
+            "240"
+        else if m <= 30
+            "D"
+        else
+            "D"
+    else if timeframe.isdaily
+        "W"
+    else
+        "M"
+
+htf_timeframe = auto_htf_mode ? get_auto_htf() : manual_htf_timeframe
+show_volume_profile = input.bool(true, title="Show Volume Profile")
+show_poc = input.bool(true, title="Show POC")
+show_delta = input.bool(true, title="Show Delta")
+show_buy_sell_volume = input.bool(true, title="Show Buy/Sell Volume Labels")
+box_width = input.float(0.6, title="Profile Width Ratio", minval=0.1, maxval=10.0, step = 0.1, group=GlobalGroup)
+rt_offset = 2 // input.int(2, title="Realtime Profile Offset (Bars)", minval=1, maxval=20)
+levels_count = input.int(20, title="Volume Profile Levels", minval=5, maxval=100)
+value_area_pct = 70 // input.int(70, title="Value Area %", minval=10, maxval=100)
+profile_gap = input.int(2, title="Gap Between Candle & Profile (Bars)", minval=0, maxval=10, group=GlobalGroup)
+show_large_vol = input.bool(true, "Identify Large Volume Levels", group=GlobalGroup)
+large_vol_mult = input.float(1.5, "Large Vol Multiplier (vs Avg)", minval=1.0, step=0.1, group=GlobalGroup)
+show_lvn = input.bool(true, title="Show LVN (Low Volume Nodes)", group=GlobalGroup)
+lvn_threshold = input.int(15, title="LVN Threshold (%)", minval=1, maxval=50, group=GlobalGroup)
+show_hvn = input.bool(true, title="Show HVN (High Volume Nodes)", group=GlobalGroup)
+hvn_threshold = input.int(70, title="HVN Threshold (%)", minval=1, maxval=100, group=GlobalGroup)
+show_logo = input.bool(true, title="Show Brand Logo", group=GlobalGroup)
+l_off = input.int(85, title="Logo Offset (Bars)", group=GlobalGroup)
+
+// Colors Assignment
+col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    => blue
+col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    => white
+col_poc = switch color_theme
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
+
+box_col_bull = color.new(col_bull, 80)
+box_col_bear = color.new(col_bear, 80)
+mitigated_color = col_poc
+mitigated_box_color = color.new(col_poc, 80)
+color_vah = col_bull
+color_val = col_bull
+color_poc = col_poc
+color_text = white
+
+//════════════════════════════════════════════════════════════════════════
+// LOGIC CORE
+//════════════════════════════════════════════════════════════════════════
+
+// EMA Calculation
+custom_ema = ta.ema(close, ema_length)
+plot(custom_ema, color=color.new(col_poc, 50), title="Custom EMA")
+
+// Detect new HTF Session
+htf_start_time = time(htf_timeframe)
+is_new_htf = ta.change(htf_start_time) != 0
+var int htf_start_bar_index = 0
+
+// Arrays for Future Visuals
+var array<box> future_boxes = array.new<box>() 
+var array<label> future_labels = array.new<label>()
+var array<line> future_lines = array.new<line>()
+
+// Calc Function
+get_buy_sell_vol(v, o, h, l, c) =>
+    range_size = h - l
+    float b_vol = 0.0
+    float s_vol = 0.0
+    if range_size > 0
+        float b_high = math.max(o, c)
+        float b_low  = math.min(o, c)
+        float body_size = b_high - b_low
+        float upper_wick = h - b_high
+        float lower_wick = b_low - l
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (o + c) / 2
+        float body_pos = (b_center - l) / range_size
+        float br_b = c > o ? math.min(0.9, 0.6 + body_pos * 0.3) : (c < o ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+        b_vol := v * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := v * (w_body * (1.0 - br_b) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := v * 0.5
+        s_vol := v * 0.5
+    [b_vol, s_vol]
+
+get_table_bg(int c, int r, int total_c, int total_r) =>
+    float ratio = (1.0 * c / math.max(1, total_c - 1) + 1.0 * r / math.max(1, total_r - 1)) / 2
+    color base = color.from_gradient(ratio, 0, 1, col_bull, col_bear)
+    // Transparency gradient from 50 (at ratio=0) to 90 (at ratio=1)
+    int t_alpha = math.round(50 + ratio * 40)
+    color.new(base, t_alpha)
+
+f_tf_to_ms(tf) =>
+    if tf == "D" or tf == "1D"
+        86400000
+    else if tf == "W" or tf == "1W"
+        604800000
+    else if tf == "M" or tf == "1M"
+        2592000000
+    else
+        len = str.length(tf)
+        last_char = len > 0 ? str.substring(tf, len - 1) : ""
+        if last_char == "S" or last_char == "s"
+            val = int(str.tonumber(str.substring(tf, 0, len - 1)))
+            val * 1000
+        else if last_char == "D" or last_char == "d"
+            val = int(str.tonumber(str.substring(tf, 0, len - 1)))
+            val * 86400000
+        else if last_char == "W" or last_char == "w"
+            val = int(str.tonumber(str.substring(tf, 0, len - 1)))
+            val * 604800000
+        else if last_char == "M" or last_char == "m"
+            val = int(str.tonumber(str.substring(tf, 0, len - 1)))
+            val * 2592000000
+        else
+            val = int(str.tonumber(tf))
+            if na(val)
+                timeframe.isseconds ? timeframe.multiplier * 1000 : timeframe.multiplier * 60000
+            else
+                val * 60000
+
+distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float[] _bucket_total, float[] _bucket_buy) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        if _range_val <= 0
+            int idx = math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h)))
+            array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
+            float v_half = _v_total * 0.5
+            array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + v_half)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h - b_high) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * w_u
+
+            float b_center = (_o + _c) * 0.5
+            float body_pos = (b_center - _l) * inv_range
+
+            float br_b = _c > _o ? math.min(0.9, 0.6 + body_pos * 0.3) : (_c < _o ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+            if v_l > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.90
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+            if v_b > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * br_b
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+            if v_u > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.10
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+
+//════════════════════════════════════════════════════════════════════════
+// DRAWING FUNCTION
+//════════════════════════════════════════════════════════════════════════
+draw_htf_profile(start_idx, end_idx, is_future) =>
+    float s_high = -1.0e10
+    float s_low = 1.0e10
+    float s_vol = 0.0
+    float s_buy_vol = 0.0
+    float s_sell_vol = 0.0
+    
+    if end_idx < start_idx
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0] 
+
+    for i = 0 to (end_idx - start_idx)
+        idx = end_idx - i
+        s_high := math.max(s_high, high[bar_index - idx])
+        s_low := math.min(s_low, low[bar_index - idx])
+        s_vol += volume[bar_index - idx]
+        
+    s_open = open[bar_index - start_idx]
+    s_close = close[bar_index - end_idx]
+    
+    float range_price = s_high - s_low
+    float step = range_price / levels_count
+    
+    if range_price == 0 or step == 0
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0] 
+
+    array<float> vol_dist = array.new<float>(levels_count, 0.0)
+    array<float> buy_dist = array.new<float>(levels_count, 0.0)
+    
+    float inv_step = 1.0 / step
+    for i = 0 to (end_idx - start_idx)
+        idx = end_idx - i
+        _o = open[bar_index - idx]
+        _h = high[bar_index - idx]
+        _l = low[bar_index - idx]
+        _c = close[bar_index - idx]
+        _v = volume[bar_index - idx]
+        [b_buy, b_sell] = get_buy_sell_vol(_v, _o, _h, _l, _c)
+        s_buy_vol += b_buy
+        s_sell_vol += b_sell
+
+        distribute_vol(levels_count, s_low, inv_step, _o, _h, _l, _c, _v, vol_dist, buy_dist)
+
+    // Ensure no empty volume levels to maintain density
+    for i = 0 to levels_count - 1
+        if array.get(vol_dist, i) <= 0
+            // Assign a tiny fraction to ensure a baseline width of 1 is always drawn
+            array.set(vol_dist, i, 1e-7)
+            if array.get(buy_dist, i) <= 0
+                array.set(buy_dist, i, 5e-8)
+
+    // POC & VA
+    float max_vol = 0.0
+    int poc_idx = 0
+    for i = 0 to levels_count - 1
+        v_ = array.get(vol_dist, i)
+        if v_ > max_vol
+            max_vol := v_
+            poc_idx := i
+            
+    // VA Logic
+    float target_vol = s_vol * (value_area_pct / 100.0)
+    float current_va_vol = max_vol
+    int va_up = poc_idx
+    int va_down = poc_idx
+    int loop_safe = 0
+    while current_va_vol < target_vol and loop_safe < levels_count
+        loop_safe += 1
+        vol_up = (va_up < levels_count - 1) ? array.get(vol_dist, va_up + 1) : 0.0
+        vol_down = (va_down > 0) ? array.get(vol_dist, va_down - 1) : 0.0
+        if vol_up == 0 and vol_down == 0
+            break
+        if vol_up >= vol_down
+            current_va_vol += vol_up
+            va_up := math.min(va_up + 1, levels_count - 1)
+        else
+            current_va_vol += vol_down
+            va_down := math.max(va_down - 1, 0)
+
+    // --- VISUALIZATION ---
+    
+    // Clear Future Objects
+    if is_future
+        if array.size(future_boxes) > 0
+            for bx in future_boxes
+                box.delete(bx)
+            array.clear(future_boxes)
+        if array.size(future_labels) > 0
+            for lbl in future_labels
+                label.delete(lbl)
+            array.clear(future_labels)
+        if array.size(future_lines) > 0
+            for ln in future_lines
+                line.delete(ln)
+            array.clear(future_lines)
+
+    int axis_x = start_idx
+    int buyer_axis_x = axis_x + profile_gap
+    int seller_axis_x = axis_x - profile_gap
+    int total_width = math.max(1, end_idx - start_idx)
+    int profile_max_width = math.round(total_width * box_width)
+    int hvn_lvn_left = seller_axis_x - profile_max_width
+    int hvn_lvn_right = buyer_axis_x + profile_max_width
+
+    if show_htf_plot_candle
+        color htf_candle_color = s_close >= s_open ? col_bull : col_bear
+        color body_color = htf_candle_color
+        color wick_color = htf_candle_color
+        
+        if is_future
+            ln_up = line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
+            ln_dn = line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
+            ln_body = line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=6)
+            array.push(future_lines, ln_up)
+            array.push(future_lines, ln_dn)
+            array.push(future_lines, ln_body)
+        else
+            line.new(axis_x, math.max(s_open, s_close), axis_x, s_high, color=wick_color, width=2)
+            line.new(axis_x, s_low, axis_x, math.min(s_open, s_close), color=wick_color, width=2)
+            line.new(axis_x, math.min(s_open, s_close), axis_x, math.max(s_open, s_close), color=body_color, width=6)
+
+    // Draw Frame Boundary Box between Candle & Volume Profile
+    if profile_gap > 0
+        color frame_border_col = color.new(col_poc, 60)
+        color frame_bg_col = color.new(dark, 92)
+        if is_future
+            bx_frame_r = box.new(axis_x, s_high, buyer_axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            bx_frame_l = box.new(seller_axis_x, s_high, axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            array.push(future_boxes, bx_frame_r)
+            array.push(future_boxes, bx_frame_l)
+        else
+            box.new(axis_x, s_high, buyer_axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+            box.new(seller_axis_x, s_high, axis_x, s_low, border_color=frame_border_col, bgcolor=frame_bg_col, border_style=line.style_solid, border_width=1)
+
+    // 2. Draw Volume Profile Boxes
+    if show_volume_profile
+        color axis_col = color.new(gray, 70)
+        if is_future
+            bx_axis_b = box.new(buyer_axis_x, s_high, buyer_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            bx_axis_s = box.new(seller_axis_x, s_high, seller_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            array.push(future_boxes, bx_axis_b)
+            array.push(future_boxes, bx_axis_s)
+        else
+            box.new(buyer_axis_x, s_high, buyer_axis_x, s_low, border_color=axis_col, bgcolor=na)
+            box.new(seller_axis_x, s_high, seller_axis_x, s_low, border_color=axis_col, bgcolor=na)
+
+        // Calculate average level volume for seller and buyer
+        float total_buy_vol = 0.0
+        float total_sell_vol = 0.0
+        for i = 0 to levels_count - 1
+            total_buy_vol += array.get(buy_dist, i)
+            total_sell_vol += math.max(0.0, array.get(vol_dist, i) - array.get(buy_dist, i))
+        float avg_buy_level_vol = total_buy_vol / levels_count
+        float avg_sell_level_vol = total_sell_vol / levels_count
+
+        for i = 0 to levels_count - 1
+            vol_val = array.get(vol_dist, i)
+            if vol_val > 0
+                buy_val = array.get(buy_dist, i)
+                sell_val = math.max(0.0, vol_val - buy_val)
+                level_low = s_low + (step * i)
+                level_high = s_low + (step * (i + 1))
+                level_mid = (level_high + level_low) / 2
+                
+                float buy_width_ratio = max_vol > 0 ? buy_val / max_vol : 0
+                float sell_width_ratio = max_vol > 0 ? sell_val / max_vol : 0
+                
+                int buy_line_len = buy_val > 0 ? math.max(1, math.round(buy_width_ratio * total_width * box_width)) : 0
+                int sell_line_len = sell_val > 0 ? math.max(1, math.round(sell_width_ratio * total_width * box_width)) : 0
+                
+                int x_buy_1 = buyer_axis_x
+                int x_buy_2 = buyer_axis_x + buy_line_len
+                
+                int x_sell_1 = seller_axis_x - sell_line_len
+                int x_sell_2 = seller_axis_x
+                
+                bool in_va = i >= va_down and i <= va_up
+                
+                // Color formatting with multi-stage alpha for buyer profile
+                float alpha_ratio_buy = math.pow(buy_width_ratio, 0.5)
+                int t_alpha_buy = math.round(96 - (alpha_ratio_buy * 86))
+                color final_col_buy = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_buy) : color.new(col_bull, t_alpha_buy)
+                
+                // Color formatting with multi-stage alpha for seller profile
+                float alpha_ratio_sell = math.pow(sell_width_ratio, 0.5)
+                int t_alpha_sell = math.round(96 - (alpha_ratio_sell * 86))
+                color final_col_sell = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_sell) : color.new(col_bear, t_alpha_sell)
+                
+                // Text Volume Labels
+                string txt_vol_buy = (show_buy_sell_volume and buy_width_ratio > 0.15) ? str.tostring(math.round(buy_val)) : ""
+                string txt_vol_sell = (show_buy_sell_volume and sell_width_ratio > 0.15) ? str.tostring(math.round(sell_val)) : ""
+                
+                // LVN Identification (Local minima & below threshold based on total volume)
+                bool is_lvn = false
+                if show_lvn and i > 0 and i < levels_count - 1
+                    v_prev = array.get(vol_dist, i - 1)
+                    v_next = array.get(vol_dist, i + 1)
+                    if vol_val < v_prev and vol_val < v_next and vol_val < max_vol * (lvn_threshold / 100.0)
+                        is_lvn := true
+
+                // HVN Identification (Local maxima & above threshold, excluding POC)
+                bool is_hvn = false
+                if show_hvn and i > 0 and i < levels_count - 1 and i != poc_idx
+                    v_prev = array.get(vol_dist, i - 1)
+                    v_next = array.get(vol_dist, i + 1)
+                    if vol_val > v_prev and vol_val > v_next and vol_val > max_vol * (hvn_threshold / 100.0)
+                        is_hvn := true
+
+                // Large Volume Identification
+                bool is_large_vol_buy = show_large_vol and buy_val > avg_buy_level_vol * large_vol_mult
+                color lv_border_color_buy = na
+                int lv_border_width_buy = 0
+                string lv_border_style_buy = line.style_solid
+                if is_large_vol_buy
+                    lv_border_color_buy := col_bull
+                    lv_border_width_buy := 2
+                    lv_border_style_buy := line.style_solid
+                    
+                bool is_large_vol_sell = show_large_vol and sell_val > avg_sell_level_vol * large_vol_mult
+                color lv_border_color_sell = na
+                int lv_border_width_sell = 0
+                string lv_border_style_sell = line.style_solid
+                if is_large_vol_sell
+                    lv_border_color_sell := col_bear
+                    lv_border_width_sell := 2
+                    lv_border_style_sell := line.style_solid
+
+                int badge_width = math.max(2, math.round(total_width * 0.08))
+                int left_badge_x1 = hvn_lvn_left - badge_width
+                int left_badge_x2 = hvn_lvn_left
+                int right_badge_x1 = hvn_lvn_right
+                int right_badge_x2 = hvn_lvn_right + badge_width
+                color badge_bg = color.new(dark, 30)
+
+                if is_future
+                    if is_lvn
+                        color lvn_col = color.new(col_bear, 20)
+                        bx_lvn_r = box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        ln_lvn = line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        array.push(future_boxes, bx_lvn_r)
+                        array.push(future_lines, ln_lvn)
+                    if is_hvn
+                        color hvn_col = color.new(col_bull, 20)
+                        bx_hvn_r = box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        ln_hvn = line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                        array.push(future_boxes, bx_hvn_r)
+                        array.push(future_lines, ln_hvn)
+                    if buy_val > 0
+                        bx_vol_buy = box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+                        array.push(future_boxes, bx_vol_buy)
+                    if sell_val > 0
+                        bx_vol_sell = box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+                        array.push(future_boxes, bx_vol_sell)
+                else
+                    if is_lvn
+                        color lvn_col = color.new(col_bear, 20)
+                        box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=lvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="LVN", text_color=lvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                    if is_hvn
+                        color hvn_col = color.new(col_bull, 20)
+                        box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        line.new(axis_x, level_mid, right_badge_x1, level_mid, color=color.new(col_poc, 50), width=1, style=line.style_dotted)
+                    if buy_val > 0
+                        box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+                    if sell_val > 0
+                        box.new(x_sell_1, level_high, x_sell_2, level_low, border_color=lv_border_color_sell, border_width=lv_border_width_sell, border_style=lv_border_style_sell, bgcolor=final_col_sell, text=txt_vol_sell, text_size=size.auto, text_color=dark, text_valign=text.align_center)
+
+        // 3. Draw Extended POC & VAH/VAL Boxes
+        float poc_price = s_low + (step * (poc_idx + 0.5))
+        float vah_price = s_low + (step * (va_up + 1))
+        float val_price = s_low + (step * va_down)
+        
+        int badge_width = math.max(2, math.round(total_width * 0.08))
+        int left_badge_x1 = hvn_lvn_left - badge_width
+        int left_badge_x2 = hvn_lvn_left
+        int right_badge_x1 = hvn_lvn_right
+        int right_badge_x2 = hvn_lvn_right + badge_width
+        color badge_bg = color.new(dark, 30)
+
+        if is_future
+            // POC
+            bx_p_r = box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            ln_poc = line.new(axis_x, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
+            array.push(future_boxes, bx_p_r)
+            array.push(future_lines, ln_poc)
+            
+            // VAH
+            bx_vh_r = box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            ln_vah = line.new(axis_x, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
+            array.push(future_boxes, bx_vh_r)
+            array.push(future_lines, ln_vah)
+
+            // VAL
+            bx_vl_r = box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            ln_val = line.new(axis_x, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
+            array.push(future_boxes, bx_vl_r)
+            array.push(future_lines, ln_val)
+        else
+            // POC
+            box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            line.new(axis_x, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_dashed)
+            
+            // VAH
+            box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            line.new(axis_x, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
+
+            // VAL
+            box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+            line.new(axis_x, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
+
+    // Draw HTF candle Delta and Delta Percentage Labels
+    if show_delta
+        float delta_val = s_buy_vol - s_sell_vol
+        float delta_pct = s_vol > 0 ? (delta_val / s_vol) * 100.0 : 0.0
+        string d_text = (delta_val >= 0 ? "+" : "") + str.tostring(math.round(delta_val)) + "\n(" + str.tostring(delta_pct, "#.##") + "%)"
+        color d_color = delta_val >= 0 ? col_bull : col_bear
+        string label_style = delta_val >= 0 ? label.style_label_up : label.style_label_down
+        float d_price = delta_val >= 0 ? s_low : s_high
+        
+        if is_future
+            lbl_delta = label.new(axis_x, d_price, d_text, style=label_style, color=color.new(dark, 100), textcolor=d_color, size=size.normal)
+            array.push(future_labels, lbl_delta)
+        else
+            label.new(axis_x, d_price, d_text, style=label_style, color=color.new(dark, 100), textcolor=d_color, size=size.normal)
+
+    [s_high, s_low, s_open, s_close, s_vol, s_buy_vol, s_sell_vol, float(poc_idx), max_vol]
+
+//════════════════════════════════════════════════════════════════════════
+// MAIN LOOP
+//════════════════════════════════════════════════════════════════════════
+
+if bar_index == 0
+    htf_start_bar_index := 0
+
+if is_new_htf
+    if (bar_index - 1) >= htf_start_bar_index
+        draw_htf_profile(htf_start_bar_index, bar_index - 1, false)
+    htf_start_bar_index := bar_index
+
+if barstate.islast
+    [c_h, c_l, c_o, c_c, c_v, c_bv, c_sv, c_poc, c_mv] = draw_htf_profile(htf_start_bar_index, bar_index, true)
+    
+    // Countdown Calculation
+    int htf_end = time_close(htf_timeframe)
+    if na(htf_end)
+        int htf_duration_ms = f_tf_to_ms(htf_timeframe)
+        htf_end := time(htf_timeframe) + htf_duration_ms
+    int remaining_ms = math.max(0, htf_end - timenow)
+    int total_minutes = math.ceil(remaining_ms / 60000)
+    
+    // Time conversion constants in minutes
+    int min_per_hour  = 60
+    int min_per_day   = 1440
+    int min_per_week  = 10080
+    int min_per_month = 43200     // 30 days
+    int min_per_year  = 525600    // 365 days
+
+    int years   = math.floor(total_minutes / min_per_year)
+    int temp_yr = total_minutes % min_per_year
+    
+    int months  = math.floor(temp_yr / min_per_month)
+    int temp_mo = temp_yr % min_per_month
+    
+    int weeks   = math.floor(temp_mo / min_per_week)
+    int temp_wk = temp_mo % min_per_week
+    
+    int days    = math.floor(temp_wk / min_per_day)
+    int temp_dy = temp_wk % min_per_day
+    
+    int hours   = math.floor(temp_dy / min_per_hour)
+    int minutes = temp_dy % min_per_hour
+
+    string countdown_str = ""
+    int units_added = 0
+
+    if years > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(years) + " year "
+        units_added := units_added + 1
+    if months > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(months) + " month "
+        units_added := units_added + 1
+    if weeks > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(weeks) + " week "
+        units_added := units_added + 1
+    if days > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(days) + " day "
+        units_added := units_added + 1
+    if hours > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(hours) + " H "
+        units_added := units_added + 1
+    if minutes > 0 and units_added < 2
+        countdown_str := countdown_str + str.tostring(minutes) + " minute "
+        units_added := units_added + 1
+
+    if countdown_str == ""
+        countdown_str := "0 minute"
+    else
+        countdown_str := str.trim(countdown_str)
+
+    // Info Table
+    if show_buy_sell_volume
+        var table info_table = table.new(position.top_right, 2, 6, bgcolor=color.new(dark, 100), border_width=1)
+        c_delta = c_bv - c_sv
+        table.cell(info_table, 0, 0, "MTF Flow (Realtime)", text_color=white, bgcolor=color.new(col_poc, 90))
+        table.cell(info_table, 1, 0, htf_timeframe, text_color=white, bgcolor=color.new(col_poc, 90))
+        table.cell(info_table, 0, 1, "Next HTF Bar", text_color=color_text, bgcolor=get_table_bg(0, 1, 2, 6))
+        table.cell(info_table, 1, 1, countdown_str, text_color=white, bgcolor=get_table_bg(1, 1, 2, 6))
+        table.cell(info_table, 0, 2, "Buy Vol", text_color=color_text, bgcolor=get_table_bg(0, 2, 2, 6))
+        table.cell(info_table, 1, 2, str.tostring(math.round(c_bv)), text_color=col_bull, bgcolor=get_table_bg(1, 2, 2, 6))
+        table.cell(info_table, 0, 3, "Sell Vol", text_color=color_text, bgcolor=get_table_bg(0, 3, 2, 6))
+        table.cell(info_table, 1, 3, str.tostring(math.round(c_sv)), text_color=col_bear, bgcolor=get_table_bg(1, 3, 2, 6))
+        table.cell(info_table, 0, 4, "Delta", text_color=color_text, bgcolor=get_table_bg(0, 4, 2, 6))
+        table.cell(info_table, 1, 4, str.tostring(math.round(c_delta)), text_color=c_delta > 0 ? col_bull : col_bear, bgcolor=get_table_bg(1, 4, 2, 6))
+        table.cell(info_table, 0, 5, "Total Vol", text_color=color_text, bgcolor=get_table_bg(0, 5, 2, 6))
+        table.cell(info_table, 1, 5, str.tostring(math.round(c_v)), text_color=white, bgcolor=get_table_bg(1, 5, 2, 6))
+
+// LTF CANDLES
+[b_vol, s_vol] = get_buy_sell_vol(volume, open, high, low, close)
+ltf_delta = b_vol - s_vol
+bool ltf_candle_bull = close > open
+bool ltf_candle_bear = close < open
+rsi_chart = ta.rsi(close, 14)
+k_chart = ta.sma(ta.stoch(rsi_chart, rsi_chart, rsi_chart, 14), 3)
+d_chart = ta.sma(k_chart, 3)
+overbought_chart = k_chart > 76 and d_chart > 76
+oversold_chart = k_chart < 24 and d_chart < 24
+
+col_candle_s_rsi = oversold_chart ? col_bull : overbought_chart ? col_bear : col_poc
+trans_col_candle_s_rsi = oversold_chart ? box_col_bull : overbought_chart ? box_col_bear : mitigated_box_color
+col_candle_regular = ltf_candle_bull ? col_bull : col_bear
+trans_col_candle_regular = ltf_candle_bull ? box_col_bull : box_col_bear
+col_candle_delta = ltf_delta >= 0 ? col_bull : col_bear
+trans_col_candle_delta = ltf_delta >= 0 ? box_col_bull : box_col_bear
+col_candle_ema = close > custom_ema ? col_bull : col_bear
+trans_col_candle_ema = close > custom_ema ? box_col_bull : box_col_bear
+
+if show_ltf_plot_candle and type_ltf_plot_candle == 'Custom Candles'
+    use_col_solid = type_ltf_color_candle == 'Based Stochastic RSI' ? col_candle_s_rsi : type_ltf_color_candle == 'Based Delta' ? col_candle_delta : type_ltf_color_candle == 'Based EMA' ? col_candle_ema : col_candle_regular
+    use_col_trans = type_ltf_color_candle == 'Based Stochastic RSI' ? trans_col_candle_s_rsi : type_ltf_color_candle == 'Based Delta' ? trans_col_candle_delta : type_ltf_color_candle == 'Based EMA' ? trans_col_candle_ema : trans_col_candle_regular
+    box.new(bar_index, high, bar_index + 1, low, border_color = use_col_solid, bgcolor = use_col_trans, border_width = 1)
+    box.new(bar_index, open, bar_index + 1, close, border_color = use_col_solid, bgcolor = use_col_trans, border_width = 1)
+
+color col_body_final = na
+color col_wick_final = na
+bool show_candle_plot = show_ltf_plot_candle and type_ltf_plot_candle == 'Regular Candles'
+
+if show_candle_plot
+    col_wick_final := type_ltf_color_candle == 'Based Stochastic RSI' ? col_candle_s_rsi : type_ltf_color_candle == 'Based Delta' ? col_candle_delta : type_ltf_color_candle == 'Based EMA' ? col_candle_ema : col_candle_regular
+    col_body_final := type_ltf_color_candle == 'Based Stochastic RSI' ? trans_col_candle_s_rsi : type_ltf_color_candle == 'Based Delta' ? trans_col_candle_delta : type_ltf_color_candle == 'Based EMA' ? trans_col_candle_ema : trans_col_candle_regular
+
+plotcandle(open, high, low, close, color = col_body_final, wickcolor = col_wick_final, bordercolor = col_wick_final, title = 'Plot Candle')
+
+//═══════════════════════════════════════════════════════════════════════════════
+// LOGO GRADIENT ENHANCED - TOTAL SYNC (LINES & FILL)
+//═══════════════════════════════════════════════════════════════════════════════
+
+color bull_c1 = col_bull
+color bull_c2 = col_bear
+color bear_c1 = col_bull
+color bear_c2 = col_bear
+
+// --- 2. LOGIKA ANIMASI & TREND ---
+bool  trend_check = ta.ema(close, 2) > ta.ema(open, 2) 
+color c_start     = trend_check ? bull_c1 : bear_c1
+color c_end       = trend_check ? bull_c2 : bear_c2
+
+// Animasi "Breathing"
+float time_cycle = timenow / 1000 
+float breathe    = (math.sin(time_cycle * 3) + 1) / 2 
+
+int LG_Line_Widthb = 1
+int periodb        = 200
+
+// --- 3. PERHITUNGAN TITIK STABIL (VOLATILITY & RANGE SYNC) ---
+float logo_base_raw = ta.lowest(low, periodb)
+float logo_range    = ta.highest(high, periodb) - logo_base_raw
+var float h_unit    = na
+
+// Calculate a stable height unit based on a mix of ATR and recent range
+float target_h = math.max(ta.atr(periodb) * 1.5, logo_range * 0.22)
+h_unit := na(h_unit) ? target_h : h_unit * 0.98 + target_h * 0.02
+
+// Offset the logo slightly below the lowest low to prevent price overlap
+float logo_base = logo_base_raw - h_unit * 0.2
+
+// Normalized points to ensure the logo never "squishes" or "stretches" disproportionately
+float point1b  = logo_base + h_unit * 0.71
+float point2b  = logo_base + h_unit * 0.43
+float point3b  = logo_base + h_unit * 0.61
+float point4b  = logo_base + h_unit * 0.32
+float point5b  = logo_base + h_unit * 1.00 // Peak
+float point6b  = logo_base + h_unit * 0.71
+float point7b  = logo_base + h_unit * 0.18 // Base Top
+float point8b  = logo_base + h_unit * 0.21
+float point9b  = logo_base + h_unit * 0.71
+float point1b0 = logo_base + h_unit * 0.86
+
+// Logo Visual Objects
+var line Line1b  = na
+var line Line2b  = na
+var line Line3b  = na
+var line Line4b  = na
+var line Line5b  = na
+var line Line6b  = na
+var line Line7b  = na
+var line Line8b  = na
+var line Line9b  = na
+var line Line1b0 = na
+var line Line1b1 = na
+var line Line1b2 = na
+var line Line1b3 = na
+var line Line1b4 = na
+var line Line1b5 = na
+var line Line1b6 = na
+var line Line1b7 = na
+var line Line1b8 = na
+var label[] brand_labels = array.new<label>()
+
+// Hapus Garis Sebelumnya
+if not na(Line1b)
+    line.delete(Line1b)
+    line.delete(Line2b)
+    line.delete(Line3b)
+    line.delete(Line4b)
+    line.delete(Line5b)
+    line.delete(Line6b)
+    line.delete(Line7b)
+    line.delete(Line8b)
+    line.delete(Line9b)
+    line.delete(Line1b0)
+    line.delete(Line1b1)
+    line.delete(Line1b2)
+    line.delete(Line1b3)
+    line.delete(Line1b4)
+    line.delete(Line1b5)
+    line.delete(Line1b6)
+    line.delete(Line1b7)
+    line.delete(Line1b8)
+    while array.size(brand_labels) > 0
+        label.delete(array.pop(brand_labels))
+
+// --- FUNGSI WARNA ---
+get_adv_color(step) => 
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15) 
+    if dynamic_ratio > 1
+        dynamic_ratio := 1
+    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+
+get_fade_alpha(float x_rel) =>
+    float dist = math.abs(x_rel - 32)
+    float ratio = dist / 32.0
+    math.round(80 * (1 - ratio))
+
+// --- PEMBUATAN GARIS (HANYA JIKA SHOW_LOGO AKTIF) ---
+if show_logo and barstate.islast
+    color c_head_sync = get_adv_color(1)
+
+    Line1b := line.new(x1 = bar_index + l_off + 4, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line2b := line.new(x1 = bar_index + l_off + 8, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, get_fade_alpha(7.5)))
+
+    Line3b := line.new(x1 = bar_index + l_off + 11, y1 = point1b, x2 = bar_index + l_off + 13, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line4b := line.new(x1 = bar_index + l_off + 11, y1 = point2b, x2 = bar_index + l_off + 13, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), get_fade_alpha(12.0)))
+
+    Line5b := line.new(x1 = bar_index + l_off + 13, y1 = point3b, x2 = bar_index + l_off + 19, y2 = point5b, color = col_poc, width = LG_Line_Widthb)
+    Line6b := line.new(x1 = bar_index + l_off + 13, y1 = point4b, x2 = bar_index + l_off + 19, y2 = point6b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), get_fade_alpha(16.0)))
+
+    Line7b := line.new(x1 = bar_index + l_off + 19, y1 = point5b, x2 = bar_index + l_off + 24, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line8b := line.new(x1 = bar_index + l_off + 19, y1 = point6b, x2 = bar_index + l_off + 24, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), get_fade_alpha(21.5)))
+
+    Line9b := line.new(x1 = bar_index + l_off + 24, y1 = point3b, x2 = bar_index + l_off + 26, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line1b0 := line.new(x1 = bar_index + l_off + 24, y1 = point4b, x2 = bar_index + l_off + 26, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), get_fade_alpha(25.0)))
+
+    Line1b1 := line.new(x1 = bar_index + l_off + 26, y1 = point1b, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b2 := line.new(x1 = bar_index + l_off + 26, y1 = point2b, x2 = bar_index + l_off + 32, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), get_fade_alpha(31.0)))
+
+    // --- BAGIAN BASE HORIZONTAL (TOTAL SYNC) ---
+    Line1b3 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 26, y2 = point7b, color = col_poc, width = LG_Line_Widthb)
+    Line1b4 := line.new(x1 = bar_index + l_off + 0, y1 = logo_base, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, get_fade_alpha(13.0))) 
+
+    // Tutup Depan & Belakang Base
+    Line1b5 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 0, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b6 := line.new(x1 = bar_index + l_off + 26, y1 = point7b, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    // Ekor Tambahan & Label (Extended for wider text)
+    Line1b7 := line.new(x1 = bar_index + l_off + 32, y1 = logo_base, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    
+    label l = label.new(bar_index + l_off + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤" + "\nMTF FOOTPRINTS V2.18", text_formatting = text.format_bold, style=label.style_none, textcolor=col_poc, size=size.normal, textalign = text.align_left)
+    array.push(brand_labels, l)
+
+    // --- LOGO GLOW ---
+    label glow1 = label.new(bar_index + l_off + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
+    label glow2 = label.new(bar_index + l_off + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc, size=size.huge)
+    array.push(brand_labels, glow1)
+    array.push(brand_labels, glow2)
