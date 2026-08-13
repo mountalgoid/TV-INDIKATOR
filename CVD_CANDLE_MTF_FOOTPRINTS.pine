@@ -1,0 +1,161 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © MLTFX
+//@version=6
+indicator("CVD Candle MTF Footprints 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitle="CVD Candles 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", overlay=false)
+
+// -----------------------------------------------------------------------------
+// GROUP & INPUTS
+// -----------------------------------------------------------------------------
+GlobalGroup = "Visual Themes & Global"
+color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup)
+
+// Colors
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+
+col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    => blue
+col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    => white
+
+// CVD Calculation Config
+CVDGroup = "CVD Configuration"
+cvd_source = input.string("LTF (1-minute)", "CVD Volume Partitioning Source", options=["Chart Timeframe", "LTF (1-minute)"], group=CVDGroup)
+show_bb = input.bool(true, "Show Bollinger Bands on CVD", group=CVDGroup)
+bb_length = input.int(20, "Bollinger Bands Length", minval=2, group=CVDGroup)
+bb_mult = input.float(2.0, "Bollinger Bands StdDev Multiplier", minval=0.1, group=CVDGroup)
+
+// Helper partitioning function
+get_buy_sell_vol(v, o, h, l, c) =>
+    range_size = h - l
+    float b_vol = 0.0
+    float s_vol = 0.0
+    if range_size > 0
+        float b_high = math.max(o, c)
+        float b_low  = math.min(o, c)
+        float body_size = b_high - b_low
+        float upper_wick = h - b_high
+        float lower_wick = b_low - l
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (o + c) / 2
+        float body_pos = (b_center - l) / range_size
+        float br_b = c > o ? math.min(0.9, 0.6 + body_pos * 0.3) : (c < o ? math.max(0.1, 0.4 - (1.0 - body_pos) * 0.3) : 0.5)
+
+        b_vol := v * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := v * (w_body * (1.0 - br_b) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := v * 0.5
+        s_vol := v * 0.5
+    [b_vol, s_vol]
+
+// Running CVD logic
+var float current_cvd = 0.0
+
+float cvd_open = na
+float cvd_high = na
+float cvd_low = na
+float cvd_close = na
+
+if cvd_source == "LTF (1-minute)"
+    // Request lower timeframe 1-minute data arrays
+    type ltf_candle
+        float o
+        float h
+        float l
+        float c
+        float v
+
+    ltf_os = request.security_lower_tf(syminfo.tickerid, "1", open)
+    ltf_hs = request.security_lower_tf(syminfo.tickerid, "1", high)
+    ltf_ls = request.security_lower_tf(syminfo.tickerid, "1", low)
+    ltf_cs = request.security_lower_tf(syminfo.tickerid, "1", close)
+    ltf_vs = request.security_lower_tf(syminfo.tickerid, "1", volume)
+
+    int num_sub_candles = array.size(ltf_vs)
+    if num_sub_candles > 0
+        cvd_open := current_cvd
+        float max_cvd = -1.0e15
+        float min_cvd = 1.0e15
+
+        for idx = 0 to num_sub_candles - 1
+            float sub_o = array.get(ltf_os, idx)
+            float sub_h = array.get(ltf_hs, idx)
+            float sub_l = array.get(ltf_ls, idx)
+            float sub_c = array.get(ltf_cs, idx)
+            float sub_v = array.get(ltf_vs, idx)
+
+            [b_v, s_v] = get_buy_sell_vol(sub_v, sub_o, sub_h, sub_l, sub_c)
+            float sub_delta = b_v - s_v
+            current_cvd += sub_delta
+
+            max_cvd := math.max(max_cvd, current_cvd)
+            min_cvd := math.min(min_cvd, current_cvd)
+
+        cvd_high := max_cvd
+        cvd_low := min_cvd
+        cvd_close := current_cvd
+    else
+        // Fallback to chart timeframe partitioning
+        [b_v, s_v] = get_buy_sell_vol(volume, open, high, low, close)
+        float cur_delta = b_v - s_v
+        cvd_open := current_cvd
+        current_cvd += cur_delta
+        cvd_high := math.max(cvd_open, current_cvd)
+        cvd_low := math.min(cvd_open, current_cvd)
+        cvd_close := current_cvd
+else
+    // Pure chart timeframe partitioning
+    [b_v, s_v] = get_buy_sell_vol(volume, open, high, low, close)
+    float cur_delta = b_v - s_v
+    cvd_open := current_cvd
+    current_cvd += cur_delta
+    cvd_high := math.max(cvd_open, current_cvd)
+    cvd_low := math.min(cvd_open, current_cvd)
+    cvd_close := current_cvd
+
+// -----------------------------------------------------------------------------
+// PLOT CANDLES
+// -----------------------------------------------------------------------------
+color candle_col = cvd_close >= cvd_open ? col_bull : col_bear
+plotcandle(cvd_open, cvd_high, cvd_low, cvd_close, "CVD Candle", color=candle_col, wickcolor=candle_col, bordercolor=candle_col)
+
+// Bollinger Bands Overlay
+[bb_mid, bb_upper, bb_lower] = ta.bb(cvd_close, bb_length, bb_mult)
+plot(show_bb ? bb_mid : na, color=color.new(white, 40), title="CVD BB Basis")
+plot(show_bb ? bb_upper : na, color=color.new(col_bull, 60), title="CVD BB Upper")
+plot(show_bb ? bb_lower : na, color=color.new(col_bear, 60), title="CVD BB Lower")
