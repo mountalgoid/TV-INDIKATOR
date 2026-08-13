@@ -1051,9 +1051,9 @@ if show_sr_footprints and array.size(htf_sr_levels) > 0
     for i = array.size(htf_sr_levels) - 1 to 0
         SRLevel item = array.get(htf_sr_levels, i)
         if item.active
-            // Keep S/R lines and label markers aligned with HTF candle only
-            // line.set_x2(item.ln, bar_index + 30)
-            // label.set_x(item.lbl, bar_index + 30)
+            // Extend the active S/R lines and label markers to the current bar
+            line.set_x2(item.ln, bar_index)
+            label.set_x(item.lbl, bar_index)
 
             // Dynamic mitigation checking:
             // Support: mitigated when current low drops below support price
@@ -1067,14 +1067,14 @@ if show_sr_footprints and array.size(htf_sr_levels) > 0
             if is_mitigated
                 if keep_mitigated_sr
                     item.active := false
-                    // Keep S/R lines and label markers aligned with HTF candle only
-                    // line.set_x2(item.ln, bar_index)
+                    // Freeze the line at the exact mitigation bar (exactly on the HTF candle that mitigates it)
+                    line.set_x2(item.ln, bar_index)
                     line.set_color(item.ln, mitigated_sr_color)
                     line.set_style(item.ln, line.style_dotted)
                     line.set_width(item.ln, mitigated_sr_width)
 
-                    // Keep label position and adjust visual formatting
-                    // label.set_x(item.lbl, bar_index)
+                    // Freeze label position and adjust visual formatting
+                    label.set_x(item.lbl, bar_index)
                     label.set_textcolor(item.lbl, mitigated_sr_color)
                     label.set_text(item.lbl, (item.is_support ? "S X" : "R X") + "\n" + str.tostring(item.price, format.mintick))
 
