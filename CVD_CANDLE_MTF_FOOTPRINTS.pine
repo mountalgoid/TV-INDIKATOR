@@ -93,13 +93,6 @@ float cvd_close = na
 
 if cvd_source == "LTF (1-minute)"
     // Request lower timeframe 1-minute data arrays
-    type ltf_candle
-        float o
-        float h
-        float l
-        float c
-        float v
-
     ltf_os = request.security_lower_tf(syminfo.tickerid, "1", open)
     ltf_hs = request.security_lower_tf(syminfo.tickerid, "1", high)
     ltf_ls = request.security_lower_tf(syminfo.tickerid, "1", low)
