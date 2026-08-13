@@ -189,6 +189,19 @@ get_table_bg(int c, int r, int total_c, int total_r) =>
     int t_alpha = math.round(50 + ratio * 40)
     color.new(base, t_alpha)
 
+format_vol(float v) =>
+    float abs_v = math.abs(v)
+    string res = ""
+    if abs_v >= 1000000000
+        res := str.tostring(v / 1000000000, "#.##") + "B"
+    else if abs_v >= 1000000
+        res := str.tostring(v / 1000000, "#.##") + "M"
+    else if abs_v >= 1000
+        res := str.tostring(v / 1000, "#.#") + "K"
+    else
+        res := str.tostring(v, "0.##")
+    res
+
 f_tf_to_ms(tf) =>
     if tf == "D" or tf == "1D"
         86400000
@@ -562,8 +575,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     int t_alpha_sell = math.round(96 - (alpha_ratio_sell * 86))
                     final_col_sell := is_sell_imbalance ? color.new(col_imb_sell, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_sell) : color.new(col_bear, t_alpha_sell))
 
-                    txt_vol_buy := (show_buy_sell_volume and (buy_width_ratio > 0.15 or is_buy_imbalance)) ? (is_buy_imbalance ? "*" + str.tostring(math.round(buy_val)) + "*" : str.tostring(math.round(buy_val))) : ""
-                    txt_vol_sell := (show_buy_sell_volume and (sell_width_ratio > 0.15 or is_sell_imbalance)) ? (is_sell_imbalance ? "*" + str.tostring(math.round(sell_val)) + "*" : str.tostring(math.round(sell_val))) : ""
+                    txt_vol_buy := (show_buy_sell_volume and (buy_width_ratio > 0.15 or is_buy_imbalance)) ? (is_buy_imbalance ? "*" + format_vol(buy_val) + "*" : format_vol(buy_val)) : ""
+                    txt_vol_sell := (show_buy_sell_volume and (sell_width_ratio > 0.15 or is_sell_imbalance)) ? (is_sell_imbalance ? "*" + format_vol(sell_val) + "*" : format_vol(sell_val)) : ""
 
                 else if footprint_type == "Delta Footprint"
                     float delta_val = buy_val - sell_val
@@ -575,12 +588,12 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         buy_width_ratio := abs_delta_ratio
                         sell_width_ratio := 0.0
                         final_col_buy := is_buy_imbalance ? color.new(col_imb_buy, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha) : color.new(col_bull, t_alpha))
-                        txt_vol_buy := (show_buy_sell_volume and (abs_delta_ratio > 0.15 or is_buy_imbalance)) ? (is_buy_imbalance ? "*" + str.tostring(math.round(delta_val)) + "*" : str.tostring(math.round(delta_val))) : ""
+                        txt_vol_buy := (show_buy_sell_volume and (abs_delta_ratio > 0.15 or is_buy_imbalance)) ? (is_buy_imbalance ? "*" + format_vol(delta_val) + "*" : format_vol(delta_val)) : ""
                     else
                         buy_width_ratio := 0.0
                         sell_width_ratio := abs_delta_ratio
                         final_col_sell := is_sell_imbalance ? color.new(col_imb_sell, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha) : color.new(col_bear, t_alpha))
-                        txt_vol_sell := (show_buy_sell_volume and (abs_delta_ratio > 0.15 or is_sell_imbalance)) ? (is_sell_imbalance ? "*" + str.tostring(math.round(delta_val)) + "*" : str.tostring(math.round(delta_val))) : ""
+                        txt_vol_sell := (show_buy_sell_volume and (abs_delta_ratio > 0.15 or is_sell_imbalance)) ? (is_sell_imbalance ? "*" + format_vol(delta_val) + "*" : format_vol(delta_val)) : ""
 
                 else if footprint_type == "Volume Footprint"
                     buy_width_ratio := max_vol > 0 ? vol_val / max_vol : 0
@@ -595,8 +608,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     final_col_buy := not na(imb_col) ? color.new(imb_col, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha) : color.new(base_col, t_alpha))
                     final_col_sell := not na(imb_col) ? color.new(imb_col, 20) : ((i == poc_idx and show_poc) ? color.new(color_poc, t_alpha) : color.new(base_col, t_alpha))
 
-                    txt_vol_buy := (show_buy_sell_volume and (buy_width_ratio > 0.15 or is_buy_imbalance or is_sell_imbalance)) ? (is_buy_imbalance or is_sell_imbalance ? "*" + str.tostring(math.round(vol_val)) + "*" : str.tostring(math.round(vol_val))) : ""
-                    txt_vol_sell := (show_buy_sell_volume and (sell_width_ratio > 0.15 or is_buy_imbalance or is_sell_imbalance)) ? (is_buy_imbalance or is_sell_imbalance ? "*" + str.tostring(math.round(vol_val)) + "*" : str.tostring(math.round(vol_val))) : ""
+                    txt_vol_buy := (show_buy_sell_volume and (buy_width_ratio > 0.15 or is_buy_imbalance or is_sell_imbalance)) ? (is_buy_imbalance or is_sell_imbalance ? "*" + format_vol(vol_val) + "*" : format_vol(vol_val)) : ""
+                    txt_vol_sell := (show_buy_sell_volume and (sell_width_ratio > 0.15 or is_buy_imbalance or is_sell_imbalance)) ? (is_buy_imbalance or is_sell_imbalance ? "*" + format_vol(vol_val) + "*" : format_vol(vol_val)) : ""
 
                 int buy_line_len = buy_width_ratio > 0 ? math.max(1, math.round(buy_width_ratio * total_width * box_width)) : 0
                 int sell_line_len = sell_width_ratio > 0 ? math.max(1, math.round(sell_width_ratio * total_width * box_width)) : 0
