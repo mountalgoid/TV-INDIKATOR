@@ -147,15 +147,22 @@ update_heat(float target_p, float amount) =>
 // Register Heat
 get_heatmap_color(float s, bool is_long, float level) =>
     float val = math.min(s, 20.0)
-    color c_low  = is_long ? color.new(col_bull, 85) : color.new(col_bear, 85)
-    color c_mid  = is_long ? col_bull : col_bear
+
+    // Adaptive theme-integrated gradient colors:
+    // Low strength: highly saturated dark/shadow version of the active theme color (col_bull/col_bear mixed with black)
+    // Mid strength: pure theme color (col_bull/col_bear)
+    // High strength: brilliant white/hotspot highlight (col_poc)
+    color t_col  = is_long ? col_bull : col_bear
+    color c_low  = color.from_gradient(25, 0, 100, dark, t_col)
+    color c_mid  = t_col
     color c_high = col_poc
+
     color res = val <= 10.0 ? color.from_gradient(val, 1, 10.0, c_low, c_mid) : color.from_gradient(val, 10.0, 20.0, c_mid, c_high)
     
     float q_weight = math.pow(math.max(0, (val - 1.0) * 0.0526315789), 0.8)
-    int base_alpha = math.round((1.0 - q_weight) * 80)
+    int base_alpha = math.round((1.0 - q_weight) * 45) // Enhanced transparency for pristine glass overlays
     float smooth_f = math.pow(math.min(1.0, math.abs(level - close) * inv_fade_range_liq), 2.0)
-    color.new(res, math.round(base_alpha + smooth_f * (80 - base_alpha)))
+    color.new(res, math.round(base_alpha + smooth_f * (100 - base_alpha)))
 
 add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
     float grid_price = math.round(raw_price * inv_liq_step) * liq_step
@@ -176,15 +183,15 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
                     array.push(liq_lines_hist, z.b_ln)
                     array.push(liq_fills_hist, z.f_id)
                     
-                    z.t_ln := line.new(bar_index, z.level + z.step/2, bar_index + 10, z.level + z.step/2, color=na, width=1)
-                    z.b_ln := line.new(bar_index, z.level - z.step/2, bar_index + 10, z.level - z.step/2, color=na, width=1)
+                    z.t_ln := line.new(bar_index, z.level + z.step/2, bar_index + 120, z.level + z.step/2, color=na, width=1)
+                    z.b_ln := line.new(bar_index, z.level - z.step/2, bar_index + 120, z.level - z.step/2, color=na, width=1)
                     z.f_id := linefill.new(z.t_ln, z.b_ln, color=c)
                 found := true
                 break
     if not found
         color c = get_heatmap_color(1, is_long, grid_price)
-        l_t = line.new(bar_idx, grid_price + liq_step/2, bar_index + 10, grid_price + liq_step/2, color=na, width=1)
-        l_b = line.new(bar_idx, grid_price - liq_step/2, bar_index + 10, grid_price - liq_step/2, color=na, width=1)
+        l_t = line.new(bar_idx, grid_price + liq_step/2, bar_index + 120, grid_price + liq_step/2, color=na, width=1)
+        l_b = line.new(bar_idx, grid_price - liq_step/2, bar_index + 120, grid_price - liq_step/2, color=na, width=1)
         f = linefill.new(l_t, l_b, color=c)
         array.push(liq_zones, LiqZone.new(l_t, l_b, f, grid_price, liq_step, 1, is_long, true))
 
@@ -208,8 +215,8 @@ if show_liq_heatmap
                 LiqZone z = array.get(liq_zones, i)
                 bool remove = false
                 if z.active
-                    line.set_x2(z.t_ln, bar_index + 10)
-                    line.set_x2(z.b_ln, bar_index + 10)
+                    line.set_x2(z.t_ln, bar_index + 120)
+                    line.set_x2(z.b_ln, bar_index + 120)
                     linefill.set_color(z.f_id, get_heatmap_color(z.strength, z.is_long_liq, z.level))
                     
                     bool swept = z.is_long_liq ? low <= (z.level + z.step * 0.1) : high >= (z.level - z.step * 0.1)
