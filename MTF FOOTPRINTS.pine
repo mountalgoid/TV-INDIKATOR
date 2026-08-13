@@ -13,6 +13,7 @@ type SRLevel
     bool is_support
     bool active
     int bar_idx
+    bool pending_mitigation
 
 var SRLevel[] htf_sr_levels = array.new<SRLevel>()
 var line[] mitigated_sr_lines = array.new<line>()
@@ -701,11 +702,11 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         if is_support_candidate
                             line ln_sr = line.new(start_idx, level_mid, end_idx, level_mid, color=color.new(col_bull, 30), width=2, style=line.style_solid)
                             label lbl_sr = label.new(end_idx, level_mid, "Footprint SUP\n" + format_vol(active_buy_val), textcolor=col_bull, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
-                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, true, true, bar_index))
+                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, true, true, bar_index, false))
                         if is_resistance_candidate
                             line ln_sr = line.new(start_idx, level_mid, end_idx, level_mid, color=color.new(col_bear, 30), width=2, style=line.style_solid)
                             label lbl_sr = label.new(end_idx, level_mid, "Footprint RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 30))
-                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, false, true, bar_index))
+                            array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, false, true, bar_index, false))
 
         // 3. Draw Extended POC & VAH/VAL Boxes
         float poc_price = s_low + (step * (poc_idx + 0.5))
@@ -778,6 +779,31 @@ if is_new_htf
     if (bar_index - 1) >= htf_start_bar_index
         draw_htf_profile(htf_start_bar_index, bar_index - 1, false)
     htf_start_bar_index := bar_index
+
+    // Finalize pending S/R mitigations exactly at the end of the HTF candle that mitigated them (bar_index - 1)
+    if show_sr_footprints and array.size(htf_sr_levels) > 0
+        for i = array.size(htf_sr_levels) - 1 to 0
+            SRLevel item = array.get(htf_sr_levels, i)
+            if item.active and item.pending_mitigation
+                if keep_mitigated_sr
+                    item.active := false
+                    // Freeze at the last bar of the completed HTF candle that mitigated it
+                    line.set_x2(item.ln, bar_index - 1)
+                    line.set_color(item.ln, mitigated_sr_color)
+                    line.set_style(item.ln, line.style_dotted)
+                    line.set_width(item.ln, mitigated_sr_width)
+
+                    label.set_x(item.lbl, bar_index - 1)
+                    label.set_textcolor(item.lbl, mitigated_sr_color)
+                    label.set_text(item.lbl, (item.is_support ? "S X" : "R X") + "\n" + str.tostring(item.price, format.mintick))
+
+                    array.push(mitigated_sr_lines, item.ln)
+                    array.push(mitigated_sr_labels, item.lbl)
+                    array.remove(htf_sr_levels, i)
+                else
+                    line.delete(item.ln)
+                    label.delete(item.lbl)
+                    array.remove(htf_sr_levels, i)
 
 if barstate.islast
     [c_h, c_l, c_o, c_c, c_v, c_bv, c_sv, c_poc, c_mv] = draw_htf_profile(htf_start_bar_index, bar_index, true)
@@ -1066,22 +1092,7 @@ if show_sr_footprints and array.size(htf_sr_levels) > 0
 
             if is_mitigated
                 if keep_mitigated_sr
-                    item.active := false
-                    // Freeze the line at the exact mitigation bar (exactly on the HTF candle that mitigates it)
-                    line.set_x2(item.ln, bar_index)
-                    line.set_color(item.ln, mitigated_sr_color)
-                    line.set_style(item.ln, line.style_dotted)
-                    line.set_width(item.ln, mitigated_sr_width)
-
-                    // Freeze label position and adjust visual formatting
-                    label.set_x(item.lbl, bar_index)
-                    label.set_textcolor(item.lbl, mitigated_sr_color)
-                    label.set_text(item.lbl, (item.is_support ? "S X" : "R X") + "\n" + str.tostring(item.price, format.mintick))
-
-                    // Move to historical FIFO tracking arrays and remove from active tracking
-                    array.push(mitigated_sr_lines, item.ln)
-                    array.push(mitigated_sr_labels, item.lbl)
-                    array.remove(htf_sr_levels, i)
+                    item.pending_mitigation := true
                 else
                     line.delete(item.ln)
                     label.delete(item.lbl)
