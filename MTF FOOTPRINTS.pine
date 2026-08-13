@@ -640,8 +640,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
                 // Large Volume Identification
                 bool is_large_vol_buy = show_large_vol and buy_val > avg_buy_level_vol * large_vol_mult
-                color lv_border_color_buy = is_buy_imbalance ? col_imb_buy : na
-                int lv_border_width_buy = is_buy_imbalance ? 2 : 0
+                color lv_border_color_buy = is_buy_imbalance ? col_imb_buy : color.new(col_bull, 60)
+                int lv_border_width_buy = 1
                 string lv_border_style_buy = line.style_solid
                 if is_large_vol_buy and not is_buy_imbalance
                     lv_border_color_buy := col_bull
@@ -653,8 +653,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     lv_border_style_buy := line.style_solid
                     
                 bool is_large_vol_sell = show_large_vol and sell_val > avg_sell_level_vol * large_vol_mult
-                color lv_border_color_sell = is_sell_imbalance ? col_imb_sell : na
-                int lv_border_width_sell = is_sell_imbalance ? 2 : 0
+                color lv_border_color_sell = is_sell_imbalance ? col_imb_sell : color.new(col_bear, 60)
+                int lv_border_width_sell = 1
                 string lv_border_style_sell = line.style_solid
                 if is_large_vol_sell and not is_sell_imbalance
                     lv_border_color_sell := col_bear
