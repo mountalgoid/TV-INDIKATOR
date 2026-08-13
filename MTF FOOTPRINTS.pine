@@ -657,9 +657,9 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         ln_imb = line.new(imb_x, imb_y1, imb_x, imb_y2, color=imb_color, width=imbalance_line_width, style=line.style_solid)
                         array.push(future_lines, ln_imb)
 
-                    // S/R candidate logic
-                    bool is_support_candidate = (sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))
-                    bool is_resistance_candidate = (sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))
+                    // S/R candidate logic (Filter: Support must be below current price, Resistance must be above)
+                    bool is_support_candidate = ((sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))) and (level_mid < close)
+                    bool is_resistance_candidate = ((sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))) and (level_mid > close)
 
                     if show_sr_footprints
                         if is_support_candidate
@@ -695,9 +695,9 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         int imb_x = is_buy_imbalance ? x_buy_2 : x_sell_1
                         line.new(imb_x, imb_y1, imb_x, imb_y2, color=imb_color, width=imbalance_line_width, style=line.style_solid)
 
-                    // S/R candidate logic
-                    bool is_support_candidate = (sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))
-                    bool is_resistance_candidate = (sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))
+                    // S/R candidate logic (Filter: Support must be below current price, Resistance must be above)
+                    bool is_support_candidate = ((sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))) and (level_mid < close)
+                    bool is_resistance_candidate = ((sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))) and (level_mid > close)
 
                     if show_sr_footprints
                         if is_support_candidate
@@ -824,6 +824,16 @@ if is_new_htf
                         line.delete(item.ln)
                         label.delete(item.lbl)
                         array.remove(htf_sr_levels, i)
+                else if mitigation_type == "HTF Body Close" and item.pending_mitigation
+                    // Reset false alarm in real-time (price pulled back before HTF candle close)
+                    item.pending_mitigation := false
+                    color active_col = item.is_support ? col_bull : col_bear
+                    line.set_color(item.ln, color.new(active_col, 30))
+                    line.set_style(item.ln, line.style_solid)
+                    line.set_width(item.ln, 2)
+
+                    label.set_textcolor(item.lbl, active_col)
+                    label.set_text(item.lbl, (item.is_support ? "Footprint SUP" : "Footprint RES") + "\n" + str.tostring(item.price, format.mintick))
 
 if barstate.islast
     [c_h, c_l, c_o, c_c, c_v, c_bv, c_sv, c_poc, c_mv] = draw_htf_profile(htf_start_bar_index, bar_index, true)
@@ -1107,13 +1117,18 @@ if show_sr_footprints and array.size(htf_sr_levels) > 0
             label.set_x(item.lbl, htf_box_right)
 
             // Dynamic mitigation checking:
-            // Support: mitigated when current low drops below support price
-            // Resistance: mitigated when current high rallies above resistance price
+            // Support: mitigated when current low drops below support price (or close on HTF Body Close)
+            // Resistance: mitigated when current high rallies above resistance price (or close on HTF Body Close)
             bool is_mitigated = false
             if mitigation_type == "HTF Wick"
                 if item.is_support and low <= item.price
                     is_mitigated := true
                 else if not item.is_support and high >= item.price
+                    is_mitigated := true
+            else if mitigation_type == "HTF Body Close"
+                if item.is_support and close <= item.price
+                    is_mitigated := true
+                else if not item.is_support and close >= item.price
                     is_mitigated := true
 
             if is_mitigated
