@@ -1345,7 +1345,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             // --- DYNAMIC OFFSET CALCULATION ---
             int predict_count = math.min(predict_targets, array.size(targets_all))
             predict_reach := show_predict ? predict_count * predict_bars : 0
-            int width_scaler_vp = math.round(30 * (vp_width / 10.0))
+            int width_scaler_vp = math.round(18 * (vp_width / 10.0))
             int width_scaler_s = math.round(width_scaler_vp * 0.35)
             
             // Central spine coordinate setup
@@ -1480,8 +1480,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     float b_delta = b_buy - b_sell
                     color base_c = vp_type == "Normal" ? col_poc : (b_delta > 0 ? c_buy : (b_delta < 0 ? c_sell : col_poc))
                     float pct_total = b_vol * inv_max_total_vol
-                    int t_vp = get_profile_alpha(pct_total, level_bottom, close, inv_fade_range)
-                    color c_bar_vp = color.new(base_c, t_vp)
+                    color c_bar_vp = color.new(color.from_gradient(pct_total, 0.0, 1.0, #000000, base_c), 0)
                     
                     int len_total = math.round(width_scaler_vp * pct_total)
                     string txt_delta = show_vp_labels ? ((b_delta > 0 ? "+" : "") + format_vol(b_delta)) : ""
