@@ -2215,14 +2215,10 @@ get_adv_color(step) =>
     float dynamic_ratio = ratio + (breathe * 0.15) 
     if dynamic_ratio > 1
         dynamic_ratio := 1
-    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+    color base_col = color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+    color.from_gradient(dynamic_ratio, 0.0, 1.0, #000000, base_col)
 
-get_fade_alpha(float x_rel) =>
-    // Assembly Center is at x=32, total assembly spans x=0 to x=64
-    float dist = math.abs(x_rel - 32)
-    float ratio = dist / 32.0 // 0 at center, 1 at edges
-    // Fade from 0 (edges) to 80 (center)
-    math.round(80 * (1 - ratio))
+get_fade_alpha(float x_rel) => 0
 
 // --- PEMBUATAN GARIS (HANYA JIKA SHOW_LOGO AKTIF) ---
 if show_logo and barstate.islast
