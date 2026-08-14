@@ -139,7 +139,7 @@ string s_imbalance_mode   = input.string("Diagonal", "Short VP Imbalance Mode", 
 float s_imbalance_ratio   = input.float(3.0, "Short VP Imbalance Ratio", minval=1.0, step=0.1, group=grp_vp)
 float s_imbalance_min_vol = input.float(0.0, "Short VP Imbalance Min Volume", minval=0.0, group=grp_vp)
 float s_imbalance_margin_pct = input.float(25.0, "Short VP Imbalance Line Margin (%)", minval=0.0, maxval=49.0, step=5.0, group=grp_vp)
-int s_imbalance_line_width = input.int(2, "Short VP Imbalance Line Width", minval=1, maxval=10, group=grp_vp)
+int s_imbalance_line_width = input.int(12, "Short VP Imbalance Line Width", minval=1, maxval=20, group=grp_vp)
 int  vp_rows        = input.int(200, "Profile Row Count", minval=10, maxval=200, group=grp_vp)
 bool vp_use_grain   = input.bool(false, "Use Price Grain (Tick-based)", group=grp_vp)
 float vp_grain      = input.float(0.1, "Price Grain (Ticks)", minval=0.1, step=0.1, group=grp_vp)
@@ -1355,7 +1355,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             // Configure Short VP coordinates dynamically next to the Main VP with a safe gap to prevent any overlap
             int x_s_spine = short_vp_align == "Left" ? (bar_index - short_vp_left_offset) : (x_vp_start - width_scaler_s - 35)
-            int gap = 2
+            int gap = 1
             int x_s_line_start = x_s_spine - gap - width_scaler_s
             int x_s_line_end = x_s_spine + gap + width_scaler_s
             string s_lbl_style = label.style_label_right
@@ -1434,11 +1434,11 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         // Draw outer boundary vertical lines for imbalances (matching MTF FOOTPRINTS style)
                         if is_s_buy_imbalance
                             int imb_x = x_s_spine + gap + len_buy
-                            line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_bull, width=s_imbalance_line_width, style=line.style_solid)
+                            line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_poc, width=s_imbalance_line_width, style=line.style_solid)
                             array.push(vp_s_lines, ln_s_imb)
                         if is_s_sell_imbalance
                             int imb_x = x_s_spine - gap - len_sell
-                            line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_bear, width=s_imbalance_line_width, style=line.style_solid)
+                            line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_poc, width=s_imbalance_line_width, style=line.style_solid)
                             array.push(vp_s_lines, ln_s_imb)
                     else if s_vp_type == "Delta Profile"
                         if s_delta > 0
@@ -1451,7 +1451,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
                             if is_s_buy_imbalance
                                 int imb_x = x_s_spine + gap + len_delta
-                                line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_bull, width=s_imbalance_line_width, style=line.style_solid)
+                                line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_poc, width=s_imbalance_line_width, style=line.style_solid)
                                 array.push(vp_s_lines, ln_s_imb)
                         else if s_delta < 0
                             // Opaque delta gradient mixed with dark #000000
@@ -1463,7 +1463,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
                             if is_s_sell_imbalance
                                 int imb_x = x_s_spine - gap - len_delta
-                                line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_bear, width=s_imbalance_line_width, style=line.style_solid)
+                                line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_poc, width=s_imbalance_line_width, style=line.style_solid)
                                 array.push(vp_s_lines, ln_s_imb)
 
                     if i == poc_s_idx
