@@ -373,66 +373,6 @@ if ltf_count > 0
 float missing_v = math.max(0, get_tick_volume() - ltf_v_total)
 [miss_b, miss_s] = calc_vol_partition(missing_v)
 
-// 10 Price Levels per Candle Engine for Super Precise Bubble Placement
-get_candle_sub_pocs(float _o, float _h, float _l, float _c, float _v) =>
-    float range_val = _h - _l
-    float b_buy_poc = _c
-    float b_sell_poc = _c
-    if range_val > 0 and _v > 0
-        int num_sub_levels = 10
-        float sub_step = range_val / num_sub_levels
-        array<float> sub_b_vol = array.new_float(num_sub_levels, 0.0)
-        array<float> sub_s_vol = array.new_float(num_sub_levels, 0.0)
-        array<float> dummy_tot = array.new_float(num_sub_levels, 0.0)
-
-        distribute_vol(num_sub_levels, _l, 1.0 / sub_step, _o, _h, _l, _c, _v, dummy_tot, sub_b_vol, sub_s_vol)
-
-        float sum_b_p = 0.0
-        float sum_b_v = 0.0
-        float sum_s_p = 0.0
-        float sum_s_v = 0.0
-
-        for k = 0 to num_sub_levels - 1
-            float bv = array.get(sub_b_vol, k)
-            float sv = array.get(sub_s_vol, k)
-            float mid_p = _l + (k + 0.5) * sub_step
-
-            if bv > 0
-                sum_b_p += bv * mid_p
-                sum_b_v += bv
-            if sv > 0
-                sum_s_p += sv * mid_p
-                sum_s_v += sv
-
-        if sum_b_v > 0
-            b_buy_poc := sum_b_p / sum_b_v
-        if sum_s_v > 0
-            b_sell_poc := sum_s_p / sum_s_v
-    [b_buy_poc, b_sell_poc]
-
-float range_p = high - low
-[buy_center, sell_center] = get_candle_sub_pocs(open, high, low, close, math.max(get_tick_volume(), 1.0))
-
-float buy_volume  = ltf_buy_sum + miss_b
-float sell_volume = ltf_sell_sum + miss_s
-
-if buy_volume > 0
-    rt_buy_poc := ((not na(ltf_b_poc) ? ltf_b_poc * ltf_buy_sum : 0.0) + miss_b * buy_center) / buy_volume
-else
-    rt_buy_poc := buy_center
-
-if sell_volume > 0
-    rt_sell_poc := ((not na(ltf_s_poc) ? ltf_s_poc * ltf_sell_sum : 0.0) + miss_s * sell_center) / sell_volume
-else
-    rt_sell_poc := sell_center
-
-float delta        = buy_volume - sell_volume
-float total_volume = buy_volume + sell_volume
-
-// Accurate Bubble Placement (Super Precise Volume-Weighted Price)
-float buy_loc  = rt_buy_poc
-float sell_loc = rt_sell_poc
-
 // Distribution Heuristic for Profile
 distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
     float b_high = math.max(_o, _c)
@@ -495,6 +435,66 @@ distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h,
                         array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+
+// 10 Price Levels per Candle Engine for Super Precise Bubble Placement
+get_candle_sub_pocs(float _o, float _h, float _l, float _c, float _v) =>
+    float range_val = _h - _l
+    float b_buy_poc = _c
+    float b_sell_poc = _c
+    if range_val > 0 and _v > 0
+        int num_sub_levels = 10
+        float sub_step = range_val / num_sub_levels
+        array<float> sub_b_vol = array.new_float(num_sub_levels, 0.0)
+        array<float> sub_s_vol = array.new_float(num_sub_levels, 0.0)
+        array<float> dummy_tot = array.new_float(num_sub_levels, 0.0)
+
+        distribute_vol(num_sub_levels, _l, 1.0 / sub_step, _o, _h, _l, _c, _v, dummy_tot, sub_b_vol, sub_s_vol)
+
+        float sum_b_p = 0.0
+        float sum_b_v = 0.0
+        float sum_s_p = 0.0
+        float sum_s_v = 0.0
+
+        for k = 0 to num_sub_levels - 1
+            float bv = array.get(sub_b_vol, k)
+            float sv = array.get(sub_s_vol, k)
+            float mid_p = _l + (k + 0.5) * sub_step
+
+            if bv > 0
+                sum_b_p += bv * mid_p
+                sum_b_v += bv
+            if sv > 0
+                sum_s_p += sv * mid_p
+                sum_s_v += sv
+
+        if sum_b_v > 0
+            b_buy_poc := sum_b_p / sum_b_v
+        if sum_s_v > 0
+            b_sell_poc := sum_s_p / sum_s_v
+    [b_buy_poc, b_sell_poc]
+
+float range_p = high - low
+[buy_center, sell_center] = get_candle_sub_pocs(open, high, low, close, math.max(get_tick_volume(), 1.0))
+
+float buy_volume  = ltf_buy_sum + miss_b
+float sell_volume = ltf_sell_sum + miss_s
+
+if buy_volume > 0
+    rt_buy_poc := ((not na(ltf_b_poc) ? ltf_b_poc * ltf_buy_sum : 0.0) + miss_b * buy_center) / buy_volume
+else
+    rt_buy_poc := buy_center
+
+if sell_volume > 0
+    rt_sell_poc := ((not na(ltf_s_poc) ? ltf_s_poc * ltf_sell_sum : 0.0) + miss_s * sell_center) / sell_volume
+else
+    rt_sell_poc := sell_center
+
+float delta        = buy_volume - sell_volume
+float total_volume = buy_volume + sell_volume
+
+// Accurate Bubble Placement (Super Precise Volume-Weighted Price)
+float buy_loc  = rt_buy_poc
+float sell_loc = rt_sell_poc
 
 // LTF Distribution Handler
 add_ltf_vol(int _rows, float _lowest_p, float _inv_row_h, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
