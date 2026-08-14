@@ -1343,7 +1343,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             int predict_count = math.min(predict_targets, array.size(targets_all))
             predict_reach := show_predict ? predict_count * predict_bars : 0
             int width_scaler_vp = math.round(30 * (vp_width / 10.0))
-            int width_scaler_s = math.round(width_scaler_vp * 0.6)
+            int width_scaler_s = math.round(width_scaler_vp * 0.35)
             
             // Central spine coordinate setup
             int x_vp_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
@@ -1351,8 +1351,8 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             x_vp_start := math.max(bar_index + 10, math.min(x_vp_start, max_x_vp_start))
 
             // Configure Short VP coordinates dynamically next to the Main VP with a safe gap to prevent any overlap
-            int x_s_spine = short_vp_align == "Left" ? (bar_index - short_vp_left_offset) : (x_vp_start - 2 * width_scaler_s - 50)
-            int x_s_delta_spine = x_s_spine + width_scaler_s + 15
+            int x_s_spine = short_vp_align == "Left" ? (bar_index - short_vp_left_offset) : (x_vp_start - 2 * width_scaler_s - 30)
+            int x_s_delta_spine = x_s_spine + width_scaler_s + 6
             int gap = 1
             int x_s_line_start = x_s_spine - gap - width_scaler_s
             int x_s_line_end = x_s_delta_spine + gap + width_scaler_s
@@ -1440,20 +1440,14 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     box bs_delta = box.new(x_d_left, level_top, x_d_right, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_delta_c, t_s), text=vp_s_delta_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
                     array.push(vp_s_boxes, bs_delta)
 
-                    // Draw outer boundary high-visibility vertical lines for imbalances
+                    // Draw outer boundary high-visibility vertical lines for imbalances (matching full height of the volume box)
                     if is_s_buy_imbalance
-                        float imb_margin = (level_top - level_bottom) * 0.25
-                        float imb_y1 = level_bottom + imb_margin
-                        float imb_y2 = level_top - imb_margin
                         int imb_x = x_s_spine + gap + len_buy
-                        line ln_s_imb = line.new(imb_x, imb_y1, imb_x, imb_y2, color=col_bull, width=2, style=line.style_solid)
+                        line ln_s_imb = line.new(imb_x, level_bottom, imb_x, level_top, color=col_bull, width=2, style=line.style_solid)
                         array.push(vp_s_lines, ln_s_imb)
                     if is_s_sell_imbalance
-                        float imb_margin = (level_top - level_bottom) * 0.25
-                        float imb_y1 = level_bottom + imb_margin
-                        float imb_y2 = level_top - imb_margin
                         int imb_x = x_s_spine - gap - len_sell
-                        line ln_s_imb = line.new(imb_x, imb_y1, imb_x, imb_y2, color=col_bear, width=2, style=line.style_solid)
+                        line ln_s_imb = line.new(imb_x, level_bottom, imb_x, level_top, color=col_bear, width=2, style=line.style_solid)
                         array.push(vp_s_lines, ln_s_imb)
 
                     if i == poc_s_idx
@@ -1485,7 +1479,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 
                 // Draw segmented 3-part divider lines for both main spine and delta spine
                 // Main Spine
-                line l_div_mid = line.new(x_s_spine, val_s_price, x_s_spine, vah_s_price, color=color.new(col_poc, 0), width=6, style=line.style_solid)
+                line l_div_mid = line.new(x_s_spine, val_s_price, x_s_spine, vah_s_price, color=color.new(col_poc, 0), width=2, style=line.style_solid)
                 line l_div_top = line.new(x_s_spine, vah_s_price, x_s_spine, highest_p, color=color.new(col_poc, 30), width=1, style=line.style_dashed)
                 line l_div_bot = line.new(x_s_spine, lowest_p, x_s_spine, val_s_price, color=color.new(col_poc, 30), width=1, style=line.style_dashed)
                 array.push(vp_s_lines, l_div_mid)
@@ -1493,7 +1487,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 array.push(vp_s_lines, l_div_bot)
 
                 // Delta Spine
-                line l_delta_div_mid = line.new(x_s_delta_spine, val_s_price, x_s_delta_spine, vah_s_price, color=color.new(col_poc, 0), width=6, style=line.style_solid)
+                line l_delta_div_mid = line.new(x_s_delta_spine, val_s_price, x_s_delta_spine, vah_s_price, color=color.new(col_poc, 0), width=2, style=line.style_solid)
                 line l_delta_div_top = line.new(x_s_delta_spine, vah_s_price, x_s_delta_spine, highest_p, color=color.new(col_poc, 30), width=1, style=line.style_dashed)
                 line l_delta_div_bot = line.new(x_s_delta_spine, lowest_p, x_s_delta_spine, val_s_price, color=color.new(col_poc, 30), width=1, style=line.style_dashed)
                 array.push(vp_s_lines, l_delta_div_mid)
