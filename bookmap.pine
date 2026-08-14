@@ -138,6 +138,8 @@ bool show_s_imbalance     = input.bool(true, "Show Short VP Imbalance", group=gr
 string s_imbalance_mode   = input.string("Diagonal", "Short VP Imbalance Mode", options=["Diagonal", "Horizontal"], group=grp_vp)
 float s_imbalance_ratio   = input.float(3.0, "Short VP Imbalance Ratio", minval=1.0, step=0.1, group=grp_vp)
 float s_imbalance_min_vol = input.float(0.0, "Short VP Imbalance Min Volume", minval=0.0, group=grp_vp)
+float s_imbalance_margin_pct = input.float(25.0, "Short VP Imbalance Line Margin (%)", minval=0.0, maxval=49.0, step=5.0, group=grp_vp)
+int s_imbalance_line_width = input.int(2, "Short VP Imbalance Line Width", minval=1, maxval=10, group=grp_vp)
 int  vp_rows        = input.int(200, "Profile Row Count", minval=10, maxval=200, group=grp_vp)
 bool vp_use_grain   = input.bool(false, "Use Price Grain (Tick-based)", group=grp_vp)
 float vp_grain      = input.float(0.1, "Price Grain (Ticks)", minval=0.1, step=0.1, group=grp_vp)
@@ -1413,64 +1415,55 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     color s_c_buy = color.new(color.from_gradient(pct_s, 0.0, 1.0, #000000, col_bull), 0)
                     color s_c_sell = color.new(color.from_gradient(pct_s, 0.0, 1.0, #000000, col_bear), 0)
                     
-                    // Style parameters
-                    color s_border_buy = is_s_buy_imbalance ? col_bull : transparent_col
-                    color s_border_sell = is_s_sell_imbalance ? col_bear : transparent_col
-                    int s_b_width_buy = is_s_buy_imbalance ? 2 : 1
-                    int s_b_width_sell = is_s_sell_imbalance ? 2 : 1
-                    color s_text_color_buy = is_s_buy_imbalance ? white : dark
-                    color s_text_color_sell = is_s_sell_imbalance ? white : dark
+                    // Calculate Imbalance margins
+                    float s_imb_margin = (level_top - level_bottom) * (s_imbalance_margin_pct / 100.0)
+                    float s_imb_y1 = level_bottom + s_imb_margin
+                    float s_imb_y2 = level_top - s_imb_margin
 
                     if s_vp_type == "Bid/Ask Profile"
                         // Left Side of x_s_spine: Seller Profile (extending LEFT)
-                        string vp_s_sell_txt = show_vp_labels ? (is_s_sell_imbalance ? "*" + format_vol(s_sell) + "*" : format_vol(s_sell)) : ""
-                        box bs_sell = box.new(x_s_spine - gap - len_sell, level_top, x_s_spine - gap, level_bottom, border_width=s_b_width_sell, border_color=s_border_sell, bgcolor=s_c_sell, text=vp_s_sell_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=s_text_color_sell)
+                        string vp_s_sell_txt = show_vp_labels ? format_vol(s_sell) : ""
+                        box bs_sell = box.new(x_s_spine - gap - len_sell, level_top, x_s_spine - gap, level_bottom, border_width=1, border_color=transparent_col, bgcolor=s_c_sell, text=vp_s_sell_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
                         array.push(vp_s_boxes, bs_sell)
 
                         // Right Side of x_s_spine: Buyer Profile (extending RIGHT)
-                        string vp_s_buy_txt = show_vp_labels ? (is_s_buy_imbalance ? "*" + format_vol(s_buy) + "*" : format_vol(s_buy)) : ""
-                        box bs_buy = box.new(x_s_spine + gap, level_top, x_s_spine + gap + len_buy, level_bottom, border_width=s_b_width_buy, border_color=s_border_buy, bgcolor=s_c_buy, text=vp_s_buy_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=s_text_color_buy)
+                        string vp_s_buy_txt = show_vp_labels ? format_vol(s_buy) : ""
+                        box bs_buy = box.new(x_s_spine + gap, level_top, x_s_spine + gap + len_buy, level_bottom, border_width=1, border_color=transparent_col, bgcolor=s_c_buy, text=vp_s_buy_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
                         array.push(vp_s_boxes, bs_buy)
 
-                        // Draw outer boundary vertical lines for imbalances (matching full height of the box)
+                        // Draw outer boundary vertical lines for imbalances (matching MTF FOOTPRINTS style)
                         if is_s_buy_imbalance
                             int imb_x = x_s_spine + gap + len_buy
-                            line ln_s_imb = line.new(imb_x, level_bottom, imb_x, level_top, color=col_bull, width=2, style=line.style_solid)
+                            line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_bull, width=s_imbalance_line_width, style=line.style_solid)
                             array.push(vp_s_lines, ln_s_imb)
                         if is_s_sell_imbalance
                             int imb_x = x_s_spine - gap - len_sell
-                            line ln_s_imb = line.new(imb_x, level_bottom, imb_x, level_top, color=col_bear, width=2, style=line.style_solid)
+                            line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_bear, width=s_imbalance_line_width, style=line.style_solid)
                             array.push(vp_s_lines, ln_s_imb)
                     else if s_vp_type == "Delta Profile"
                         if s_delta > 0
                             // Opaque delta gradient mixed with dark #000000
                             color s_c_delta_buy = color.new(color.from_gradient(math.abs(s_delta) * inv_max_s_delta, 0.0, 1.0, #000000, col_bull), 0)
-                            color s_border_delta = is_s_buy_imbalance ? col_bull : transparent_col
-                            int s_b_width_delta = is_s_buy_imbalance ? 2 : 1
-                            color s_text_color_delta = is_s_buy_imbalance ? white : dark
-                            string vp_s_delta_txt = show_vp_labels ? (is_s_buy_imbalance ? "*" + format_vol(s_delta) + "*" : "+" + format_vol(s_delta)) : ""
+                            string vp_s_delta_txt = show_vp_labels ? ("+" + format_vol(s_delta)) : ""
 
-                            box bs_delta = box.new(x_s_spine + gap, level_top, x_s_spine + gap + len_delta, level_bottom, border_width=s_b_width_delta, border_color=s_border_delta, bgcolor=s_c_delta_buy, text=vp_s_delta_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=s_text_color_delta)
+                            box bs_delta = box.new(x_s_spine + gap, level_top, x_s_spine + gap + len_delta, level_bottom, border_width=1, border_color=transparent_col, bgcolor=s_c_delta_buy, text=vp_s_delta_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
                             array.push(vp_s_boxes, bs_delta)
 
                             if is_s_buy_imbalance
                                 int imb_x = x_s_spine + gap + len_delta
-                                line ln_s_imb = line.new(imb_x, level_bottom, imb_x, level_top, color=col_bull, width=2, style=line.style_solid)
+                                line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_bull, width=s_imbalance_line_width, style=line.style_solid)
                                 array.push(vp_s_lines, ln_s_imb)
                         else if s_delta < 0
                             // Opaque delta gradient mixed with dark #000000
                             color s_c_delta_sell = color.new(color.from_gradient(math.abs(s_delta) * inv_max_s_delta, 0.0, 1.0, #000000, col_bear), 0)
-                            color s_border_delta = is_s_sell_imbalance ? col_bear : transparent_col
-                            int s_b_width_delta = is_s_sell_imbalance ? 2 : 1
-                            color s_text_color_delta = is_s_sell_imbalance ? white : dark
-                            string vp_s_delta_txt = show_vp_labels ? (is_s_sell_imbalance ? "*" + format_vol(s_delta) + "*" : format_vol(s_delta)) : ""
+                            string vp_s_delta_txt = show_vp_labels ? (format_vol(s_delta)) : ""
 
-                            box bs_delta = box.new(x_s_spine - gap - len_delta, level_top, x_s_spine - gap, level_bottom, border_width=s_b_width_delta, border_color=s_border_delta, bgcolor=s_c_delta_sell, text=vp_s_delta_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=s_text_color_delta)
+                            box bs_delta = box.new(x_s_spine - gap - len_delta, level_top, x_s_spine - gap, level_bottom, border_width=1, border_color=transparent_col, bgcolor=s_c_delta_sell, text=vp_s_delta_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
                             array.push(vp_s_boxes, bs_delta)
 
                             if is_s_sell_imbalance
                                 int imb_x = x_s_spine - gap - len_delta
-                                line ln_s_imb = line.new(imb_x, level_bottom, imb_x, level_top, color=col_bear, width=2, style=line.style_solid)
+                                line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_bear, width=s_imbalance_line_width, style=line.style_solid)
                                 array.push(vp_s_lines, ln_s_imb)
 
                     if i == poc_s_idx
