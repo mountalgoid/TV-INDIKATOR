@@ -694,17 +694,17 @@ var array<LargeVolBox> lv_boxes = array.new<LargeVolBox>()
 
 if barstate.isconfirmed
     if show_imb_boxes and is_imbalance_buy
-        string imb_b_txt = "⚡ BUY IMB ⚡\n" + format_vol(buy_volume)
+        string imb_b_txt = "Buy Imb\n" + format_vol(buy_volume)
         b = box.new(bar_index, high, bar_index + 5, high - math.max(range_p * 0.25, syminfo.mintick * 5),
-             border_color=col_bull, border_width=2, border_style=line.style_solid,
-             bgcolor=color.new(c_buy, 60), text=imb_b_txt, text_size=size.auto, text_color=white)
+             border_color=transparent_col, border_width=0,
+             bgcolor=color.new(c_buy, 75), text=imb_b_txt, text_size=size.auto, text_color=col_poc)
         array.push(imbalance_boxes, ImbalanceBox.new(b, high - (range_p * 0.25), true, true))
 
     if show_imb_boxes and is_imbalance_sell
-        string imb_s_txt = "⚡ SELL IMB ⚡\n" + format_vol(sell_volume)
+        string imb_s_txt = "Sell Imb\n" + format_vol(sell_volume)
         b = box.new(bar_index, low + math.max(range_p * 0.25, syminfo.mintick * 5), bar_index + 5, low,
-             border_color=col_bear, border_width=2, border_style=line.style_solid,
-             bgcolor=color.new(c_sell, 60), text=imb_s_txt, text_size=size.auto, text_color=white)
+             border_color=transparent_col, border_width=0,
+             bgcolor=color.new(c_sell, 75), text=imb_s_txt, text_size=size.auto, text_color=col_poc)
         array.push(imbalance_boxes, ImbalanceBox.new(b, low + (range_p * 0.25), false, true))
 
     if show_mitigation_boxes
