@@ -133,6 +133,13 @@ bool show_vp_labels = input.bool(true, "Show Text Labels", group=grp_vp)
 int  vp_lookback    = input.int(500, "Main VP Lookback Length", minval=2, maxval=2000, group=grp_vp) 
 bool show_vp_short  = input.bool(true, "Show Short-Term VP", group=grp_vp)
 int  vp_lookback_s  = input.int(50, "Short VP Lookback Length", minval=2, maxval=1000, group=grp_vp)
+string s_vp_type    = input.string("Bid/Ask Profile", "Short VP View Type", options=["Bid/Ask Profile", "Delta Profile"], group=grp_vp)
+bool show_s_imbalance     = input.bool(true, "Show Short VP Imbalance", group=grp_vp)
+string s_imbalance_mode   = input.string("Diagonal", "Short VP Imbalance Mode", options=["Diagonal", "Horizontal"], group=grp_vp)
+float s_imbalance_ratio   = input.float(3.0, "Short VP Imbalance Ratio", minval=1.0, step=0.1, group=grp_vp)
+float s_imbalance_min_vol = input.float(0.0, "Short VP Imbalance Min Volume", minval=0.0, group=grp_vp)
+float s_imbalance_margin_pct = input.float(25.0, "Short VP Imbalance Line Margin (%)", minval=0.0, maxval=49.0, step=5.0, group=grp_vp)
+int s_imbalance_line_width = input.int(12, "Short VP Imbalance Line Width", minval=1, maxval=20, group=grp_vp)
 int  vp_rows        = input.int(200, "Profile Row Count", minval=10, maxval=200, group=grp_vp)
 bool vp_use_grain   = input.bool(false, "Use Price Grain (Tick-based)", group=grp_vp)
 float vp_grain      = input.float(0.1, "Price Grain (Ticks)", minval=0.1, step=0.1, group=grp_vp)
@@ -366,47 +373,6 @@ if ltf_count > 0
 float missing_v = math.max(0, get_tick_volume() - ltf_v_total)
 [miss_b, miss_s] = calc_vol_partition(missing_v)
 
-// Heuristic fallback calculations (for maximum real-time precision)
-float range_p    = high - low
-float body_high  = math.max(open, close)
-float body_low   = math.min(open, close)
-float upper_wick = high - body_high
-float lower_wick = body_low - low
-
-float w_body  = (range_p > 0) ? (body_high - body_low) / range_p : 0
-float w_upper = (range_p > 0) ? upper_wick / range_p : 0
-float w_lower = (range_p > 0) ? lower_wick / range_p : 0
-
-float b_center_p = (open + close) / 2
-float b_pos_p = range_p > 0 ? (b_center_p - low) / range_p : 0.5
-float br_b_p = close > open ? math.min(0.9, 0.6 + b_pos_p * 0.3) : (close < open ? math.max(0.1, 0.4 - (1-b_pos_p) * 0.3) : 0.5)
-
-float buy_denom = w_lower * 0.9 + w_body * br_b_p + w_upper * 0.1
-float buy_center = buy_denom > 0 ? (w_lower * 0.9 * (low + body_low)/2 + w_body * br_b_p * b_center_p + w_upper * 0.1 * (body_high + high)/2) / buy_denom : close
-
-float sell_denom = w_upper * 0.9 + w_body * (1.0 - br_b_p) + w_lower * 0.1
-float sell_center = sell_denom > 0 ? (w_upper * 0.9 * (high + body_high)/2 + w_body * (1.0 - br_b_p) * b_center_p + w_lower * 0.1 * (low + body_low)/2) / sell_denom : close
-
-float buy_volume  = ltf_buy_sum + miss_b
-float sell_volume = ltf_sell_sum + miss_s
-
-if buy_volume > 0
-    rt_buy_poc := ((not na(ltf_b_poc) ? ltf_b_poc * ltf_buy_sum : 0.0) + miss_b * buy_center) / buy_volume
-else
-    rt_buy_poc := buy_center
-
-if sell_volume > 0
-    rt_sell_poc := ((not na(ltf_s_poc) ? ltf_s_poc * ltf_sell_sum : 0.0) + miss_s * sell_center) / sell_volume
-else
-    rt_sell_poc := sell_center
-
-float delta        = buy_volume - sell_volume
-float total_volume = buy_volume + sell_volume
-
-// Accurate Bubble Placement (Super Precise Volume-Weighted Price)
-float buy_loc  = rt_buy_poc
-float sell_loc = rt_sell_poc
-
 // Distribution Heuristic for Profile
 distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
     float b_high = math.max(_o, _c)
@@ -469,6 +435,66 @@ distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h,
                         array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+
+// 10 Price Levels per Candle Engine for Super Precise Bubble Placement
+get_candle_sub_pocs(float _o, float _h, float _l, float _c, float _v) =>
+    float range_val = _h - _l
+    float b_buy_poc = _c
+    float b_sell_poc = _c
+    if range_val > 0 and _v > 0
+        int num_sub_levels = 10
+        float sub_step = range_val / num_sub_levels
+        array<float> sub_b_vol = array.new_float(num_sub_levels, 0.0)
+        array<float> sub_s_vol = array.new_float(num_sub_levels, 0.0)
+        array<float> dummy_tot = array.new_float(num_sub_levels, 0.0)
+
+        distribute_vol(num_sub_levels, _l, 1.0 / sub_step, _o, _h, _l, _c, _v, dummy_tot, sub_b_vol, sub_s_vol)
+
+        float sum_b_p = 0.0
+        float sum_b_v = 0.0
+        float sum_s_p = 0.0
+        float sum_s_v = 0.0
+
+        for k = 0 to num_sub_levels - 1
+            float bv = array.get(sub_b_vol, k)
+            float sv = array.get(sub_s_vol, k)
+            float mid_p = _l + (k + 0.5) * sub_step
+
+            if bv > 0
+                sum_b_p += bv * mid_p
+                sum_b_v += bv
+            if sv > 0
+                sum_s_p += sv * mid_p
+                sum_s_v += sv
+
+        if sum_b_v > 0
+            b_buy_poc := sum_b_p / sum_b_v
+        if sum_s_v > 0
+            b_sell_poc := sum_s_p / sum_s_v
+    [b_buy_poc, b_sell_poc]
+
+float range_p = high - low
+[buy_center, sell_center] = get_candle_sub_pocs(open, high, low, close, math.max(get_tick_volume(), 1.0))
+
+float buy_volume  = ltf_buy_sum + miss_b
+float sell_volume = ltf_sell_sum + miss_s
+
+if buy_volume > 0
+    rt_buy_poc := ((not na(ltf_b_poc) ? ltf_b_poc * ltf_buy_sum : 0.0) + miss_b * buy_center) / buy_volume
+else
+    rt_buy_poc := buy_center
+
+if sell_volume > 0
+    rt_sell_poc := ((not na(ltf_s_poc) ? ltf_s_poc * ltf_sell_sum : 0.0) + miss_s * sell_center) / sell_volume
+else
+    rt_sell_poc := sell_center
+
+float delta        = buy_volume - sell_volume
+float total_volume = buy_volume + sell_volume
+
+// Accurate Bubble Placement (Super Precise Volume-Weighted Price)
+float buy_loc  = rt_buy_poc
+float sell_loc = rt_sell_poc
 
 // LTF Distribution Handler
 add_ltf_vol(int _rows, float _lowest_p, float _inv_row_h, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
@@ -668,14 +694,18 @@ var array<LargeVolBox> lv_boxes = array.new<LargeVolBox>()
 
 if barstate.isconfirmed
     if show_imb_boxes and is_imbalance_buy
-        b = box.new(bar_index, high, bar_index + 5, high - (range_p * 0.2),
-             border_color=transparent_col, bgcolor=color.new(c_buy, 92), text="Buy Imb", text_size=size.tiny, text_color=col_poc)
-        array.push(imbalance_boxes, ImbalanceBox.new(b, high - (range_p * 0.2), true, true))
+        string imb_b_txt = "Buy Imb\n" + format_vol(buy_volume)
+        b = box.new(bar_index, high, bar_index + 5, high - math.max(range_p * 0.25, syminfo.mintick * 5),
+             border_color=transparent_col, border_width=0,
+             bgcolor=color.new(c_buy, 75), text=imb_b_txt, text_size=size.auto, text_color=col_poc)
+        array.push(imbalance_boxes, ImbalanceBox.new(b, high - (range_p * 0.25), true, true))
 
     if show_imb_boxes and is_imbalance_sell
-        b = box.new(bar_index, low + (range_p * 0.2), bar_index + 5, low,
-             border_color=transparent_col, bgcolor=color.new(c_sell, 92), text="Sell Imb", text_size=size.tiny, text_color=col_poc)
-        array.push(imbalance_boxes, ImbalanceBox.new(b, low + (range_p * 0.2), false, true))
+        string imb_s_txt = "Sell Imb\n" + format_vol(sell_volume)
+        b = box.new(bar_index, low + math.max(range_p * 0.25, syminfo.mintick * 5), bar_index + 5, low,
+             border_color=transparent_col, border_width=0,
+             bgcolor=color.new(c_sell, 75), text=imb_s_txt, text_size=size.auto, text_color=col_poc)
+        array.push(imbalance_boxes, ImbalanceBox.new(b, low + (range_p * 0.25), false, true))
 
     if show_mitigation_boxes
         float zone_size = not na(mkt_atr_cur) and mkt_atr_cur > 0 ? mkt_atr_cur * 0.15 : (high - low > 0 ? (high - low) * 0.15 : syminfo.mintick * 10)
@@ -683,7 +713,7 @@ if barstate.isconfirmed
             int dyn_alpha = math.round(100 - vol_intensity_buy * 70)
             b = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, 
                  border_color=color.new(col_bull, 60), border_width=1, bgcolor=color.new(col_bull, 100),
-                 text="LARGE BUY VOL", text_size=size.auto,text_formatting = text.format_bold, text_color=col_poc)
+                 text="LARGE BUY VOL", text_size=size.auto, text_color=col_poc)
             bvb = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
             svb = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
             lvl_ln = line.new(bar_index, buy_loc, bar_index + 10, buy_loc, color=color.new(col_bull, 20), width=2, style=line.style_dashed)
@@ -692,7 +722,7 @@ if barstate.isconfirmed
             int dyn_alpha = math.round(100 - vol_intensity_sell * 70)
             b = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, 
                  border_color=color.new(col_bear, 60), border_width=1, bgcolor=color.new(col_bear, 100),
-                 text="LARGE SELL VOL", text_size=size.auto,text_formatting = text.format_bold, text_color=col_poc)
+                 text="LARGE SELL VOL", text_size=size.auto, text_color=col_poc)
             bvb = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
             svb = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
             lvl_ln = line.new(bar_index, sell_loc, bar_index + 10, sell_loc, color=color.new(col_bear, 20), width=2, style=line.style_dashed)
@@ -818,7 +848,7 @@ if show_bubble_labels
                 label.set_style(l, label.style_label_center)
             else
                 string txt = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_volume))
-                l := label.new(bar_index, buy_loc, txt, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto, text_formatting=text.format_bold)
+                l := label.new(bar_index, buy_loc, txt, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto)
             array.push(bubble_labels, l)
         else
             label.delete(rt_lbl_buy)
@@ -835,7 +865,7 @@ if show_bubble_labels
                 label.set_style(l, label.style_label_center)
             else
                 string txt = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_volume))
-                l := label.new(bar_index, sell_loc, txt, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto, text_formatting=text.format_bold)
+                l := label.new(bar_index, sell_loc, txt, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto)
             array.push(bubble_labels, l)
         else
             label.delete(rt_lbl_sell)
@@ -860,7 +890,7 @@ if show_bubble_labels
                 label.set_textcolor(l_s, summary_col)
                 label.set_style(l_s, summary_style)
             else
-                l_s := label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto, text_formatting=text.format_bold)
+                l_s := label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto)
             array.push(bubble_summaries, l_s)
         else
             label.delete(rt_lbl_sum)
@@ -871,7 +901,7 @@ if show_bubble_labels
         if vol_intensity_buy > 0
             string txt = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_volume))
             if na(rt_lbl_buy)
-                rt_lbl_buy := label.new(bar_index, buy_loc, txt, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto, text_formatting=text.format_bold)
+                rt_lbl_buy := label.new(bar_index, buy_loc, txt, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto)
             else
                 label.set_xy(rt_lbl_buy, bar_index, buy_loc)
                 label.set_text(rt_lbl_buy, txt)
@@ -884,7 +914,7 @@ if show_bubble_labels
         if vol_intensity_sell > 0
             string txt = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_volume))
             if na(rt_lbl_sell)
-                rt_lbl_sell := label.new(bar_index, sell_loc, txt, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto, text_formatting=text.format_bold)
+                rt_lbl_sell := label.new(bar_index, sell_loc, txt, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto)
             else
                 label.set_xy(rt_lbl_sell, bar_index, sell_loc)
                 label.set_text(rt_lbl_sell, txt)
@@ -904,7 +934,7 @@ if show_bubble_labels
             float summary_y = b_delta >= 0 ? low : high
 
             if na(rt_lbl_sum)
-                rt_lbl_sum := label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto, text_formatting=text.format_bold)
+                rt_lbl_sum := label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto)
             else
                 label.set_xy(rt_lbl_sum, bar_index, summary_y)
                 label.set_text(rt_lbl_sum, summary_txt)
@@ -1070,6 +1100,16 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
             float max_s_vol = array.max(bucket_s_total)
             float inv_max_s_vol = max_s_vol != 0 ? 1.0 / max_s_vol : 1.0
+
+            float max_s_split_vol = math.max(array.max(bucket_s_buy), array.max(bucket_s_sell))
+            float inv_max_s_split_vol = max_s_split_vol != 0 ? 1.0 / max_s_split_vol : 1.0
+
+            float max_s_delta = 0.0
+            for k = 0 to n_rows - 1
+                float s_b = array.get(bucket_s_buy, k)
+                float s_s = array.get(bucket_s_sell, k)
+                max_s_delta := math.max(max_s_delta, math.abs(s_b - s_s))
+            float inv_max_s_delta = max_s_delta != 0 ? 1.0 / max_s_delta : 1.0
             
             // --- SHORT VP METRICS CALCULATION ---
             int poc_s_idx = array.indexof(bucket_s_total, max_s_vol)
@@ -1328,8 +1368,8 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
             // --- DYNAMIC OFFSET CALCULATION ---
             int predict_count = math.min(predict_targets, array.size(targets_all))
             predict_reach := show_predict ? predict_count * predict_bars : 0
-            int width_scaler_vp = math.round(30 * (vp_width / 10.0))
-            int width_scaler_s = math.round(width_scaler_vp * 0.6)
+            int width_scaler_vp = math.round(18 * (vp_width / 10.0))
+            int width_scaler_s = math.round(width_scaler_vp * 0.35)
             
             // Central spine coordinate setup
             int x_vp_start = bar_index + math.max(vp_h_offset, predict_reach + 10)
@@ -1352,28 +1392,102 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                 float level_bottom = lowest_p + (i * row_height)
                 float level_top = level_bottom + row_height
 
-                // --- SHORT VP RENDERING (Total Vol on Left, Delta Vol on Right with Gap and Middle Divider) ---
+                // --- SHORT VP RENDERING (Bid/Ask Profile or Delta Profile drawn on a single main spine) ---
                 if show_vp_short and b_s_vol > 0
                     float s_buy = array.get(bucket_s_buy, i)
                     float s_sell = array.get(bucket_s_sell, i)
                     float s_delta = s_buy - s_sell
-                    color s_base_c = vp_type == "Normal" ? col_poc : (s_delta > 0 ? c_buy : (s_delta < 0 ? c_sell : col_poc))
+
+                    // Imbalance detection for Short VP
+                    bool is_s_buy_imbalance = false
+                    bool is_s_sell_imbalance = false
+                    if show_s_imbalance
+                        if s_imbalance_mode == "Horizontal"
+                            if s_buy >= s_sell * s_imbalance_ratio and s_buy >= s_imbalance_min_vol and s_sell > 0
+                                is_s_buy_imbalance := true
+                            else if s_buy >= s_imbalance_min_vol and s_sell == 0
+                                is_s_buy_imbalance := true
+
+                            if s_sell >= s_buy * s_imbalance_ratio and s_sell >= s_imbalance_min_vol and s_buy > 0
+                                is_s_sell_imbalance := true
+                            else if s_sell >= s_imbalance_min_vol and s_buy == 0
+                                is_s_sell_imbalance := true
+                        else if s_imbalance_mode == "Diagonal"
+                            float s_compare_sell = i > 0 ? array.get(bucket_s_sell, i - 1) : 0.0
+                            float s_compare_buy = i < n_rows - 1 ? array.get(bucket_s_buy, i + 1) : 0.0
+
+                            if s_buy >= s_compare_sell * s_imbalance_ratio and s_buy >= s_imbalance_min_vol and s_compare_sell > 0
+                                is_s_buy_imbalance := true
+                            else if s_buy >= s_imbalance_min_vol and s_compare_sell == 0
+                                is_s_buy_imbalance := true
+
+                            if s_sell >= s_compare_buy * s_imbalance_ratio and s_sell >= s_imbalance_min_vol and s_compare_buy > 0
+                                is_s_sell_imbalance := true
+                            else if s_sell >= s_imbalance_min_vol and s_compare_buy == 0
+                                is_s_sell_imbalance := true
+
+                    // Scale widths
+                    int len_sell = math.round(width_scaler_s * (s_sell * inv_max_s_split_vol))
+                    int len_buy = math.round(width_scaler_s * (s_buy * inv_max_s_split_vol))
+                    int len_delta = math.round(width_scaler_s * (math.abs(s_delta) * inv_max_s_delta))
+
+                    // Intensity for gradient mixing
                     float pct_s = b_s_vol * inv_max_s_vol
-                    int t_s = get_profile_alpha(pct_s, level_bottom, close, inv_fade_range)
-                    int len_s = math.round(width_scaler_s * pct_s)
                     
-                    // Left Side: Show Total Volume, extending LEFT from the spine
-                    string vp_s_txt = show_vp_labels ? format_vol(b_s_vol) : ""
-                    box bs = box.new(x_s_spine - gap - len_s, level_top, x_s_spine - gap, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_base_c, t_s), text=vp_s_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
-                    array.push(vp_s_boxes, bs)
+                    // Solid opaque gradient colors (opacity 0 / 100% solid) mixed with dark #000000
+                    color s_c_buy = color.new(color.from_gradient(pct_s, 0.0, 1.0, #000000, col_bull), 0)
+                    color s_c_sell = color.new(color.from_gradient(pct_s, 0.0, 1.0, #000000, col_bear), 0)
                     
-                    // Right Side: Show Delta Volume, extending RIGHT from the spine
-                    float pct_s_delta = math.abs(s_delta) * inv_max_s_vol
-                    int len_s_delta = math.round(width_scaler_s * pct_s_delta)
-                    color s_delta_c = s_delta > 0 ? c_buy : (s_delta < 0 ? c_sell : col_poc)
-                    string vp_s_delta_txt = show_vp_labels ? ((s_delta > 0 ? "+" : "") + format_vol(s_delta)) : ""
-                    box bs_delta = box.new(x_s_spine + gap, level_top, x_s_spine + gap + len_s_delta, level_bottom, border_width=1, border_color=transparent_col, bgcolor=color.new(s_delta_c, t_s), text=vp_s_delta_txt, text_formatting=text.format_bold, text_size=size.auto, text_color=dark)
-                    array.push(vp_s_boxes, bs_delta)
+                    // Calculate Imbalance margins
+                    float s_imb_margin = (level_top - level_bottom) * (s_imbalance_margin_pct / 100.0)
+                    float s_imb_y1 = level_bottom + s_imb_margin
+                    float s_imb_y2 = level_top - s_imb_margin
+
+                    if s_vp_type == "Bid/Ask Profile"
+                        // Left Side of x_s_spine: Seller Profile (extending LEFT)
+                        string vp_s_sell_txt = show_vp_labels ? format_vol(s_sell) : ""
+                        box bs_sell = box.new(x_s_spine - gap - len_sell, level_top, x_s_spine - gap, level_bottom, border_width=1, border_color=transparent_col, bgcolor=s_c_sell, text=vp_s_sell_txt, text_size=size.auto, text_color=dark)
+                        array.push(vp_s_boxes, bs_sell)
+
+                        // Right Side of x_s_spine: Buyer Profile (extending RIGHT)
+                        string vp_s_buy_txt = show_vp_labels ? format_vol(s_buy) : ""
+                        box bs_buy = box.new(x_s_spine + gap, level_top, x_s_spine + gap + len_buy, level_bottom, border_width=1, border_color=transparent_col, bgcolor=s_c_buy, text=vp_s_buy_txt, text_size=size.auto, text_color=dark)
+                        array.push(vp_s_boxes, bs_buy)
+
+                        // Draw outer boundary vertical lines for imbalances (matching MTF FOOTPRINTS style)
+                        if is_s_buy_imbalance
+                            int imb_x = x_s_spine + gap + len_buy
+                            line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_poc, width=s_imbalance_line_width, style=line.style_solid)
+                            array.push(vp_s_lines, ln_s_imb)
+                        if is_s_sell_imbalance
+                            int imb_x = x_s_spine - gap - len_sell
+                            line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_poc, width=s_imbalance_line_width, style=line.style_solid)
+                            array.push(vp_s_lines, ln_s_imb)
+                    else if s_vp_type == "Delta Profile"
+                        if s_delta > 0
+                            // Opaque delta gradient mixed with dark #000000
+                            color s_c_delta_buy = color.new(color.from_gradient(math.abs(s_delta) * inv_max_s_delta, 0.0, 1.0, #000000, col_bull), 0)
+                            string vp_s_delta_txt = show_vp_labels ? ("+" + format_vol(s_delta)) : ""
+
+                            box bs_delta = box.new(x_s_spine + gap, level_top, x_s_spine + gap + len_delta, level_bottom, border_width=1, border_color=transparent_col, bgcolor=s_c_delta_buy, text=vp_s_delta_txt, text_size=size.auto, text_color=dark)
+                            array.push(vp_s_boxes, bs_delta)
+
+                            if is_s_buy_imbalance
+                                int imb_x = x_s_spine + gap + len_delta
+                                line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_poc, width=s_imbalance_line_width, style=line.style_solid)
+                                array.push(vp_s_lines, ln_s_imb)
+                        else if s_delta < 0
+                            // Opaque delta gradient mixed with dark #000000
+                            color s_c_delta_sell = color.new(color.from_gradient(math.abs(s_delta) * inv_max_s_delta, 0.0, 1.0, #000000, col_bear), 0)
+                            string vp_s_delta_txt = show_vp_labels ? (format_vol(s_delta)) : ""
+
+                            box bs_delta = box.new(x_s_spine - gap - len_delta, level_top, x_s_spine - gap, level_bottom, border_width=1, border_color=transparent_col, bgcolor=s_c_delta_sell, text=vp_s_delta_txt, text_size=size.auto, text_color=dark)
+                            array.push(vp_s_boxes, bs_delta)
+
+                            if is_s_sell_imbalance
+                                int imb_x = x_s_spine - gap - len_delta
+                                line ln_s_imb = line.new(imb_x, s_imb_y1, imb_x, s_imb_y2, color=col_poc, width=s_imbalance_line_width, style=line.style_solid)
+                                array.push(vp_s_lines, ln_s_imb)
 
                     if i == poc_s_idx
                         float poc_s_p = level_bottom + (row_height/2)
@@ -1389,22 +1503,26 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     float b_delta = b_buy - b_sell
                     color base_c = vp_type == "Normal" ? col_poc : (b_delta > 0 ? c_buy : (b_delta < 0 ? c_sell : col_poc))
                     float pct_total = b_vol * inv_max_total_vol
-                    int t_vp = get_profile_alpha(pct_total, level_bottom, close, inv_fade_range)
-                    color c_bar_vp = color.new(base_c, t_vp)
+                    color c_bar_vp = color.new(color.from_gradient(pct_total, 0.0, 1.0, #000000, base_c), 0)
                     
                     int len_total = math.round(width_scaler_vp * pct_total)
                     string txt_delta = show_vp_labels ? ((b_delta > 0 ? "+" : "") + format_vol(b_delta)) : ""
                     
                     string vp_txt = show_vp_labels ? (format_vol(b_vol) + (vp_type == "Delta" ? " | " + txt_delta : "")) : ""
-                    box b = box.new(x_vp_start, level_top, x_vp_start + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt, text_formatting = text.format_bold,text_size=size.auto, text_color=dark)
+                    box b = box.new(x_vp_start, level_top, x_vp_start + len_total, level_bottom, border_width=1, border_color=transparent_col, bgcolor=c_bar_vp, text=vp_txt,text_size=size.auto, text_color=dark)
                     array.push(vp_boxes, b)
             
             if show_vp_short
                 float poc_s_p = lowest_p + (poc_s_idx * row_height) + (row_height/2)
                 
-                // Draw segmented 3-part divider line
-                line l_div_mid = line.new(x_s_spine, val_s_price, x_s_spine, vah_s_price, color=color.new(col_poc, 0), width=6, style=line.style_solid)
+                // Draw segmented 3-part divider lines for the main spine
+                // Main Spine
+                line l_div_mid = line.new(x_s_spine, val_s_price, x_s_spine, vah_s_price, color=color.new(col_poc, 0), width=2, style=line.style_solid)
+                line l_div_top = line.new(x_s_spine, vah_s_price, x_s_spine, highest_p, color=color.new(col_poc, 30), width=1, style=line.style_dashed)
+                line l_div_bot = line.new(x_s_spine, lowest_p, x_s_spine, val_s_price, color=color.new(col_poc, 30), width=1, style=line.style_dashed)
                 array.push(vp_s_lines, l_div_mid)
+                array.push(vp_s_lines, l_div_top)
+                array.push(vp_s_lines, l_div_bot)
 
                 line l_vah_s = line.new(x_s_line_start, vah_s_price, x_s_line_end, vah_s_price, color=color.new(white, 0), width=1, style=line.style_dashed)
                 array.push(vp_s_lines, l_vah_s)
@@ -1429,8 +1547,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         string lvn_txt = "LVN"
                         box b_lvn = box.new(left=x_s_line_start, top=l_top, right=x_s_line_end, bottom=l_bottom,
                                             border_color=lvn_border_c, border_width=1, border_style=line.style_dashed,
-                                            bgcolor=lvn_bg_c, text=lvn_txt, text_color=white, text_size=size.auto,
-                                            text_formatting=text.format_bold, text_halign=text.align_right, text_valign=text.align_center)
+                                            bgcolor=lvn_bg_c, text=lvn_txt, text_color=white, text_size=size.auto, text_halign=text.align_right, text_valign=text.align_center)
                         array.push(lvn_s_boxes, b_lvn)
 
                 if show_hvn and array.size(hvn_s_indices) > 0
@@ -1444,8 +1561,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         string hvn_txt = "HVN"
                         box b_hvn = box.new(left=x_s_line_start, top=h_top, right=x_s_line_end, bottom=h_bottom,
                                             border_color=hvn_border_c, border_width=1, border_style=line.style_solid,
-                                            bgcolor=hvn_bg_c, text=hvn_txt, text_color=white, text_size=size.auto,
-                                            text_formatting=text.format_bold, text_halign=text.align_right, text_valign=text.align_center)
+                                            bgcolor=hvn_bg_c, text=hvn_txt, text_color=white, text_size=size.auto, text_halign=text.align_right, text_valign=text.align_center)
                         array.push(hvn_s_boxes, b_hvn)
             int end_line = x_vp_start + width_scaler_vp + vp_gap
             int final_end_line = end_line
@@ -1485,8 +1601,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         string lvn_txt = "LVN "// + str.tostring(lvn_p, format.mintick) + " (" + format_vol(lvn_v) + ")"
                         box b_lvn = box.new(left=x_vp_start, top=lvn_top, right=final_end_line, bottom=lvn_bottom,
                                             border_color=lvn_border_c, border_width=1, border_style=line.style_dashed,
-                                            bgcolor=lvn_bg_c, text=lvn_txt, text_color=white, text_size=size.auto,
-                                            text_formatting=text.format_bold, text_halign=text.align_right, text_valign=text.align_center)
+                                            bgcolor=lvn_bg_c, text=lvn_txt, text_color=white, text_size=size.auto, text_halign=text.align_right, text_valign=text.align_center)
                         array.push(lvn_boxes, b_lvn)
 
                 // --- RENDER HVNs ---
@@ -1501,8 +1616,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         string hvn_txt = "HVN "// + str.tostring(hvn_p, format.mintick) + " (" + format_vol(hvn_v) + ")"
                         box b_hvn = box.new(left=x_vp_start, top=hvn_top, right=final_end_line, bottom=hvn_bottom,
                                             border_color=hvn_border_c, border_width=1, border_style=line.style_solid,
-                                            bgcolor=hvn_bg_c, text=hvn_txt, text_color=white, text_size=size.auto,
-                                            text_formatting=text.format_bold, text_halign=text.align_right, text_valign=text.align_center)
+                                            bgcolor=hvn_bg_c, text=hvn_txt, text_color=white, text_size=size.auto, text_halign=text.align_right, text_valign=text.align_center)
                         array.push(hvn_boxes, b_hvn)
 
                 line l_vlh = line.new(x_vp_start - 1, val_price, x_vp_start - 1, vah_price, color=color.new(white, 0), width=6, style=line.style_solid)
@@ -1568,10 +1682,10 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
 
                 box_total_buy = box.new(x_vp_start, box_y_top, x_vp_start + buy_width, box_y_bot,
                                  bgcolor=na, border_color=transparent_col, border_width = 2,
-                                 text=txt_buy, text_color=col_poc, text_size=size.auto,text_formatting= text.format_bold, text_valign=text.align_center,text_halign = text.align_center )
+                                 text=txt_buy, text_color=col_poc, text_size=size.auto, text_valign=text.align_center,text_halign = text.align_center )
                 box_total_sell = box.new(x_vp_start + buy_width, box_y_top, x_vp_start + final_total_width, box_y_bot,
                                  bgcolor=na, border_color=transparent_col, border_width =2,
-                                 text=txt_sell, text_color=col_poc , text_size=size.auto,text_formatting = text.format_bold, text_valign=text.align_center,text_halign = text.align_center )
+                                 text=txt_sell, text_color=col_poc , text_size=size.auto, text_valign=text.align_center,text_halign = text.align_center )
 
                 array.push(total_boxes, box_total_buy)
                 array.push(total_boxes, box_total_sell)
@@ -1603,7 +1717,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                             string p_marker = t.priority == 1 ? (math.abs(t.price - ema_long_val) < row_height * 2 ? "[E]" : "[B]") : (t.priority == 2 ? "[L]" : "[V]")
                             lbl_txt += " | " + p_marker + " #" + str.tostring(i + 1)
                         // Shift labels slightly to the right of the bubble
-                        array.push(predict_labels, label.new(math.min(bar_index + 480, x_end + 3), y_end, lbl_txt, color=color.new(h_col, 80), textcolor=white, style=label.style_label_left, size=size.tiny, text_formatting=text.format_bold))
+                        array.push(predict_labels, label.new(math.min(bar_index + 480, x_end + 3), y_end, lbl_txt, color=color.new(h_col, 80), textcolor=white, style=label.style_label_left, size=size.tiny))
                         array.push(predict_labels, label.new(x_end, y_end, "●", color=color.new(h_col, 100), textcolor=white, style=label.style_label_center, size=size.small))
                         array.push(predict_labels, label.new(x_end, y_end, "○", color=color.new(h_col, 100), textcolor=white, style=label.style_label_center, size=size.large))
                         
@@ -1870,10 +1984,10 @@ if show_table and barstate.islast
     if is_vert
         // Header
         table.merge_cells(info_table, 0, 0, 1, 0)
-        table.cell(info_table, 0, 0, "Bookmap Pro V5.17 | " + str.tostring(syminfo.ticker), bgcolor=color.new(dark , 0), text_color=white, text_size=t_header_size, text_formatting=text.format_bold)
+        table.cell(info_table, 0, 0, "Bookmap Pro V5.17 | " + str.tostring(syminfo.ticker), bgcolor=color.new(dark , 0), text_color=white, text_size=t_header_size)
 
         table.merge_cells(info_table, 0, 1, 1, 1)
-        table.cell(info_table, 0, 1, "CURRENT BAR METRICS", text_color=col_poc, text_size=t_size, text_formatting=text.format_bold, bgcolor=get_table_bg(0, 1, 2, max_table_rows))
+        table.cell(info_table, 0, 1, "CURRENT BAR METRICS", text_color=col_poc, text_size=t_size, bgcolor=get_table_bg(0, 1, 2, max_table_rows))
         table.cell(info_table, 0, 2, "BUY VOLUME", text_color=white, text_size=t_size, text_halign=text.align_left, bgcolor=get_table_bg(0, 2, 2, max_table_rows))
         table.cell(info_table, 1, 2, format_vol(buy_volume), text_color=white, text_size=t_size, text_halign=text.align_right, bgcolor=get_table_bg(1, 2, 2, max_table_rows))
         table.cell(info_table, 0, 3, "SELL VOLUME", text_color=white, text_size=t_size, text_halign=text.align_left, bgcolor=get_table_bg(0, 3, 2, max_table_rows))
@@ -1884,7 +1998,7 @@ if show_table and barstate.islast
         table.cell(info_table, 1, 5, (p_delta >= 0 ? "+" : "") + format_vol(p_delta), text_color=white, text_size=t_size, text_halign=text.align_right, bgcolor=get_table_bg(1, 5, 2, max_table_rows))
 
         table.merge_cells(info_table, 0, 6, 1, 6)
-        table.cell(info_table, 0, 6, "AGGREGATE (" + str.tostring(vp_lookback) + " BARS)", text_color=col_poc, text_size=t_size, text_formatting=text.format_bold, bgcolor=get_table_bg(0, 6, 2, max_table_rows))
+        table.cell(info_table, 0, 6, "AGGREGATE (" + str.tostring(vp_lookback) + " BARS)", text_color=col_poc, text_size=t_size, bgcolor=get_table_bg(0, 6, 2, max_table_rows))
         table.cell(info_table, 0, 7, "TOTAL BUY", text_color=white, text_size=t_size, text_halign=text.align_left, bgcolor=get_table_bg(0, 7, 2, max_table_rows))
         table.cell(info_table, 1, 7, format_vol(agg_buy), text_color=white, text_size=t_size, text_halign=text.align_right, bgcolor=get_table_bg(1, 7, 2, max_table_rows))
         table.cell(info_table, 0, 8, "TOTAL SELL", text_color=white, text_size=t_size, text_halign=text.align_left, bgcolor=get_table_bg(0, 8, 2, max_table_rows))
@@ -1906,7 +2020,7 @@ if show_table and barstate.islast
         // Prediction Analysis
         if show_predict and array.size(targets_all) > 0
             table.merge_cells(info_table, 0, 15, 1, 15)
-            table.cell(info_table, 0, 15, "PREDICTION ANALYSIS", text_color=col_poc, text_size=t_size, text_formatting=text.format_bold, bgcolor=get_table_bg(0, 15, 2, max_table_rows))
+            table.cell(info_table, 0, 15, "PREDICTION ANALYSIS", text_color=col_poc, text_size=t_size, bgcolor=get_table_bg(0, 15, 2, max_table_rows))
             
             int p_count = math.min(3, array.size(targets_all))
             for i = 0 to p_count - 1
@@ -1927,14 +2041,14 @@ if show_table and barstate.islast
     else
         // Horizontal Header
         table.merge_cells(info_table, 0, 0, 5, 0)
-        table.cell(info_table, 0, 0, "Bookmap Pro V5.17 | " + str.tostring(syminfo.ticker), bgcolor=color.new(dark , 0), text_color=white, text_size=t_header_size, text_formatting=text.format_bold)
+        table.cell(info_table, 0, 0, "Bookmap Pro V5.17 | " + str.tostring(syminfo.ticker), bgcolor=color.new(dark , 0), text_color=white, text_size=t_header_size)
         
         table.merge_cells(info_table, 0, 1, 1, 1)
-        table.cell(info_table, 0, 1, "CURRENT BAR", text_color=white, text_size=t_size, text_formatting=text.format_bold, bgcolor=get_table_bg(0, 1, 6, max_table_rows))
+        table.cell(info_table, 0, 1, "CURRENT BAR", text_color=white, text_size=t_size, bgcolor=get_table_bg(0, 1, 6, max_table_rows))
         table.merge_cells(info_table, 2, 1, 3, 1)
-        table.cell(info_table, 2, 1, "AGGREGATE (" + str.tostring(vp_lookback) + "B)", text_color=white, text_size=t_size, text_formatting=text.format_bold, bgcolor=get_table_bg(2, 1, 6, max_table_rows))
+        table.cell(info_table, 2, 1, "AGGREGATE (" + str.tostring(vp_lookback) + "B)", text_color=white, text_size=t_size, bgcolor=get_table_bg(2, 1, 6, max_table_rows))
         table.merge_cells(info_table, 4, 1, 5, 1)
-        table.cell(info_table, 4, 1, "MARKET STATE", text_color=white, text_size=t_size, text_formatting=text.format_bold, bgcolor=get_table_bg(4, 1, 6, max_table_rows))
+        table.cell(info_table, 4, 1, "MARKET STATE", text_color=white, text_size=t_size, bgcolor=get_table_bg(4, 1, 6, max_table_rows))
         
         table.cell(info_table, 0, 2, "BUY VOL", text_color=white, text_size=t_size, text_halign=text.align_left, bgcolor=get_table_bg(0, 2, 6, max_table_rows))
         table.cell(info_table, 1, 2, format_vol(buy_volume), text_color=white, text_size=t_size, text_halign=text.align_right, bgcolor=get_table_bg(1, 2, 6, max_table_rows))
@@ -1970,7 +2084,7 @@ if show_table and barstate.islast
         // Prediction Analysis
         if show_predict and array.size(targets_all) > 0
             table.merge_cells(info_table, 0, 7, 5, 7)
-            table.cell(info_table, 0, 7, "PREDICTION ANALYSIS", text_color=col_poc, text_size=t_size, text_formatting=text.format_bold, bgcolor=get_table_bg(0, 7, 6, max_table_rows))
+            table.cell(info_table, 0, 7, "PREDICTION ANALYSIS", text_color=col_poc, text_size=t_size, bgcolor=get_table_bg(0, 7, 6, max_table_rows))
             
             int p_count = math.min(2, array.size(targets_all))
             for i = 0 to p_count - 1
@@ -2120,14 +2234,10 @@ get_adv_color(step) =>
     float dynamic_ratio = ratio + (breathe * 0.15) 
     if dynamic_ratio > 1
         dynamic_ratio := 1
-    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+    color base_col = color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+    color.from_gradient(dynamic_ratio, 0.0, 1.0, #000000, base_col)
 
-get_fade_alpha(float x_rel) =>
-    // Assembly Center is at x=32, total assembly spans x=0 to x=64
-    float dist = math.abs(x_rel - 32)
-    float ratio = dist / 32.0 // 0 at center, 1 at edges
-    // Fade from 0 (edges) to 80 (center)
-    math.round(80 * (1 - ratio))
+get_fade_alpha(float x_rel) => 0
 
 // --- PEMBUATAN GARIS (HANYA JIKA SHOW_LOGO AKTIF) ---
 if show_logo and barstate.islast
@@ -2172,7 +2282,7 @@ if show_logo and barstate.islast
     // Ekor Tambahan & Label (Extended for wider text)
     Line1b7 := line.new(x1 = bar_index + l_off + 32, y1 = logo_base, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
     
-    label l = label.new(bar_index + l_off + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤" + "\nBookmap Pro V5.17",text_formatting = text.format_bold, style=label.style_none, textcolor=col_poc, size=size.normal,textalign = text.align_left)
+    label l = label.new(bar_index + l_off + 54, point2b, "𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤" + "\nBookmap Pro V5.17", style=label.style_none, textcolor=col_poc, size=size.normal,textalign = text.align_left)
     array.push(brand_labels, l)
 
     // --- LOGO GLOW (Character-based via label.style_none) ---
