@@ -97,10 +97,16 @@ imbalance_min_vol = input.float(defval = 0.0, title = 'Imbalance Min Volume', mi
 imbalance_margin_pct = input.float(defval = 25.0, title = 'Imbalance Line Top/Bottom Gap (%)', minval = 0.0, maxval = 49.0, step = 5.0, group = FootprintGroup)
 imbalance_line_width = input.int(defval = 6, title = 'Imbalance Line Width', minval = 1, maxval = 10, group = FootprintGroup)
 
+// Absorption & Exhaustion Settings
+show_absorption    = input.bool(defval = true, title = 'Show Absorption (Buying & Selling)', group = FootprintGroup)
+absorption_mult    = input.float(defval = 2.0, title = 'Absorption Vol Multiplier (vs Avg)', minval = 1.0, step = 0.1, group = FootprintGroup)
+show_exhaustion    = input.bool(defval = true, title = 'Show Exhaustion (Order Fade)', group = FootprintGroup)
+exhaustion_ratio   = input.float(defval = 3.0, title = 'Exhaustion Min Ratio', minval = 1.5, step = 0.1, group = FootprintGroup)
+
 // S/R footprint settings
 SRGroup = "Advanced Support & Resistance (Footprints)"
 show_sr_footprints = input.bool(defval = true, title = 'Show Footprints S/R Levels', group = SRGroup)
-sr_source          = input.string(defval = 'Imbalances', title = 'S/R Level Source', options = ['Imbalances', 'Large Volume', 'Both'], group = SRGroup)
+sr_source          = input.string(defval = 'Imbalances', title = 'S/R Level Source', options = ['Imbalances', 'Large Volume', 'Absorption', 'Both'], group = SRGroup)
 max_sr_levels      = input.int(defval = 4, title = 'Max Active S/R Levels', minval = 1, maxval = 100, group = SRGroup)
 keep_mitigated_sr  = input.bool(defval = true, title = 'Keep Mitigated S/R (Faded Style)', group = SRGroup)
 mitigation_type    = input.string(defval = 'HTF Body Close', title = 'Mitigation Source Type', options = ['HTF Wick', 'HTF Body Close'], group = SRGroup)
@@ -177,6 +183,9 @@ var int htf_start_bar_index = 0
 var array<box> future_boxes = array.new<box>() 
 var array<label> future_labels = array.new<label>()
 var array<line> future_lines = array.new<line>()
+
+// Lower Timeframe (1m) Request for High Precision Footprints
+[ltf_o_series, ltf_h_series, ltf_l_series, ltf_c_series, ltf_v_series] = request.security_lower_tf(syminfo.tickerid, "1", [open, high, low, close, volume])
 
 // Volume Formatter Helper
 format_vol(float v) =>
@@ -365,16 +374,40 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
     float inv_step = 1.0 / step
     for i = 0 to (end_idx - start_idx)
         idx = end_idx - i
-        _o = open[bar_index - idx]
-        _h = high[bar_index - idx]
-        _l = low[bar_index - idx]
-        _c = close[bar_index - idx]
-        _v = volume[bar_index - idx]
-        [b_buy, b_sell] = get_buy_sell_vol(_v, _o, _h, _l, _c)
-        s_buy_vol += b_buy
-        s_sell_vol += b_sell
+        int k = bar_index - idx
+        _o = open[k]
+        _h = high[k]
+        _l = low[k]
+        _c = close[k]
+        _v = volume[k]
 
-        distribute_vol(levels_count, s_low, inv_step, _o, _h, _l, _c, _v, vol_dist, buy_dist)
+        // LTF 1m Precision distribution
+        float[] ltf_o_arr = ltf_o_series[k]
+        float[] ltf_h_arr = ltf_h_series[k]
+        float[] ltf_l_arr = ltf_l_series[k]
+        float[] ltf_c_arr = ltf_c_series[k]
+        float[] ltf_v_arr = ltf_v_series[k]
+
+        bool has_ltf = not na(ltf_v_arr) and array.size(ltf_v_arr) > 0
+
+        if has_ltf
+            int ltf_sz = array.size(ltf_v_arr)
+            for j = 0 to ltf_sz - 1
+                float lo = array.get(ltf_o_arr, j)
+                float lh = array.get(ltf_h_arr, j)
+                float ll = array.get(ltf_l_arr, j)
+                float lc = array.get(ltf_c_arr, j)
+                float lv = array.get(ltf_v_arr, j)
+
+                [lb_buy, lb_sell] = get_buy_sell_vol(lv, lo, lh, ll, lc)
+                s_buy_vol += lb_buy
+                s_sell_vol += lb_sell
+                distribute_vol(levels_count, s_low, inv_step, lo, lh, ll, lc, lv, vol_dist, buy_dist)
+        else
+            [b_buy, b_sell] = get_buy_sell_vol(_v, _o, _h, _l, _c)
+            s_buy_vol += b_buy
+            s_sell_vol += b_sell
+            distribute_vol(levels_count, s_low, inv_step, _o, _h, _l, _c, _v, vol_dist, buy_dist)
 
     // Ensure no empty volume levels to maintain density
     for i = 0 to levels_count - 1
@@ -599,12 +632,32 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                     if vol_val > v_prev and vol_val > v_next and vol_val > max_vol * (hvn_threshold / 100.0)
                         is_hvn := true
 
+                // Absorption Identification
+                // Buying Absorption: High buying volume occurs at high extreme / resistance without price breaking out higher
+                // Selling Absorption: High selling volume occurs at low extreme / support without price breaking out lower
+                bool is_buy_absorption = show_absorption and buy_val > avg_buy_level_vol * absorption_mult and i >= levels_count - 2
+                bool is_sell_absorption = show_absorption and sell_val > avg_sell_level_vol * absorption_mult and i <= 1
+
+                // Exhaustion Identification
+                // Buying Exhaustion: Very low buying volume at top level compared to selling volume (aggressive buyers exhausted)
+                // Selling Exhaustion: Very low selling volume at bottom level compared to buying volume (aggressive sellers exhausted)
+                bool is_buy_exhaustion = show_exhaustion and i >= levels_count - 2 and sell_val >= math.max(1.0, buy_val) * exhaustion_ratio
+                bool is_sell_exhaustion = show_exhaustion and i <= 1 and buy_val >= math.max(1.0, sell_val) * exhaustion_ratio
+
                 // Large Volume Identification
                 is_large_vol_buy := show_large_vol and buy_val > avg_buy_level_vol * large_vol_mult
                 color lv_border_color_buy = na
                 int lv_border_width_buy = 0
                 string lv_border_style_buy = line.style_solid
-                if is_large_vol_buy
+                if is_buy_absorption
+                    lv_border_color_buy := yellow
+                    lv_border_width_buy := 2
+                    lv_border_style_buy := line.style_solid
+                else if is_buy_exhaustion
+                    lv_border_color_buy := orange
+                    lv_border_width_buy := 2
+                    lv_border_style_buy := line.style_dashed
+                else if is_large_vol_buy
                     lv_border_color_buy := col_bull
                     lv_border_width_buy := 2
                     lv_border_style_buy := line.style_solid
@@ -613,7 +666,15 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 color lv_border_color_sell = na
                 int lv_border_width_sell = 0
                 string lv_border_style_sell = line.style_solid
-                if is_large_vol_sell
+                if is_sell_absorption
+                    lv_border_color_sell := yellow
+                    lv_border_width_sell := 2
+                    lv_border_style_sell := line.style_solid
+                else if is_sell_exhaustion
+                    lv_border_color_sell := orange
+                    lv_border_width_sell := 2
+                    lv_border_style_sell := line.style_dashed
+                else if is_large_vol_sell
                     lv_border_color_sell := col_bear
                     lv_border_width_sell := 2
                     lv_border_style_sell := line.style_solid
@@ -638,6 +699,20 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         ln_hvn = line.new(axis_x, level_mid, right_badge_x1, level_mid, color=hvn_col, width=1, style=line.style_dashed)
                         array.push(future_boxes, bx_hvn_r)
                         array.push(future_lines, ln_hvn)
+                    if is_buy_absorption or is_sell_absorption
+                        color abs_col = yellow
+                        string abs_txt = is_buy_absorption ? "B-ABS" : "S-ABS"
+                        bx_abs_l = box.new(left_badge_x1, level_high, left_badge_x2, level_low, border_color=abs_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text=abs_txt, text_color=abs_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        ln_abs = line.new(left_badge_x2, level_mid, axis_x, level_mid, color=abs_col, width=1, style=line.style_dotted)
+                        array.push(future_boxes, bx_abs_l)
+                        array.push(future_lines, ln_abs)
+                    if is_buy_exhaustion or is_sell_exhaustion
+                        color exh_col = orange
+                        string exh_txt = is_buy_exhaustion ? "B-EXH" : "S-EXH"
+                        bx_exh_l = box.new(left_badge_x1, level_high, left_badge_x2, level_low, border_color=exh_col, border_width=1, border_style=line.style_dashed, bgcolor=badge_bg, text=exh_txt, text_color=exh_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        ln_exh = line.new(left_badge_x2, level_mid, axis_x, level_mid, color=exh_col, width=1, style=line.style_dotted)
+                        array.push(future_boxes, bx_exh_l)
+                        array.push(future_lines, ln_exh)
                     if active_buy_val > 0
                         bx_vol_buy = box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=white, text_valign=text.align_center)
                         array.push(future_boxes, bx_vol_buy)
@@ -681,6 +756,16 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         color hvn_col = color.new(col_bull, 0)
                         box.new(right_badge_x1, level_high, right_badge_x2, level_low, border_color=hvn_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="HVN", text_color=hvn_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
                         line.new(axis_x, level_mid, right_badge_x1, level_mid, color=hvn_col, width=1, style=line.style_dashed)
+                    if is_buy_absorption or is_sell_absorption
+                        color abs_col = yellow
+                        string abs_txt = is_buy_absorption ? "B-ABS" : "S-ABS"
+                        box.new(left_badge_x1, level_high, left_badge_x2, level_low, border_color=abs_col, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text=abs_txt, text_color=abs_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        line.new(left_badge_x2, level_mid, axis_x, level_mid, color=abs_col, width=1, style=line.style_dotted)
+                    if is_buy_exhaustion or is_sell_exhaustion
+                        color exh_col = orange
+                        string exh_txt = is_buy_exhaustion ? "B-EXH" : "S-EXH"
+                        box.new(left_badge_x1, level_high, left_badge_x2, level_low, border_color=exh_col, border_width=1, border_style=line.style_dashed, bgcolor=badge_bg, text=exh_txt, text_color=exh_col, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
+                        line.new(left_badge_x2, level_mid, axis_x, level_mid, color=exh_col, width=1, style=line.style_dotted)
                     if active_buy_val > 0
                         box.new(x_buy_1, level_high, x_buy_2, level_low, border_color=lv_border_color_buy, border_width=lv_border_width_buy, border_style=lv_border_style_buy, bgcolor=final_col_buy, text=txt_vol_buy, text_size=size.auto, text_color=white, text_valign=text.align_center)
                     if active_sell_val > 0
@@ -696,8 +781,8 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         line.new(imb_x, imb_y1, imb_x, imb_y2, color=imb_color, width=imbalance_line_width, style=line.style_solid)
 
                     // S/R candidate logic (Filter: Support must be below current price, Resistance must be above)
-                    bool is_support_candidate = ((sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy))) and (level_mid < close)
-                    bool is_resistance_candidate = ((sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell))) and (level_mid > close)
+                    bool is_support_candidate = ((sr_source == "Imbalances" and is_buy_imbalance) or (sr_source == "Large Volume" and is_large_vol_buy) or (sr_source == "Absorption" and is_sell_absorption) or (sr_source == "Both" and (is_buy_imbalance or is_large_vol_buy or is_sell_absorption))) and (level_mid < close)
+                    bool is_resistance_candidate = ((sr_source == "Imbalances" and is_sell_imbalance) or (sr_source == "Large Volume" and is_large_vol_sell) or (sr_source == "Absorption" and is_buy_absorption) or (sr_source == "Both" and (is_sell_imbalance or is_large_vol_sell or is_buy_absorption))) and (level_mid > close)
 
                     if show_sr_footprints
                         if is_support_candidate
