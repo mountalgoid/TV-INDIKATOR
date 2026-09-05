@@ -709,7 +709,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                             label lbl_sr = label.new(end_idx, level_mid, "Footprint RES\n" + format_vol(active_sell_val), textcolor=col_bear, style=label.style_label_left, size=size.tiny, color=color.new(dark, 80))
                             array.push(htf_sr_levels, SRLevel.new(ln_sr, lbl_sr, level_mid, false, true, bar_index, false))
 
-        // 3. Draw Extended POC & VAH/VAL Boxes
+        // 3. Draw Extended POC & Value Area Box
         float poc_price = s_low + (step * (poc_idx + 0.5))
         float vah_price = s_low + (step * (va_up + 1))
         float val_price = s_low + (step * va_down)
@@ -721,36 +721,27 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
         int right_badge_x2 = hvn_lvn_right - badge_width
         color badge_bg = color.new(dark, 30)
 
+        // Value Area Box (spanning axis_x to right_badge_x1, from val_price to vah_price)
+        color va_box_bg = color.new(col_poc, 90)
+        color va_box_border = color.new(col_poc, 70)
+
         if is_future
+            // Value Area Box
+            bx_va = box.new(axis_x, vah_price, right_badge_x1, val_price, border_color=va_box_border, border_width=1, border_style=line.style_dashed, bgcolor=va_box_bg)
+            array.push(future_boxes, bx_va)
+
             // POC
             bx_p_r = box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
             ln_poc = line.new(axis_x, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_solid)
             array.push(future_boxes, bx_p_r)
             array.push(future_lines, ln_poc)
-            
-            // VAH
-            bx_vh_r = box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            ln_vah = line.new(axis_x, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
-            array.push(future_boxes, bx_vh_r)
-            array.push(future_lines, ln_vah)
-
-            // VAL
-            bx_vl_r = box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            ln_val = line.new(axis_x, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
-            array.push(future_boxes, bx_vl_r)
-            array.push(future_lines, ln_val)
         else
+            // Value Area Box
+            box.new(axis_x, vah_price, right_badge_x1, val_price, border_color=va_box_border, border_width=1, border_style=line.style_dashed, bgcolor=va_box_bg)
+
             // POC
             box.new(right_badge_x1, poc_price + step/3, right_badge_x2, poc_price - step/3, border_color=color_poc, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="POC\n" + str.tostring(poc_price, format.mintick), text_color=color_poc, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
             line.new(axis_x, poc_price, right_badge_x1, poc_price, color=color_poc, width=2, style=line.style_solid)
-            
-            // VAH
-            box.new(right_badge_x1, vah_price + step/3, right_badge_x2, vah_price - step/3, border_color=color_vah, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAH\n" + str.tostring(vah_price, format.mintick), text_color=color_vah, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            line.new(axis_x, vah_price, right_badge_x1, vah_price, color=color_vah, width=1, style=line.style_dashed)
-
-            // VAL
-            box.new(right_badge_x1, val_price + step/3, right_badge_x2, val_price - step/3, border_color=color_val, border_width=1, border_style=line.style_solid, bgcolor=badge_bg, text="VAL\n" + str.tostring(val_price, format.mintick), text_color=color_val, text_size=size.auto, text_halign=text.align_center, text_valign=text.align_center, text_formatting=text.format_bold)
-            line.new(axis_x, val_price, right_badge_x1, val_price, color=color_val, width=1, style=line.style_dashed)
 
     // Draw HTF candle Delta and Delta Percentage Labels
     if show_delta
