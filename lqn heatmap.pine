@@ -113,8 +113,8 @@ var array<LiqZone> liq_zones = array.new<LiqZone>()
 var array<line> liq_lines_hist = array.new_line()
 var array<linefill> liq_fills_hist = array.new<linefill>()
 
-// Persistent heat grid for "Smooth" mode
-var float[] heat_grid = array.new_float(100, 0.0) // 50 above, 50 below
+// Persistent heat grid for "Smooth" & Background Heatmap Density
+var float[] heat_grid = array.new_float(120, 0.0) // 60 above, 60 below
 var float   heat_base_p = na
 
 // Precision detection: Multi-bar pivot
@@ -153,34 +153,50 @@ if na(heat_base_p) or math.abs(close - heat_base_p) > liq_step * 20
     array.fill(heat_grid, 0.0)
 
 update_heat(float target_p, float amount) =>
-    int idx = math.round((target_p - heat_base_p) * inv_liq_step) + 50
-    if idx >= 0 and idx < 100
+    int idx = math.round((target_p - heat_base_p) * inv_liq_step) + 60
+    if idx >= 0 and idx < 120
         array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
 
-// Heatmap Depth/Concentration Gradient Palette (Bookmap/TradingView Liquidation Heatmap style)
-// Low liquidity -> Deep Navy/Blue -> Cyan/Light Blue -> Yellow -> Orange -> Red -> Bright White
+// Super-detailed Liquidity Heatmap Palette & Heat Gradient Mapping (Bookmap V5 / High-Density Heatmap Standard)
+// Multi-stop continuous color transition:
+// 0.0 - 2.0  : #051428 (Very Deep Navy Background)
+// 2.0 - 5.0  : #0d386b (Royal Blue)
+// 5.0 - 8.0  : #00bcd4 (Electric Cyan)
+// 8.0 - 12.0 : #4caf50 (Bright Lime Green)
+// 12.0 - 15.0: #ffeb3b (Vibrant Yellow)
+// 15.0 - 18.0: #ff9800 (Deep Orange)
+// 18.0 - 22.0: #f44336 (Hot Liquid Red)
+// 22.0+      : #ffffff (Peak White Hotspot)
 get_liquidity_heat_color(float val, bool is_core) =>
-    color c_0   = #0a2540 // Deep navy background
-    color c_25  = #187bcd // Cyan / Steel blue
-    color c_50  = #00d4ff // Bright cyan
-    color c_75  = #ffaa00 // Bright yellow-orange
-    color c_90  = #f23645 // High concentration red
-    color c_100 = #ffffff // Peak concentration white
+    color c_0   = #051428 // Deep Navy
+    color c_20  = #0d386b // Royal Blue
+    color c_40  = #00bcd4 // Electric Cyan
+    color c_60  = #4caf50 // Lime Green
+    color c_75  = #ffeb3b // Yellow
+    color c_88  = #ff9800 // Orange
+    color c_95  = #f44336 // Hot Red
+    color c_100 = #ffffff // Peak White Hotspot
 
     color res = c_0
-    if val <= 3.0
-        res := color.from_gradient(val, 0.0, 3.0, c_0, c_25)
-    else if val <= 7.0
-        res := color.from_gradient(val, 3.0, 7.0, c_25, c_50)
+    if val <= 2.0
+        res := color.from_gradient(val, 0.0, 2.0, c_0, c_20)
+    else if val <= 5.0
+        res := color.from_gradient(val, 2.0, 5.0, c_20, c_40)
+    else if val <= 8.0
+        res := color.from_gradient(val, 5.0, 8.0, c_40, c_60)
     else if val <= 12.0
-        res := color.from_gradient(val, 7.0, 12.0, c_50, c_75)
-    else if val <= 17.0
-        res := color.from_gradient(val, 12.0, 17.0, c_75, c_90)
+        res := color.from_gradient(val, 8.0, 12.0, c_60, c_75)
+    else if val <= 15.0
+        res := color.from_gradient(val, 12.0, 15.0, c_75, c_88)
+    else if val <= 18.0
+        res := color.from_gradient(val, 15.0, 18.0, c_88, c_95)
     else
-        res := color.from_gradient(val, 17.0, 20.0, c_90, c_100)
+        res := color.from_gradient(val, 18.0, 25.0, c_95, c_100)
 
-    float q_weight = math.pow(math.max(0, (val - 1.0) * 0.0526315789), 0.8)
-    int base_alpha = is_core ? math.round((1.0 - q_weight) * 20) : math.round((1.0 - q_weight) * 60 + 10)
+    // Non-linear logarithmic visibility weight for crystal-clear resting order depth contrasts
+    float norm_v = math.min(1.0, val / 20.0)
+    float q_weight = math.pow(norm_v, 0.6)
+    int base_alpha = is_core ? math.round((1.0 - q_weight) * 15) : math.round((1.0 - q_weight) * 45 + 5)
     color.new(res, math.min(95, base_alpha))
 
 get_heatmap_color(float s, bool is_long, float level, bool is_core) =>
@@ -376,38 +392,54 @@ if show_liq_heatmap
             update_heat(base_vwap * (1 - 1/lev1 + maint_margin), 0.5)
 
 // Heat Decay & Sweeping
-for i = 0 to 99
+for i = 0 to 119
     float cur_heat = array.get(heat_grid, i)
     if cur_heat > 0
-        float p_level = heat_base_p + (i - 50) * liq_step
-        bool swept = (i >= 50 and high >= p_level) or (i < 50 and low <= p_level)
+        float p_level = heat_base_p + (i - 60) * liq_step
+        bool swept = (i >= 60 and high >= p_level) or (i < 60 and low <= p_level)
         if swept
-            array.set(heat_grid, i, cur_heat * 0.3)
+            array.set(heat_grid, i, cur_heat * 0.2)
         else
-            array.set(heat_grid, i, cur_heat * 0.998)
+            array.set(heat_grid, i, cur_heat * 0.999)
 
 // Institutional Smooth Gradient Mapping
 get_smooth_heat_color(float heat, bool is_above, float level) =>
     float val = math.min(heat, 20.0)
     get_liquidity_heat_color(val, true)
 
-// Plotting the Grid
-show_plots_liq = show_liq_heatmap and liq_style == "Smooth (Plots)" or show_liq_heatmap and liq_style == "both"
+// High-density Full-Chart Background Plot Grid Rendering
+show_plots_liq = show_liq_heatmap and (liq_style == "Smooth (Plots)" or liq_style == "both")
 
-p_up00 = plot(show_plots_liq ? heat_base_p + 0 * liq_step : na, "H+0", color=transparent_col, style=plot.style_linebr)
-p_up08 = plot(show_plots_liq ? heat_base_p + 8 * liq_step : na, "H+8", color=transparent_col, style=plot.style_linebr)
-p_up16 = plot(show_plots_liq ? heat_base_p + 16 * liq_step : na, "H+16", color=transparent_col, style=plot.style_linebr)
-p_up32 = plot(show_plots_liq ? heat_base_p + 32 * liq_step : na, "H+32", color=transparent_col, style=plot.style_linebr)
+p_u00 = plot(show_plots_liq ? heat_base_p + 0 * liq_step : na, "H+0", color=transparent_col, style=plot.style_linebr)
+p_u04 = plot(show_plots_liq ? heat_base_p + 4 * liq_step : na, "H+4", color=transparent_col, style=plot.style_linebr)
+p_u08 = plot(show_plots_liq ? heat_base_p + 8 * liq_step : na, "H+8", color=transparent_col, style=plot.style_linebr)
+p_u12 = plot(show_plots_liq ? heat_base_p + 12 * liq_step : na, "H+12", color=transparent_col, style=plot.style_linebr)
+p_u16 = plot(show_plots_liq ? heat_base_p + 16 * liq_step : na, "H+16", color=transparent_col, style=plot.style_linebr)
+p_u24 = plot(show_plots_liq ? heat_base_p + 24 * liq_step : na, "H+24", color=transparent_col, style=plot.style_linebr)
+p_u32 = plot(show_plots_liq ? heat_base_p + 32 * liq_step : na, "H+32", color=transparent_col, style=plot.style_linebr)
+p_u48 = plot(show_plots_liq ? heat_base_p + 48 * liq_step : na, "H+48", color=transparent_col, style=plot.style_linebr)
 
-fill(p_up00, p_up08, color=get_smooth_heat_color(array.get(heat_grid, 54), true, heat_base_p + 4 * liq_step))
-fill(p_up08, p_up16, color=get_smooth_heat_color(array.get(heat_grid, 62), true, heat_base_p + 12 * liq_step))
-fill(p_up16, p_up32, color=get_smooth_heat_color(array.get(heat_grid, 74), true, heat_base_p + 24 * liq_step))
+fill(p_u00, p_u04, color=get_smooth_heat_color(array.get(heat_grid, 62), true, heat_base_p + 2 * liq_step))
+fill(p_u04, p_u08, color=get_smooth_heat_color(array.get(heat_grid, 66), true, heat_base_p + 6 * liq_step))
+fill(p_u08, p_u12, color=get_smooth_heat_color(array.get(heat_grid, 70), true, heat_base_p + 10 * liq_step))
+fill(p_u12, p_u16, color=get_smooth_heat_color(array.get(heat_grid, 74), true, heat_base_p + 14 * liq_step))
+fill(p_u16, p_u24, color=get_smooth_heat_color(array.get(heat_grid, 80), true, heat_base_p + 20 * liq_step))
+fill(p_u24, p_u32, color=get_smooth_heat_color(array.get(heat_grid, 88), true, heat_base_p + 28 * liq_step))
+fill(p_u32, p_u48, color=get_smooth_heat_color(array.get(heat_grid, 100), true, heat_base_p + 40 * liq_step))
 
-p_dn00 = plot(show_plots_liq ? heat_base_p - 0 * liq_step : na, "H-0", color=transparent_col, style=plot.style_linebr)
-p_dn08 = plot(show_plots_liq ? heat_base_p - 8 * liq_step : na, "H-8", color=transparent_col, style=plot.style_linebr)
-p_dn16 = plot(show_plots_liq ? heat_base_p - 16 * liq_step : na, "H-16", color=transparent_col, style=plot.style_linebr)
-p_dn32 = plot(show_plots_liq ? heat_base_p - 32 * liq_step : na, "H-32", color=transparent_col, style=plot.style_linebr)
+p_d00 = plot(show_plots_liq ? heat_base_p - 0 * liq_step : na, "H-0", color=transparent_col, style=plot.style_linebr)
+p_d04 = plot(show_plots_liq ? heat_base_p - 4 * liq_step : na, "H-4", color=transparent_col, style=plot.style_linebr)
+p_d08 = plot(show_plots_liq ? heat_base_p - 8 * liq_step : na, "H-8", color=transparent_col, style=plot.style_linebr)
+p_d12 = plot(show_plots_liq ? heat_base_p - 12 * liq_step : na, "H-12", color=transparent_col, style=plot.style_linebr)
+p_d16 = plot(show_plots_liq ? heat_base_p - 16 * liq_step : na, "H-16", color=transparent_col, style=plot.style_linebr)
+p_d24 = plot(show_plots_liq ? heat_base_p - 24 * liq_step : na, "H-24", color=transparent_col, style=plot.style_linebr)
+p_d32 = plot(show_plots_liq ? heat_base_p - 32 * liq_step : na, "H-32", color=transparent_col, style=plot.style_linebr)
+p_d48 = plot(show_plots_liq ? heat_base_p - 48 * liq_step : na, "H-48", color=transparent_col, style=plot.style_linebr)
 
-fill(p_dn00, p_dn08, color=get_smooth_heat_color(array.get(heat_grid, 46), false, heat_base_p - 4 * liq_step))
-fill(p_dn08, p_dn16, color=get_smooth_heat_color(array.get(heat_grid, 38), false, heat_base_p - 12 * liq_step))
-fill(p_dn16, p_dn32, color=get_smooth_heat_color(array.get(heat_grid, 26), false, heat_base_p - 24 * liq_step))
+fill(p_d00, p_d04, color=get_smooth_heat_color(array.get(heat_grid, 58), false, heat_base_p - 2 * liq_step))
+fill(p_d04, p_d08, color=get_smooth_heat_color(array.get(heat_grid, 54), false, heat_base_p - 6 * liq_step))
+fill(p_d08, p_d12, color=get_smooth_heat_color(array.get(heat_grid, 50), false, heat_base_p - 10 * liq_step))
+fill(p_d12, p_d16, color=get_smooth_heat_color(array.get(heat_grid, 46), false, heat_base_p - 14 * liq_step))
+fill(p_d16, p_d24, color=get_smooth_heat_color(array.get(heat_grid, 40), false, heat_base_p - 20 * liq_step))
+fill(p_d24, p_d32, color=get_smooth_heat_color(array.get(heat_grid, 32), false, heat_base_p - 28 * liq_step))
+fill(p_d32, p_d48, color=get_smooth_heat_color(array.get(heat_grid, 20), false, heat_base_p - 40 * liq_step))
