@@ -205,6 +205,7 @@ get_heatmap_color(float s, bool is_long, float level, bool is_core) =>
 
 add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
     float grid_price = math.round(raw_price * inv_liq_step) * liq_step
+    update_heat(grid_price, 1.5)
     bool found = false
     int sz_liq = array.size(liq_zones)
     if sz_liq > 0
@@ -407,8 +408,8 @@ get_smooth_heat_color(float heat, bool is_above, float level) =>
     float val = math.min(heat, 20.0)
     get_liquidity_heat_color(val, true)
 
-// High-density Full-Chart Background Plot Grid Rendering
-show_plots_liq = show_liq_heatmap and (liq_style == "Smooth (Plots)" or liq_style == "both")
+// High-density Full-Chart Background Plot Grid Rendering (always active when show_liq_heatmap is true)
+show_plots_liq = show_liq_heatmap
 
 p_u00 = plot(show_plots_liq ? heat_base_p + 0 * liq_step : na, "H+0", color=transparent_col, style=plot.style_linebr)
 p_u04 = plot(show_plots_liq ? heat_base_p + 4 * liq_step : na, "H+4", color=transparent_col, style=plot.style_linebr)
