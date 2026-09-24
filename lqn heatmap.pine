@@ -140,7 +140,7 @@ for i = 0 to liq_length - 1
 float base_vwap = base_sum_v > 0 ? base_sum_pv / base_sum_v : (range_high + range_low) / 2
 
 // Grid Step Calculation
-float atr_step = ta.atr(14) * 0.4
+float atr_step = ta.atr(14) * 0.25
 float auto_sens = (atr_step / close) * 100
 float final_sens = auto_mode ? math.max(0.01, auto_sens) : heatmap_sens
 float liq_step = (close * final_sens / 100)
@@ -157,18 +157,35 @@ update_heat(float target_p, float amount) =>
     if idx >= 0 and idx < 100
         array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
 
-// Register Heat
+// Heatmap Depth/Concentration Gradient Palette (Bookmap/TradingView Liquidation Heatmap style)
+// Low liquidity -> Deep Navy/Blue -> Cyan/Light Blue -> Yellow -> Orange -> Red -> Bright White
+get_liquidity_heat_color(float val, bool is_core) =>
+    color c_0   = #0a2540 // Deep navy background
+    color c_25  = #187bcd // Cyan / Steel blue
+    color c_50  = #00d4ff // Bright cyan
+    color c_75  = #ffaa00 // Bright yellow-orange
+    color c_90  = #f23645 // High concentration red
+    color c_100 = #ffffff // Peak concentration white
+
+    color res = c_0
+    if val <= 3.0
+        res := color.from_gradient(val, 0.0, 3.0, c_0, c_25)
+    else if val <= 7.0
+        res := color.from_gradient(val, 3.0, 7.0, c_25, c_50)
+    else if val <= 12.0
+        res := color.from_gradient(val, 7.0, 12.0, c_50, c_75)
+    else if val <= 17.0
+        res := color.from_gradient(val, 12.0, 17.0, c_75, c_90)
+    else
+        res := color.from_gradient(val, 17.0, 20.0, c_90, c_100)
+
+    float q_weight = math.pow(math.max(0, (val - 1.0) * 0.0526315789), 0.8)
+    int base_alpha = is_core ? math.round((1.0 - q_weight) * 20) : math.round((1.0 - q_weight) * 60 + 10)
+    color.new(res, math.min(95, base_alpha))
+
 get_heatmap_color(float s, bool is_long, float level, bool is_core) =>
     float val = math.min(s, 20.0)
-    color c_low  = is_long ? color.new(col_bull, 85) : color.new(col_bear, 85)
-    color c_mid  = is_long ? col_bull : col_bear
-    color c_high = col_poc
-    color res = val <= 10.0 ? color.from_gradient(val, 1, 10.0, c_low, c_mid) : color.from_gradient(val, 10.0, 20.0, c_mid, c_high)
-    
-    float q_weight = math.pow(math.max(0, (val - 1.0) * 0.0526315789), 0.8)
-    int base_alpha = is_core ? math.round((1.0 - q_weight) * 35) : math.round((1.0 - q_weight) * 75 + 15)
-    float smooth_f = math.pow(math.min(1.0, math.abs(level - close) * inv_fade_range_liq), 2.0)
-    color.new(res, math.min(100, math.round(base_alpha + smooth_f * (85 - base_alpha))))
+    get_liquidity_heat_color(val, is_core)
 
 add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
     float grid_price = math.round(raw_price * inv_liq_step) * liq_step
@@ -371,22 +388,8 @@ for i = 0 to 99
 
 // Institutional Smooth Gradient Mapping
 get_smooth_heat_color(float heat, bool is_above, float level) =>
-    float val = math.min(heat, 15.0)
-    color c_base = is_above ? color.new(col_bear, 90) : color.new(col_bull, 90)
-    color c_mid  = is_above ? col_bear : col_bull
-    color c_hot  = col_poc
-    
-    color res = c_base
-    if val > 0
-        if val <= 7.0
-            res := color.from_gradient(val, 0, 7.0, c_base, c_mid)
-        else
-            res := color.from_gradient(val, 7.0, 15.0, c_mid, c_hot)
-    
-    float q_weight = math.pow(math.max(0, val * 0.0666666667), 0.7)
-    int base_alpha = math.round((1.0 - q_weight) * 80)
-    float smooth_f = math.pow(math.min(1.0, math.abs(level - close) * inv_fade_range_liq), 2.0)
-    color.new(res, math.round(base_alpha + smooth_f * (80 - base_alpha)))
+    float val = math.min(heat, 20.0)
+    get_liquidity_heat_color(val, true)
 
 // Plotting the Grid
 show_plots_liq = show_liq_heatmap and liq_style == "Smooth (Plots)" or show_liq_heatmap and liq_style == "both"
