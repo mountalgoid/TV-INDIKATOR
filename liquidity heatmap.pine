@@ -10,7 +10,6 @@ type LiqZone
     line b_ln
     linefill f_top
     linefill f_bot
-    box va_bx
     float level
     float step
     float strength
@@ -21,7 +20,7 @@ type LiqZone
 // 1. INPUTS & CONFIGURATION
 // -----------------------------------------------------------------------------
 string GlobalGroup = "Visual Themes & Global"
-string grp_liq     = "Liquidity Boxes & Heatmap Engine"
+string grp_liq     = "Liquidity Engine & Heatmap Settings"
 string grp_dom     = "DOM Liquidity Profile (Right Chart)"
 
 // --- THEME SYSTEM ---
@@ -81,9 +80,6 @@ color col_poc = switch color_theme
     'Deep Sea' => white
     => white
 
-color trans_col_bear  = color.new(col_bear, 90)
-color trans_col_bull  = color.new(col_bull, 90)
-color trans_col_poc   = color.new(col_poc, 90)
 color transparent_col = color.new(dark, 100)
 
 // Liquidity Heatmap Settings
@@ -103,19 +99,11 @@ bool  use_lev_50  = input.bool(true, "Enable 50x Leverage", group=grp_liq)
 bool  use_lev_75  = input.bool(true, "Enable 75x Leverage", group=grp_liq)
 bool  use_lev_100 = input.bool(true, "Enable 100x Leverage", group=grp_liq)
 
-// Value Area (VA) Settings
-string grp_va    = "Value Area Settings"
-bool show_va      = input.bool(true, "Show Value Area Highlights", group=grp_va)
-float va_percent  = input.float(40.0, "Value Area Volume/Strength (%)", minval=10.0, maxval=100.0, step=1.0, group=grp_va)
-color va_color_in = trans_col_bull
-color va_color_sh = trans_col_bear 
-color va_border   = col_poc
-
 // DOM Profile (Right Chart) Settings
 bool   show_dom_profile = input.bool(true, "Show DOM Profile (Right Side)", group=grp_dom)
 int    dom_width        = input.int(25, "DOM Profile Width (Bars)", minval=5, maxval=100, group=grp_dom)
 int    dom_offset       = input.int(10, "DOM Profile Right Offset (Bars)", minval=0, maxval=50, group=grp_dom)
-int    dom_bins         = input.int(35, "DOM Price Level Bins", minval=10, maxval=100, group=grp_dom)
+int    dom_bins         = input.int(40, "DOM Price Level Bins", minval=10, maxval=100, group=grp_dom)
 bool   show_dom_poc     = input.bool(true, "Highlight DOM Liquidity POC", group=grp_dom)
 bool   show_dom_labels  = input.bool(true, "Show DOM Volume Labels", group=grp_dom)
 
@@ -171,13 +159,13 @@ float final_sens = auto_mode ? math.max(0.01, auto_sens) : heatmap_sens
 float liq_step = (close * final_sens / 100)
 float inv_liq_step = liq_step > 0 ? 1.0 / liq_step : 0.0
 
-// Initialize or shift heat grid base
-if na(heat_base_p) or math.abs(close - heat_base_p) > liq_step * 20
+// Initialize or smoothly adjust heat grid base
+if na(heat_base_p)
     heat_base_p := math.round(close * inv_liq_step) * liq_step
     array.fill(heat_grid, 0.0)
 
 update_heat(float target_p, float amount) =>
-    if inv_liq_step > 0
+    if inv_liq_step > 0 and not na(heat_base_p)
         int idx = math.round((target_p - heat_base_p) * inv_liq_step) + 60
         if idx >= 0 and idx < 120
             array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
@@ -220,8 +208,6 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight) =>
                     line.set_x2(z.t_ln, bar_index)
                     line.set_x2(z.m_ln, bar_index)
                     line.set_x2(z.b_ln, bar_index)
-                    if not na(z.va_bx)
-                        box.set_right(z.va_bx, bar_index)
                     array.push(liq_lines_hist, z.t_ln)
                     array.push(liq_lines_hist, z.m_ln)
                     array.push(liq_lines_hist, z.b_ln)
@@ -233,7 +219,6 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight) =>
                     z.b_ln := line.new(bar_index, z.level - z.step/2, bar_index + 10, z.level - z.step/2, color=na, width=1)
                     z.f_top := linefill.new(z.t_ln, z.m_ln, color=c_edge)
                     z.f_bot := linefill.new(z.m_ln, z.b_ln, color=c_core)
-                    z.va_bx := na
                 found := true
                 break
     if not found
@@ -244,7 +229,7 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight) =>
         l_b = line.new(bar_idx, grid_price - liq_step/2, bar_index + 10, grid_price - liq_step/2, color=na, width=1)
         f_top = linefill.new(l_t, l_m, color=c_edge)
         f_bot = linefill.new(l_m, l_b, color=c_core)
-        array.push(liq_zones, LiqZone.new(l_t, l_m, l_b, f_top, f_bot, na, grid_price, liq_step, weight, is_long, true))
+        array.push(liq_zones, LiqZone.new(l_t, l_m, l_b, f_top, f_bot, grid_price, liq_step, weight, is_long, true))
 
 // Fire levels on liquidity detection
 if show_liq_heatmap
@@ -327,8 +312,6 @@ if show_liq_heatmap
                     line.set_x2(z.t_ln, bar_index)
                     line.set_x2(z.m_ln, bar_index)
                     line.set_x2(z.b_ln, bar_index)
-                    if not na(z.va_bx)
-                        box.set_right(z.va_bx, bar_index)
                     z.active := false
                     array.push(liq_lines_hist, z.t_ln)
                     array.push(liq_lines_hist, z.m_ln)
@@ -341,8 +324,6 @@ if show_liq_heatmap
                 line.delete(z.t_ln)
                 line.delete(z.m_ln)
                 line.delete(z.b_ln)
-                if not na(z.va_bx)
-                    box.delete(z.va_bx)
                 remove := true
             
             if remove
@@ -355,70 +336,6 @@ if show_liq_heatmap
                 array.remove(liq_lines_hist, i)
     if array.size(liq_fills_hist) > 500
         linefill.delete(array.shift(liq_fills_hist))
-
-    // ---------------------------------------------------------------------
-    // VALUE AREA CALCULATION AND RENDERING FOR PRECISE CLUSTERS (BOXES)
-    // ---------------------------------------------------------------------
-    if show_va and array.size(liq_zones) > 0
-        float total_strength = 0.0
-        int active_count = 0
-        for i = 0 to array.size(liq_zones) - 1
-            LiqZone z = array.get(liq_zones, i)
-            if z.active
-                total_strength += z.strength
-                active_count += 1
-        
-        if total_strength > 0 and active_count > 0
-            float[] strengths = array.new_float(0)
-            for i = 0 to array.size(liq_zones) - 1
-                LiqZone z = array.get(liq_zones, i)
-                if z.active
-                    array.push(strengths, z.strength)
-            array.sort(strengths, order.descending)
-            
-            float target_va_sum = total_strength * (va_percent / 100.0)
-            float current_sum = 0.0
-            float threshold_strength = 0.0
-            for i = 0 to array.size(strengths) - 1
-                current_sum += array.get(strengths, i)
-                if current_sum >= target_va_sum
-                    threshold_strength := array.get(strengths, i)
-                    break
-            
-            for i = 0 to array.size(liq_zones) - 1
-                LiqZone z = array.get(liq_zones, i)
-                if z.active
-                    if z.strength >= threshold_strength
-                        int x1 = line.get_x1(z.t_ln)
-                        int x2 = bar_index + 10
-                        float y_top = z.level + z.step/2
-                        float y_bot = z.level - z.step/2
-                        color bg_color = z.is_long_liq ? va_color_in : va_color_sh
-                        
-                        if na(z.va_bx)
-                            z.va_bx := box.new(x1, y_top, x2, y_bot, 
-                                               bgcolor=bg_color, 
-                                               border_color=va_border, 
-                                               border_style=line.style_solid, 
-                                               border_width=1)
-                        else
-                            box.set_left(z.va_bx, x1)
-                            box.set_right(z.va_bx, x2)
-                            box.set_top(z.va_bx, y_top)
-                            box.set_bottom(z.va_bx, y_bot)
-                            box.set_bgcolor(z.va_bx, bg_color)
-                            box.set_border_color(z.va_bx, va_border)
-                    else
-                        if not na(z.va_bx)
-                            box.delete(z.va_bx)
-                            z.va_bx := na
-    else
-        if array.size(liq_zones) > 0
-            for i = 0 to array.size(liq_zones) - 1
-                LiqZone z = array.get(liq_zones, i)
-                if not na(z.va_bx)
-                    box.delete(z.va_bx)
-                    z.va_bx := na
 
 // Heat Decay & Sweeping
 for i = 0 to 119
@@ -507,9 +424,9 @@ if barstate.islast
         array.clear(dom_labels)
 
     if show_dom_profile
-        // Determine price range for DOM aggregation (highest and lowest of active liquidity zones or heat grid)
-        float dom_high = high + ta.atr(14) * 3
-        float dom_low  = low - ta.atr(14) * 3
+        // Determine price range for DOM aggregation
+        float dom_high = high + ta.atr(14) * 4
+        float dom_low  = low - ta.atr(14) * 4
 
         int sz_z = array.size(liq_zones)
         if sz_z > 0
@@ -549,9 +466,38 @@ if barstate.islast
                     if p_lvl >= dom_low and p_lvl <= dom_high
                         int b_idx = math.min(n_bins - 1, math.max(0, math.floor((p_lvl - dom_low) * inv_bin_h)))
                         if p_lvl < close
-                            array.set(bin_liq_long, b_idx, array.get(bin_liq_long, b_idx) + h_val * 0.5)
+                            array.set(bin_liq_long, b_idx, array.get(bin_liq_long, b_idx) + h_val)
                         else
-                            array.set(bin_liq_short, b_idx, array.get(bin_liq_short, b_idx) + h_val * 0.5)
+                            array.set(bin_liq_short, b_idx, array.get(bin_liq_short, b_idx) + h_val)
+
+            // Aggregate multi-leveraged positions calculated from recent pivot highs/lows for full depth completeness
+            float p_h_s = ta.valuewhen(not na(ph_short), ph_short, 0)
+            float p_l_s = ta.valuewhen(not na(pl_short), pl_short, 0)
+            if not na(p_h_s)
+                float[] h_levels = array.new_float(5)
+                array.set(h_levels, 0, p_h_s * (1 + 1/10.0 - maint_margin))
+                array.set(h_levels, 1, p_h_s * (1 + 1/25.0 - maint_margin))
+                array.set(h_levels, 2, p_h_s * (1 + 1/50.0 - maint_margin))
+                array.set(h_levels, 3, p_h_s * (1 + 1/75.0 - maint_margin))
+                array.set(h_levels, 4, p_h_s * (1 + 1/100.0 - maint_margin))
+                for idx = 0 to 4
+                    float lvl = array.get(h_levels, idx)
+                    if lvl >= dom_low and lvl <= dom_high
+                        int b_idx = math.min(n_bins - 1, math.max(0, math.floor((lvl - dom_low) * inv_bin_h)))
+                        array.set(bin_liq_short, b_idx, array.get(bin_liq_short, b_idx) + rel_vol * 2.0)
+
+            if not na(p_l_s)
+                float[] l_levels = array.new_float(5)
+                array.set(l_levels, 0, p_l_s * (1 - 1/10.0 + maint_margin))
+                array.set(l_levels, 1, p_l_s * (1 - 1/25.0 + maint_margin))
+                array.set(l_levels, 2, p_l_s * (1 - 1/50.0 + maint_margin))
+                array.set(l_levels, 3, p_l_s * (1 - 1/75.0 + maint_margin))
+                array.set(l_levels, 4, p_l_s * (1 - 1/100.0 + maint_margin))
+                for idx = 0 to 4
+                    float lvl = array.get(l_levels, idx)
+                    if lvl >= dom_low and lvl <= dom_high
+                        int b_idx = math.min(n_bins - 1, math.max(0, math.floor((lvl - dom_low) * inv_bin_h)))
+                        array.set(bin_liq_long, b_idx, array.get(bin_liq_long, b_idx) + rel_vol * 2.0)
 
             // Find Maximum DOM Liquidity and POC Level
             float max_bin_liq = 0.0
@@ -568,6 +514,10 @@ if barstate.islast
             int dom_x_start = bar_index + dom_offset
             int dom_x_max   = dom_x_start + dom_width
 
+            // Render Vertical DOM Spine
+            line l_spine = line.new(dom_x_start, dom_low, dom_x_start, dom_high, color=col_poc, width=1, style=line.style_dotted)
+            array.push(dom_lines, l_spine)
+
             // Render DOM Histogram Bins
             for b = 0 to n_bins - 1
                 float l_long  = array.get(bin_liq_long, b)
@@ -578,17 +528,17 @@ if barstate.islast
                     float y_bot = dom_low + b * bin_h
                     float y_top = y_bot + bin_h
                     float norm_len = (l_tot * inv_max_bin) * dom_width
-                    int x_end = dom_x_start + math.round(norm_len)
+                    int x_end = dom_x_start + math.max(1, math.round(norm_len))
 
                     bool is_long_dominant = l_long >= l_short
                     color base_dom_c = is_long_dominant ? col_bull : col_bear
-                    int dom_transp   = math.round(85 - (l_tot * inv_max_bin) * 60)
-                    color fill_dom_c = color.new(base_dom_c, math.max(15, math.min(90, dom_transp)))
+                    int dom_transp   = math.round(75 - (l_tot * inv_max_bin) * 55)
+                    color fill_dom_c = color.new(base_dom_c, math.max(10, math.min(85, dom_transp)))
 
-                    string label_text = show_dom_labels and norm_len > 3 ? format_liq_val(l_tot) : ""
+                    string label_text = show_dom_labels and norm_len > 2 ? format_liq_val(l_tot) : ""
 
                     box bx = box.new(dom_x_start, y_top, x_end, y_bot,
-                                     border_color=color.new(base_dom_c, 50),
+                                     border_color=color.new(base_dom_c, 40),
                                      border_width=1,
                                      bgcolor=fill_dom_c,
                                      text=label_text,
