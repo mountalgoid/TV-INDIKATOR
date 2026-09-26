@@ -21,7 +21,7 @@ type LiqZone
 // -----------------------------------------------------------------------------
 string GlobalGroup = "Visual Themes & Global"
 string grp_liq     = "Liquidity Engine & Heatmap Settings"
-string grp_dom     = "DOM Liquidity Profile (Right Chart)"
+string grp_dom     = "DOM Liquidity Profile (Right Candle)"
 
 // --- THEME SYSTEM ---
 string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup)
@@ -99,11 +99,11 @@ bool  use_lev_50  = input.bool(true, "Enable 50x Leverage", group=grp_liq)
 bool  use_lev_75  = input.bool(true, "Enable 75x Leverage", group=grp_liq)
 bool  use_lev_100 = input.bool(true, "Enable 100x Leverage", group=grp_liq)
 
-// DOM Profile (Right Chart) Settings
-bool   show_dom_profile = input.bool(true, "Show DOM Profile (Right Side)", group=grp_dom)
-int    dom_width        = input.int(25, "DOM Profile Width (Bars)", minval=5, maxval=100, group=grp_dom)
-int    dom_offset       = input.int(10, "DOM Profile Right Offset (Bars)", minval=0, maxval=50, group=grp_dom)
-int    dom_bins         = input.int(40, "DOM Price Level Bins", minval=10, maxval=100, group=grp_dom)
+// DOM Profile (Right Candle) Settings
+bool   show_dom_profile = input.bool(true, "Show DOM Profile (Next to Candle)", group=grp_dom)
+int    dom_width        = input.int(15, "DOM Profile Width (Bars)", minval=3, maxval=100, group=grp_dom)
+int    dom_offset       = input.int(2, "DOM Distance from Candle (Bars)", minval=1, maxval=50, group=grp_dom)
+int    dom_bins         = input.int(35, "DOM Price Level Bins", minval=10, maxval=100, group=grp_dom)
 bool   show_dom_poc     = input.bool(true, "Highlight DOM Liquidity POC", group=grp_dom)
 bool   show_dom_labels  = input.bool(true, "Show DOM Volume Labels", group=grp_dom)
 
@@ -392,7 +392,7 @@ fill(p_d24, p_d32, color=get_smooth_heat_color(array.get(heat_grid, 32), false, 
 fill(p_d32, p_d48, color=get_smooth_heat_color(array.get(heat_grid, 20), false, heat_base_p - 40 * liq_step))
 
 // -----------------------------------------------------------------------------
-// 3. DOM LIQUIDITY PROFILE ENGINE (RIGHT SIDE CHART ATTACHED)
+// 3. DOM LIQUIDITY PROFILE ENGINE (RIGHT CANDLE ATTACHED)
 // -----------------------------------------------------------------------------
 var box[]   dom_boxes  = array.new_box()
 var line[]  dom_lines  = array.new_line()
@@ -510,11 +510,11 @@ if barstate.islast
 
             float inv_max_bin = max_bin_liq > 0 ? 1.0 / max_bin_liq : 1.0
 
-            // Position DOM profile relative to right edge of current bar
+            // Position DOM profile right next to the current candle (bar_index + dom_offset)
             int dom_x_start = bar_index + dom_offset
             int dom_x_max   = dom_x_start + dom_width
 
-            // Render Vertical DOM Spine
+            // Render Vertical DOM Spine next to candle
             line l_spine = line.new(dom_x_start, dom_low, dom_x_start, dom_high, color=col_poc, width=1, style=line.style_dotted)
             array.push(dom_lines, l_spine)
 
@@ -551,9 +551,9 @@ if barstate.islast
             // Highlight DOM Liquidity POC Line & Label
             if show_dom_poc and max_bin_liq > 0
                 float dom_poc_p = dom_low + dom_poc_idx * bin_h + bin_h / 2
-                line l_poc = line.new(dom_x_start, dom_poc_p, dom_x_max + 5, dom_poc_p, color=col_poc, width=2, style=line.style_solid)
+                line l_poc = line.new(dom_x_start, dom_poc_p, dom_x_max + 3, dom_poc_p, color=col_poc, width=2, style=line.style_solid)
                 array.push(dom_lines, l_poc)
 
                 string poc_txt = "LQ POC: " + str.tostring(dom_poc_p, format.mintick) + " (" + format_liq_val(max_bin_liq) + ")"
-                label lbl_poc = label.new(dom_x_max + 6, dom_poc_p, poc_txt, color=color.new(dark, 50), textcolor=col_poc, style=label.style_label_left, size=size.tiny)
+                label lbl_poc = label.new(dom_x_max + 4, dom_poc_p, poc_txt, color=color.new(dark, 50), textcolor=col_poc, style=label.style_label_left, size=size.tiny)
                 array.push(dom_labels, lbl_poc)
