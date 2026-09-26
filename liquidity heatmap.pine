@@ -13,7 +13,7 @@ type LiqZone
     box va_bx
     float level
     float step
-    int strength
+    float strength
     bool is_long_liq
     bool active
 
@@ -21,7 +21,8 @@ type LiqZone
 // 1. INPUTS & CONFIGURATION
 // -----------------------------------------------------------------------------
 string GlobalGroup = "Visual Themes & Global"
-string grp_liq    = "Liquidity Boxes"
+string grp_liq     = "Liquidity Boxes & Heatmap Engine"
+string grp_dom     = "DOM Liquidity Profile (Right Chart)"
 
 // --- THEME SYSTEM ---
 string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup)
@@ -79,24 +80,28 @@ color col_poc = switch color_theme
     'DEX Deep' => white
     'Deep Sea' => white
     => white
-color trans_col_bear = color.new(col_bear, 90)
-color trans_col_bull = color.new(col_bull, 90)
-color trans_col_poc = color.new(col_poc, 90)
+
+color trans_col_bear  = color.new(col_bear, 90)
+color trans_col_bull  = color.new(col_bull, 90)
+color trans_col_poc   = color.new(col_poc, 90)
 color transparent_col = color.new(dark, 100)
 
 // Liquidity Heatmap Settings
-bool   auto_mode        = input.bool(true, "Auto Mode (Dynamic Settings)", group=grp_liq)
+bool   auto_mode        = input.bool(true, "Auto Mode (Dynamic Step)", group=grp_liq)
 bool   show_liq_heatmap = input.bool(true, "Show Liquidity Heatmap", group=grp_liq)
 int    liq_opacity      = input.int(80, "Heatmap Opacity (%)", minval=0, maxval=100, step=5, group=grp_liq)
-string liq_method       = input.string("Pivots", "Liquidity Method", options=["Pivots", "Accumulation Base"], group=grp_liq)
-int    liq_length       = input.int(2, "Pivot Lookback", minval=0, group=grp_liq)
+string liq_method       = input.string("Multi-Pivot + Base", "Liquidity Method", options=["Multi-Pivot + Base", "Pivots Only", "Accumulation Base Only"], group=grp_liq)
+int    liq_length       = input.int(3, "Short Pivot Lookback", minval=1, group=grp_liq)
+int    liq_length_long  = input.int(10, "Long Pivot Lookback", minval=2, group=grp_liq)
 float  heatmap_sens     = input.float(0.1, "Heatmap Price Step (%)", minval=0.01, step=0.01, group=grp_liq)
 float  maint_margin     = input.float(0.5, "Maintenance Margin (%)", minval=0.0, maxval=5.0, step=0.1, group=grp_liq) / 100
 
-// Leverage Multipliers
-float lev1 = input.float(25.0, "Leverage 1", group=grp_liq)
-float lev2 = input.float(50.0, "Leverage 2", group=grp_liq)
-float lev3 = input.float(100.0, "Leverage 3", group=grp_liq)
+// Multi-Tier Leverage Multipliers
+bool  use_lev_10  = input.bool(true, "Enable 10x Leverage", group=grp_liq)
+bool  use_lev_25  = input.bool(true, "Enable 25x Leverage", group=grp_liq)
+bool  use_lev_50  = input.bool(true, "Enable 50x Leverage", group=grp_liq)
+bool  use_lev_75  = input.bool(true, "Enable 75x Leverage", group=grp_liq)
+bool  use_lev_100 = input.bool(true, "Enable 100x Leverage", group=grp_liq)
 
 // Value Area (VA) Settings
 string grp_va    = "Value Area Settings"
@@ -106,6 +111,14 @@ color va_color_in = trans_col_bull
 color va_color_sh = trans_col_bear 
 color va_border   = col_poc
 
+// DOM Profile (Right Chart) Settings
+bool   show_dom_profile = input.bool(true, "Show DOM Profile (Right Side)", group=grp_dom)
+int    dom_width        = input.int(25, "DOM Profile Width (Bars)", minval=5, maxval=100, group=grp_dom)
+int    dom_offset       = input.int(10, "DOM Profile Right Offset (Bars)", minval=0, maxval=50, group=grp_dom)
+int    dom_bins         = input.int(35, "DOM Price Level Bins", minval=10, maxval=100, group=grp_dom)
+bool   show_dom_poc     = input.bool(true, "Highlight DOM Liquidity POC", group=grp_dom)
+bool   show_dom_labels  = input.bool(true, "Show DOM Volume Labels", group=grp_dom)
+
 // -----------------------------------------------------------------------------
 // 2. Liquidity HEATMAP ENGINE
 // -----------------------------------------------------------------------------
@@ -113,26 +126,38 @@ var array<LiqZone> liq_zones = array.new<LiqZone>()
 var array<line> liq_lines_hist = array.new_line()
 var array<linefill> liq_fills_hist = array.new<linefill>()
 
-// Persistent heat grid for "Smooth" & Background Heatmap Density
+// Persistent heat grid for Smooth Background Heatmap Density (120 bins)
 var float[] heat_grid = array.new_float(120, 0.0) // 60 above, 60 below
 var float   heat_base_p = na
 
-// Precision detection: Multi-bar pivot
-float ph = ta.pivothigh(high, liq_length, liq_length)
-float pl = ta.pivotlow(low, liq_length, liq_length)
+// Precision multi-lookback pivot high/low detection
+float ph_short = ta.pivothigh(high, liq_length, liq_length)
+float pl_short = ta.pivotlow(low, liq_length, liq_length)
+
+float ph_long  = ta.pivothigh(high, liq_length_long, liq_length_long)
+float pl_long  = ta.pivotlow(low, liq_length_long, liq_length_long)
+
+// Equal High / Equal Low (EQH/EQL) Confluence Detection
+float eqh_thresh = ta.atr(14) * 0.15
+bool is_eqh = not na(ph_short) and math.abs(ph_short - ta.valuewhen(not na(ph_short), ph_short, 1)) <= eqh_thresh
+bool is_eql = not na(pl_short) and math.abs(pl_short - ta.valuewhen(not na(pl_short), pl_short, 1)) <= eqh_thresh
+
+// Relative Volume Weighting
+float vol_sma = ta.sma(volume, 20)
+float rel_vol = vol_sma > 0 ? math.min(3.0, math.max(0.5, volume / vol_sma)) : 1.0
 
 // Accumulation Base Detection
-[bb_mid, bb_upper, bb_lower] = ta.bb(close, liq_length, 2)
+[bb_mid, bb_upper, bb_lower] = ta.bb(close, liq_length_long, 2)
 float bb_width = (bb_upper - bb_lower) / bb_mid
-float range_atr = ta.atr(liq_length)
-float range_high = ta.highest(high, liq_length)
-float range_low = ta.lowest(low, liq_length)
+float range_atr = ta.atr(liq_length_long)
+float range_high = ta.highest(high, liq_length_long)
+float range_low = ta.lowest(low, liq_length_long)
 float range_diff = range_high - range_low
-bool is_base = range_diff < range_atr * 1.0 and bb_width < ta.sma(bb_width, liq_length * 2)
+bool is_base = range_diff < range_atr * 1.2 and bb_width < ta.sma(bb_width, liq_length_long * 2)
 
 float base_sum_pv = 0.0
 float base_sum_v = 0.0
-for i = 0 to liq_length - 1
+for i = 0 to liq_length_long - 1
     float p = (high[i] + low[i] + close[i]) / 3
     float v = volume[i]
     base_sum_pv += p * v
@@ -144,8 +169,7 @@ float atr_step = ta.atr(14) * 0.25
 float auto_sens = (atr_step / close) * 100
 float final_sens = auto_mode ? math.max(0.01, auto_sens) : heatmap_sens
 float liq_step = (close * final_sens / 100)
-float inv_liq_step = 1.0 / liq_step
-float inv_fade_range_liq = 1.0 / (80 * liq_step)
+float inv_liq_step = liq_step > 0 ? 1.0 / liq_step : 0.0
 
 // Initialize or shift heat grid base
 if na(heat_base_p) or math.abs(close - heat_base_p) > liq_step * 20
@@ -153,9 +177,10 @@ if na(heat_base_p) or math.abs(close - heat_base_p) > liq_step * 20
     array.fill(heat_grid, 0.0)
 
 update_heat(float target_p, float amount) =>
-    int idx = math.round((target_p - heat_base_p) * inv_liq_step) + 60
-    if idx >= 0 and idx < 120
-        array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
+    if inv_liq_step > 0
+        int idx = math.round((target_p - heat_base_p) * inv_liq_step) + 60
+        if idx >= 0 and idx < 120
+            array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
 
 // Dynamic Theme-Integrated Gradient Mapping
 get_liquidity_heat_color(float val, color t_col, bool is_core) =>
@@ -176,16 +201,16 @@ get_heatmap_color(float s, bool is_long, float level, bool is_core) =>
     color t_col = is_long ? col_bull : col_bear
     get_liquidity_heat_color(val, t_col, is_core)
 
-add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
+add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight) =>
     float grid_price = math.round(raw_price * inv_liq_step) * liq_step
-    update_heat(grid_price, 1.5)
+    update_heat(grid_price, weight * 1.5)
     bool found = false
     int sz_liq = array.size(liq_zones)
     if sz_liq > 0
         for i = 0 to sz_liq - 1
             LiqZone z = array.get(liq_zones, i)
             if z.active and z.is_long_liq == is_long and math.abs(z.level - grid_price) < (z.step * 0.75)
-                z.strength += 1
+                z.strength += weight
                 color c_edge = get_heatmap_color(z.strength, is_long, z.level, false)
                 color c_core = get_heatmap_color(z.strength, is_long, z.level, true)
                 if line.get_x1(z.t_ln) == bar_index
@@ -212,35 +237,78 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx) =>
                 found := true
                 break
     if not found
-        color c_edge = get_heatmap_color(1, is_long, grid_price, false)
-        color c_core = get_heatmap_color(1, is_long, grid_price, true)
+        color c_edge = get_heatmap_color(weight, is_long, grid_price, false)
+        color c_core = get_heatmap_color(weight, is_long, grid_price, true)
         l_t = line.new(bar_idx, grid_price + liq_step/2, bar_index + 10, grid_price + liq_step/2, color=na, width=1)
         l_m = line.new(bar_idx, grid_price, bar_index + 10, grid_price, color=na, width=1)
         l_b = line.new(bar_idx, grid_price - liq_step/2, bar_index + 10, grid_price - liq_step/2, color=na, width=1)
         f_top = linefill.new(l_t, l_m, color=c_edge)
         f_bot = linefill.new(l_m, l_b, color=c_core)
-        array.push(liq_zones, LiqZone.new(l_t, l_m, l_b, f_top, f_bot, na, grid_price, liq_step, 1, is_long, true))
+        array.push(liq_zones, LiqZone.new(l_t, l_m, l_b, f_top, f_bot, na, grid_price, liq_step, weight, is_long, true))
 
+// Fire levels on liquidity detection
 if show_liq_heatmap
-    if not na(ph)
-        add_or_update_liq(ph * (1 + 1/lev1 - maint_margin), false, bar_index[liq_length])
-        add_or_update_liq(ph * (1 + 1/lev2 - maint_margin), false, bar_index[liq_length])
-        add_or_update_liq(ph * (1 + 1/lev3 - maint_margin), false, bar_index[liq_length])
-        update_heat(ph * (1 + 1/lev1 - maint_margin), 1.0)
-        update_heat(ph * (1 + 1/lev2 - maint_margin), 1.0)
-        update_heat(ph * (1 + 1/lev3 - maint_margin), 1.0)
-    if not na(pl)
-        add_or_update_liq(pl * (1 - 1/lev1 + maint_margin), true, bar_index[liq_length])
-        add_or_update_liq(pl * (1 - 1/lev2 + maint_margin), true, bar_index[liq_length])
-        add_or_update_liq(pl * (1 - 1/lev3 + maint_margin), true, bar_index[liq_length])
-        update_heat(pl * (1 - 1/lev1 + maint_margin), 1.0)
-        update_heat(pl * (1 - 1/lev2 + maint_margin), 1.0)
-        update_heat(pl * (1 - 1/lev3 + maint_margin), 1.0)
-    if is_base and bar_index % 5 == 0
-        add_or_update_liq(base_vwap * (1 + 1/lev1 - maint_margin), false, bar_index)
-        add_or_update_liq(base_vwap * (1 - 1/lev1 + maint_margin), true, bar_index)
-        update_heat(base_vwap * (1 + 1/lev1 - maint_margin), 0.5)
-        update_heat(base_vwap * (1 - 1/lev1 + maint_margin), 0.5)
+    bool calc_pivots = liq_method == "Multi-Pivot + Base" or liq_method == "Pivots Only"
+    bool calc_base   = liq_method == "Multi-Pivot + Base" or liq_method == "Accumulation Base Only"
+
+    // Short-term Pivot Liquidity
+    if calc_pivots and not na(ph_short)
+        float w = rel_vol * (is_eqh ? 2.5 : 1.0)
+        int idx = bar_index[liq_length]
+        if use_lev_10
+            add_or_update_liq(ph_short * (1 + 1/10.0 - maint_margin), false, idx, w * 0.8)
+        if use_lev_25
+            add_or_update_liq(ph_short * (1 + 1/25.0 - maint_margin), false, idx, w * 1.0)
+        if use_lev_50
+            add_or_update_liq(ph_short * (1 + 1/50.0 - maint_margin), false, idx, w * 1.2)
+        if use_lev_75
+            add_or_update_liq(ph_short * (1 + 1/75.0 - maint_margin), false, idx, w * 1.4)
+        if use_lev_100
+            add_or_update_liq(ph_short * (1 + 1/100.0 - maint_margin), false, idx, w * 1.5)
+
+    if calc_pivots and not na(pl_short)
+        float w = rel_vol * (is_eql ? 2.5 : 1.0)
+        int idx = bar_index[liq_length]
+        if use_lev_10
+            add_or_update_liq(pl_short * (1 - 1/10.0 + maint_margin), true, idx, w * 0.8)
+        if use_lev_25
+            add_or_update_liq(pl_short * (1 - 1/25.0 + maint_margin), true, idx, w * 1.0)
+        if use_lev_50
+            add_or_update_liq(pl_short * (1 - 1/50.0 + maint_margin), true, idx, w * 1.2)
+        if use_lev_75
+            add_or_update_liq(pl_short * (1 - 1/75.0 + maint_margin), true, idx, w * 1.4)
+        if use_lev_100
+            add_or_update_liq(pl_short * (1 - 1/100.0 + maint_margin), true, idx, w * 1.5)
+
+    // Major Long-term Pivot Liquidity (Higher Weight)
+    if calc_pivots and not na(ph_long)
+        float w = rel_vol * 2.0
+        int idx = bar_index[liq_length_long]
+        if use_lev_10
+            add_or_update_liq(ph_long * (1 + 1/10.0 - maint_margin), false, idx, w)
+        if use_lev_25
+            add_or_update_liq(ph_long * (1 + 1/25.0 - maint_margin), false, idx, w * 1.2)
+        if use_lev_50
+            add_or_update_liq(ph_long * (1 + 1/50.0 - maint_margin), false, idx, w * 1.5)
+
+    if calc_pivots and not na(pl_long)
+        float w = rel_vol * 2.0
+        int idx = bar_index[liq_length_long]
+        if use_lev_10
+            add_or_update_liq(pl_long * (1 - 1/10.0 + maint_margin), true, idx, w)
+        if use_lev_25
+            add_or_update_liq(pl_long * (1 - 1/25.0 + maint_margin), true, idx, w * 1.2)
+        if use_lev_50
+            add_or_update_liq(pl_long * (1 - 1/50.0 + maint_margin), true, idx, w * 1.5)
+
+    // Accumulation Base Liquidity
+    if calc_base and is_base and bar_index % 5 == 0
+        if use_lev_25
+            add_or_update_liq(base_vwap * (1 + 1/25.0 - maint_margin), false, bar_index, 0.7)
+            add_or_update_liq(base_vwap * (1 - 1/25.0 + maint_margin), true, bar_index, 0.7)
+        if use_lev_50
+            add_or_update_liq(base_vwap * (1 + 1/50.0 - maint_margin), false, bar_index, 0.8)
+            add_or_update_liq(base_vwap * (1 - 1/50.0 + maint_margin), true, bar_index, 0.8)
         
     int sz_liq_z = array.size(liq_zones)
     if sz_liq_z > 0
@@ -289,10 +357,9 @@ if show_liq_heatmap
         linefill.delete(array.shift(liq_fills_hist))
 
     // ---------------------------------------------------------------------
-    // VALUE AREA CALCULATION AND RENDERING FOR PRECISE (BOXES) MODE
+    // VALUE AREA CALCULATION AND RENDERING FOR PRECISE CLUSTERS (BOXES)
     // ---------------------------------------------------------------------
     if show_va and array.size(liq_zones) > 0
-        // Calculate total strength across all active Liquidity zones
         float total_strength = 0.0
         int active_count = 0
         for i = 0 to array.size(liq_zones) - 1
@@ -302,7 +369,6 @@ if show_liq_heatmap
                 active_count += 1
         
         if total_strength > 0 and active_count > 0
-            // Collect strengths of active zones and sort them descending to find the threshold strength
             float[] strengths = array.new_float(0)
             for i = 0 to array.size(liq_zones) - 1
                 LiqZone z = array.get(liq_zones, i)
@@ -310,7 +376,6 @@ if show_liq_heatmap
                     array.push(strengths, z.strength)
             array.sort(strengths, order.descending)
             
-            // Find target cumulative strength based on va_percent
             float target_va_sum = total_strength * (va_percent / 100.0)
             float current_sum = 0.0
             float threshold_strength = 0.0
@@ -320,12 +385,10 @@ if show_liq_heatmap
                     threshold_strength := array.get(strengths, i)
                     break
             
-            // Draw/Update/Delete Value Area highlight boxes
             for i = 0 to array.size(liq_zones) - 1
                 LiqZone z = array.get(liq_zones, i)
                 if z.active
                     if z.strength >= threshold_strength
-                        // In Value Area: Draw or update the transparent box
                         int x1 = line.get_x1(z.t_ln)
                         int x2 = bar_index + 10
                         float y_top = z.level + z.step/2
@@ -346,12 +409,10 @@ if show_liq_heatmap
                             box.set_bgcolor(z.va_bx, bg_color)
                             box.set_border_color(z.va_bx, va_border)
                     else
-                        // Outside Value Area: delete any existing box
                         if not na(z.va_bx)
                             box.delete(z.va_bx)
                             z.va_bx := na
     else
-        // If show_va is toggled off, make sure any active boxes are cleaned up
         if array.size(liq_zones) > 0
             for i = 0 to array.size(liq_zones) - 1
                 LiqZone z = array.get(liq_zones, i)
@@ -376,7 +437,7 @@ get_smooth_heat_color(float heat, bool is_above, float level) =>
     color t_col = is_above ? col_bear : col_bull
     get_liquidity_heat_color(val, t_col, true)
 
-// High-density Full-Chart Background Plot Grid Rendering (always active when show_liq_heatmap is true)
+// High-density Full-Chart Background Plot Grid Rendering
 show_plots_liq = show_liq_heatmap
 
 p_u00 = plot(show_plots_liq ? heat_base_p + 0 * liq_step : na, "H+0", color=transparent_col, style=plot.style_linebr)
@@ -412,3 +473,137 @@ fill(p_d12, p_d16, color=get_smooth_heat_color(array.get(heat_grid, 46), false, 
 fill(p_d16, p_d24, color=get_smooth_heat_color(array.get(heat_grid, 40), false, heat_base_p - 20 * liq_step))
 fill(p_d24, p_d32, color=get_smooth_heat_color(array.get(heat_grid, 32), false, heat_base_p - 28 * liq_step))
 fill(p_d32, p_d48, color=get_smooth_heat_color(array.get(heat_grid, 20), false, heat_base_p - 40 * liq_step))
+
+// -----------------------------------------------------------------------------
+// 3. DOM LIQUIDITY PROFILE ENGINE (RIGHT SIDE CHART ATTACHED)
+// -----------------------------------------------------------------------------
+var box[]   dom_boxes  = array.new_box()
+var line[]  dom_lines  = array.new_line()
+var label[] dom_labels = array.new_label()
+
+format_liq_val(float v) =>
+    string res = ""
+    if v >= 1000000
+        res := str.tostring(v / 1000000, "#.##") + "M"
+    else if v >= 1000
+        res := str.tostring(v / 1000, "#.#") + "K"
+    else
+        res := str.tostring(v, "#.#")
+    res
+
+if barstate.islast
+    // Clear previous DOM drawings on last bar update
+    if array.size(dom_boxes) > 0
+        for i = 0 to array.size(dom_boxes) - 1
+            box.delete(array.get(dom_boxes, i))
+        array.clear(dom_boxes)
+    if array.size(dom_lines) > 0
+        for i = 0 to array.size(dom_lines) - 1
+            line.delete(array.get(dom_lines, i))
+        array.clear(dom_lines)
+    if array.size(dom_labels) > 0
+        for i = 0 to array.size(dom_labels) - 1
+            label.delete(array.get(dom_labels, i))
+        array.clear(dom_labels)
+
+    if show_dom_profile
+        // Determine price range for DOM aggregation (highest and lowest of active liquidity zones or heat grid)
+        float dom_high = high + ta.atr(14) * 3
+        float dom_low  = low - ta.atr(14) * 3
+
+        int sz_z = array.size(liq_zones)
+        if sz_z > 0
+            for i = 0 to sz_z - 1
+                LiqZone z = array.get(liq_zones, i)
+                if z.active
+                    if z.level + z.step > dom_high
+                        dom_high := z.level + z.step
+                    if z.level - z.step < dom_low
+                        dom_low := z.level - z.step
+
+        float dom_range = dom_high - dom_low
+        int n_bins = math.max(10, dom_bins)
+        float bin_h = dom_range / n_bins
+
+        if bin_h > 0
+            float inv_bin_h = 1.0 / bin_h
+            float[] bin_liq_long  = array.new_float(n_bins, 0.0)
+            float[] bin_liq_short = array.new_float(n_bins, 0.0)
+
+            // Aggregate liquidity from active Liquidity Zones
+            if sz_z > 0
+                for i = 0 to sz_z - 1
+                    LiqZone z = array.get(liq_zones, i)
+                    if z.active and z.level >= dom_low and z.level <= dom_high
+                        int b_idx = math.min(n_bins - 1, math.max(0, math.floor((z.level - dom_low) * inv_bin_h)))
+                        if z.is_long_liq
+                            array.set(bin_liq_long, b_idx, array.get(bin_liq_long, b_idx) + z.strength)
+                        else
+                            array.set(bin_liq_short, b_idx, array.get(bin_liq_short, b_idx) + z.strength)
+
+            // Aggregate heat_grid density
+            for i = 0 to 119
+                float h_val = array.get(heat_grid, i)
+                if h_val > 0
+                    float p_lvl = heat_base_p + (i - 60) * liq_step
+                    if p_lvl >= dom_low and p_lvl <= dom_high
+                        int b_idx = math.min(n_bins - 1, math.max(0, math.floor((p_lvl - dom_low) * inv_bin_h)))
+                        if p_lvl < close
+                            array.set(bin_liq_long, b_idx, array.get(bin_liq_long, b_idx) + h_val * 0.5)
+                        else
+                            array.set(bin_liq_short, b_idx, array.get(bin_liq_short, b_idx) + h_val * 0.5)
+
+            // Find Maximum DOM Liquidity and POC Level
+            float max_bin_liq = 0.0
+            int dom_poc_idx = 0
+            for b = 0 to n_bins - 1
+                float tot_b = array.get(bin_liq_long, b) + array.get(bin_liq_short, b)
+                if tot_b > max_bin_liq
+                    max_bin_liq := tot_b
+                    dom_poc_idx := b
+
+            float inv_max_bin = max_bin_liq > 0 ? 1.0 / max_bin_liq : 1.0
+
+            // Position DOM profile relative to right edge of current bar
+            int dom_x_start = bar_index + dom_offset
+            int dom_x_max   = dom_x_start + dom_width
+
+            // Render DOM Histogram Bins
+            for b = 0 to n_bins - 1
+                float l_long  = array.get(bin_liq_long, b)
+                float l_short = array.get(bin_liq_short, b)
+                float l_tot   = l_long + l_short
+
+                if l_tot > 0
+                    float y_bot = dom_low + b * bin_h
+                    float y_top = y_bot + bin_h
+                    float norm_len = (l_tot * inv_max_bin) * dom_width
+                    int x_end = dom_x_start + math.round(norm_len)
+
+                    bool is_long_dominant = l_long >= l_short
+                    color base_dom_c = is_long_dominant ? col_bull : col_bear
+                    int dom_transp   = math.round(85 - (l_tot * inv_max_bin) * 60)
+                    color fill_dom_c = color.new(base_dom_c, math.max(15, math.min(90, dom_transp)))
+
+                    string label_text = show_dom_labels and norm_len > 3 ? format_liq_val(l_tot) : ""
+
+                    box bx = box.new(dom_x_start, y_top, x_end, y_bot,
+                                     border_color=color.new(base_dom_c, 50),
+                                     border_width=1,
+                                     bgcolor=fill_dom_c,
+                                     text=label_text,
+                                     text_color=col_poc,
+                                     text_size=size.tiny,
+                                     text_valign=text.align_center,
+                                     text_halign=text.align_left)
+                    array.push(dom_boxes, bx)
+
+            // Highlight DOM Liquidity POC Line & Label
+            if show_dom_poc and max_bin_liq > 0
+                float dom_poc_p = dom_low + dom_poc_idx * bin_h + bin_h / 2
+                line l_poc = line.new(dom_x_start, dom_poc_p, dom_x_max + 5, dom_poc_p, color=col_poc, width=2, style=line.style_solid)
+                array.push(dom_lines, l_poc)
+
+                string poc_txt = "LQ POC: " + str.tostring(dom_poc_p, format.mintick) + " (" + format_liq_val(max_bin_liq) + ")"
+                label lbl_poc = label.new(dom_x_max + 6, dom_poc_p, poc_txt, color=color.new(dark, 50), textcolor=col_poc, style=label.style_label_left, size=size.tiny)
+                array.push(dom_labels, lbl_poc)
