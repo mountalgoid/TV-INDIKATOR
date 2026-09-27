@@ -433,7 +433,7 @@ distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h,
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
 
-// 10 Price Levels per Candle Engine for Super Precise Bubble Placement
+// 10 Price Levels per Candle Engine for Super Precise Multi-Bubble Placement
 get_candle_sub_pocs(float _o, float _h, float _l, float _c, float _v) =>
     float range_val = _h - _l
     float b_buy_poc = _c
@@ -492,6 +492,31 @@ float total_volume = buy_volume + sell_volume
 // Accurate Bubble Placement (Super Precise Volume-Weighted Price)
 float buy_loc  = rt_buy_poc
 float sell_loc = rt_sell_poc
+
+// Precise Sub-Level Volume & Price Calculation for Multi-Bubble Engine
+int sub_levels_count = 10
+array<float> candle_sub_tot_vol = array.new_float(sub_levels_count, 0.0)
+array<float> candle_sub_buy_vol = array.new_float(sub_levels_count, 0.0)
+array<float> candle_sub_sell_vol = array.new_float(sub_levels_count, 0.0)
+array<float> candle_sub_prices = array.new_float(sub_levels_count, 0.0)
+
+if range_p > 0
+    float sub_step_val = range_p / sub_levels_count
+    float inv_sub_step = 1.0 / sub_step_val
+    for k = 0 to sub_levels_count - 1
+        array.set(candle_sub_prices, k, low + (k + 0.5) * sub_step_val)
+    if ltf_count > 0
+        for i = 0 to ltf_count - 1
+            distribute_vol(sub_levels_count, low, inv_sub_step, array.get(ltf_o, i), array.get(ltf_h, i), array.get(ltf_l, i), array.get(ltf_c, i), array.get(ltf_v, i), candle_sub_tot_vol, candle_sub_buy_vol, candle_sub_sell_vol)
+        if missing_v > 0
+            distribute_vol(sub_levels_count, low, inv_sub_step, open, high, low, close, missing_v, candle_sub_tot_vol, candle_sub_buy_vol, candle_sub_sell_vol)
+    else
+        distribute_vol(sub_levels_count, low, inv_sub_step, open, high, low, close, math.max(get_tick_volume(), 1.0), candle_sub_tot_vol, candle_sub_buy_vol, candle_sub_sell_vol)
+else
+    array.set(candle_sub_prices, 0, close)
+    array.set(candle_sub_tot_vol, 0, total_volume)
+    array.set(candle_sub_buy_vol, 0, buy_volume)
+    array.set(candle_sub_sell_vol, 0, sell_volume)
 
 // LTF Distribution Handler
 add_ltf_vol(int _rows, float _lowest_p, float _inv_row_h, array<float> _bucket_total, array<float> _bucket_buy, array<float> _bucket_sell) =>
@@ -832,142 +857,156 @@ get_bubble_color(float intensity, bool is_buy) =>
 color c_buy_bubble  = get_bubble_color(vol_intensity_buy, true)
 color c_sell_bubble = get_bubble_color(vol_intensity_sell, false)
 
-// Bubble Labels Logic
+// Multi-Bubble Engine Objects & Arrays
+var label[] bubble_dots = array.new_label()
 var label[] bubble_labels = array.new_label()
 var line[] bubble_lines = array.new_line()
 var label[] bubble_summaries = array.new_label()
 
-// Persistent variables for real-time bar
-var label rt_lbl_buy = na
-var label rt_lbl_sell = na
+var label[] rt_bubble_dots = array.new_label()
+var label[] rt_bubble_labels = array.new_label()
 var label rt_lbl_sum = na
 
-if show_bubble_labels
-    if barstate.isconfirmed
-        // Confirm Buy Side
-        if vol_intensity_buy > 0
-            label l  = na
-            line li = na
-            if not na(rt_lbl_buy)
-                l := rt_lbl_buy
-                rt_lbl_buy := na
-                label.set_xy(l, bar_index, buy_loc)
-                label.set_style(l, label.style_label_center)
-            else
-                string txt = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_volume))
-                l := label.new(bar_index, buy_loc, txt, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto)
-            array.push(bubble_labels, l)
-        else
-            label.delete(rt_lbl_buy)
-            rt_lbl_buy := na
+if barstate.isconfirmed
+    // Render Super Precise Multi-Bubbles across sub-levels
+    if show_plots
+        float norm_ref_vol = max_vol_history > 0 ? max_vol_history / 5.0 : 1.0
+        int start_bar_idx = math.max(0, last_bar_index - lookback)
+        if bar_index >= start_bar_idx
+            for k = 0 to sub_levels_count - 1
+                float sub_p = array.get(candle_sub_prices, k)
+                float sub_bv = array.get(candle_sub_buy_vol, k)
+                float sub_sv = array.get(candle_sub_sell_vol, k)
 
-        // Confirm Sell Side
-        if vol_intensity_sell > 0
-            label l  = na
-            line li = na
-            if not na(rt_lbl_sell)
-                l := rt_lbl_sell
-                rt_lbl_sell := na
-                label.set_xy(l, bar_index, sell_loc)
-                label.set_style(l, label.style_label_center)
-            else
-                string txt = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_volume))
-                l := label.new(bar_index, sell_loc, txt, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto)
-            array.push(bubble_labels, l)
-        else
-            label.delete(rt_lbl_sell)
-            rt_lbl_sell := na
+                float sub_intensity_buy = norm_ref_vol > 0 ? math.pow(math.min(sub_bv / norm_ref_vol * sensitivity, 1.0), 0.8) : 0.0
+                float sub_intensity_sell = norm_ref_vol > 0 ? math.pow(math.min(sub_sv / norm_ref_vol * sensitivity, 1.0), 0.8) : 0.0
 
-        // Confirm Summary
-        if vol_intensity_buy > 0 or vol_intensity_sell > 0
-            label l_s = na
-            float b_delta = buy_volume - sell_volume
-            float b_total = buy_volume + sell_volume
-            float b_delta_pct = b_total > 0 ? (b_delta / b_total) * 100 : 0
-            string summary_txt = "\n\n" + (b_delta >= 0 ? "+" : "") + str.tostring(b_delta_pct, "#.#") + "%\n" + (b_delta >= 0 ? "+" : "") + format_vol(b_delta) + "\n\n"
-            color summary_col = b_delta >= 0 ? col_bull : col_bear
-            string summary_style = b_delta >= 0 ? label.style_label_up : label.style_label_down
-            float summary_y = b_delta >= 0 ? low : high
+                bool draw_sub_b = show_b and (sub_intensity_buy > 0.05 or sub_bv > 0)
+                bool draw_sub_s = show_s and (sub_intensity_sell > 0.05 or sub_sv > 0)
 
-            if not na(rt_lbl_sum)
-                l_s := rt_lbl_sum
-                rt_lbl_sum := na
-                label.set_xy(l_s, bar_index, summary_y)
-                label.set_text(l_s, summary_txt)
-                label.set_textcolor(l_s, summary_col)
-                label.set_style(l_s, summary_style)
-            else
-                l_s := label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto)
-            array.push(bubble_summaries, l_s)
-        else
-            label.delete(rt_lbl_sum)
+                if draw_sub_b
+                    color sub_c_buy = get_bubble_color(sub_intensity_buy, true)
+                    string sz_b = sub_intensity_buy > 0.75 ? size.normal : (sub_intensity_buy > 0.3 ? size.small : size.tiny)
+                    int transp_b = sub_intensity_buy > 0.75 ? 20 : (sub_intensity_buy > 0.3 ? 45 : 70)
+                    label d_b = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_buy, transp_b), size=sz_b)
+                    array.push(bubble_dots, d_b)
+
+                    if show_bubble_labels
+                        string txt_b = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(sub_bv))
+                        label l_b = label.new(bar_index, sub_p, txt_b, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto)
+                        array.push(bubble_labels, l_b)
+
+                if draw_sub_s
+                    color sub_c_sell = get_bubble_color(sub_intensity_sell, false)
+                    string sz_s = sub_intensity_sell > 0.75 ? size.normal : (sub_intensity_sell > 0.3 ? size.small : size.tiny)
+                    int transp_s = sub_intensity_sell > 0.75 ? 20 : (sub_intensity_sell > 0.3 ? 45 : 70)
+                    label d_s = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_sell, transp_s), size=sz_s)
+                    array.push(bubble_dots, d_s)
+
+                    if show_bubble_labels
+                        string txt_s = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sub_sv))
+                        label l_s = label.new(bar_index, sub_p, txt_s, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto)
+                        array.push(bubble_labels, l_s)
+
+    // Confirm Summary
+    if show_bubble_labels and (vol_intensity_buy > 0 or vol_intensity_sell > 0)
+        label l_s = na
+        float b_delta = buy_volume - sell_volume
+        float b_total = buy_volume + sell_volume
+        float b_delta_pct = b_total > 0 ? (b_delta / b_total) * 100 : 0
+        string summary_txt = "\n\n" + (b_delta >= 0 ? "+" : "") + str.tostring(b_delta_pct, "#.#") + "%\n" + (b_delta >= 0 ? "+" : "") + format_vol(b_delta) + "\n\n"
+        color summary_col = b_delta >= 0 ? col_bull : col_bear
+        string summary_style = b_delta >= 0 ? label.style_label_up : label.style_label_down
+        float summary_y = b_delta >= 0 ? low : high
+
+        if not na(rt_lbl_sum)
+            l_s := rt_lbl_sum
             rt_lbl_sum := na
-
-    if barstate.isrealtime and not barstate.isconfirmed
-        // Update Buy Side RT (Centered on POC)
-        if vol_intensity_buy > 0
-            string txt = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_volume))
-            if na(rt_lbl_buy)
-                rt_lbl_buy := label.new(bar_index, buy_loc, txt, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto)
-            else
-                label.set_xy(rt_lbl_buy, bar_index, buy_loc)
-                label.set_text(rt_lbl_buy, txt)
-                label.set_textcolor(rt_lbl_buy, col_bull)
+            label.set_xy(l_s, bar_index, summary_y)
+            label.set_text(l_s, summary_txt)
+            label.set_textcolor(l_s, summary_col)
+            label.set_style(l_s, summary_style)
         else
-            label.delete(rt_lbl_buy)
-            rt_lbl_buy := na
+            l_s := label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto)
+        array.push(bubble_summaries, l_s)
+    else
+        label.delete(rt_lbl_sum)
+        rt_lbl_sum := na
 
-        // Update Sell Side RT (Centered on POC)
-        if vol_intensity_sell > 0
-            string txt = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_volume))
-            if na(rt_lbl_sell)
-                rt_lbl_sell := label.new(bar_index, sell_loc, txt, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto)
-            else
-                label.set_xy(rt_lbl_sell, bar_index, sell_loc)
-                label.set_text(rt_lbl_sell, txt)
-                label.set_textcolor(rt_lbl_sell, col_bear)
+if barstate.isrealtime and not barstate.isconfirmed
+    // Clear previous real-time dots & labels
+    while array.size(rt_bubble_dots) > 0
+        label.delete(array.shift(rt_bubble_dots))
+    while array.size(rt_bubble_labels) > 0
+        label.delete(array.shift(rt_bubble_labels))
+
+    if show_plots
+        float norm_ref_vol = max_vol_history > 0 ? max_vol_history / 5.0 : 1.0
+        for k = 0 to sub_levels_count - 1
+            float sub_p = array.get(candle_sub_prices, k)
+            float sub_bv = array.get(candle_sub_buy_vol, k)
+            float sub_sv = array.get(candle_sub_sell_vol, k)
+
+            float sub_intensity_buy = norm_ref_vol > 0 ? math.pow(math.min(sub_bv / norm_ref_vol * sensitivity, 1.0), 0.8) : 0.0
+            float sub_intensity_sell = norm_ref_vol > 0 ? math.pow(math.min(sub_sv / norm_ref_vol * sensitivity, 1.0), 0.8) : 0.0
+
+            bool draw_sub_b = show_b and (sub_intensity_buy > 0.05 or sub_bv > 0)
+            bool draw_sub_s = show_s and (sub_intensity_sell > 0.05 or sub_sv > 0)
+
+            if draw_sub_b
+                color sub_c_buy = get_bubble_color(sub_intensity_buy, true)
+                string sz_b = sub_intensity_buy > 0.75 ? size.normal : (sub_intensity_buy > 0.3 ? size.small : size.tiny)
+                int transp_b = sub_intensity_buy > 0.75 ? 20 : (sub_intensity_buy > 0.3 ? 45 : 70)
+                label d_b = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_buy, transp_b), size=sz_b)
+                array.push(rt_bubble_dots, d_b)
+
+                if show_bubble_labels
+                    string txt_b = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(sub_bv))
+                    label l_b = label.new(bar_index, sub_p, txt_b, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto)
+                    array.push(rt_bubble_labels, l_b)
+
+            if draw_sub_s
+                color sub_c_sell = get_bubble_color(sub_intensity_sell, false)
+                string sz_s = sub_intensity_sell > 0.75 ? size.normal : (sub_intensity_sell > 0.3 ? size.small : size.tiny)
+                int transp_s = sub_intensity_sell > 0.75 ? 20 : (sub_intensity_sell > 0.3 ? 45 : 70)
+                label d_s = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_sell, transp_s), size=sz_s)
+                array.push(rt_bubble_dots, d_s)
+
+                if show_bubble_labels
+                    string txt_s = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sub_sv))
+                    label l_s = label.new(bar_index, sub_p, txt_s, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto)
+                    array.push(rt_bubble_labels, l_s)
+
+    // Update Summary RT
+    if show_bubble_labels and (vol_intensity_buy > 0 or vol_intensity_sell > 0)
+        float b_delta = buy_volume - sell_volume
+        float b_total = buy_volume + sell_volume
+        float b_delta_pct = b_total > 0 ? (b_delta / b_total) * 100 : 0
+        string summary_txt = "\n\n" + "B" + format_vol(buy_volume) + "/" + "S" + format_vol(sell_volume) + "\n" + (b_delta >= 0 ? "+" : "") + str.tostring(b_delta_pct, "#.#") + "%\n" + (b_delta >= 0 ? "+" : "") + format_vol(b_delta) + "\n\n"
+        color summary_col = b_delta >= 0 ? col_bull : col_bear
+        string summary_style = b_delta >= 0 ? label.style_label_up : label.style_label_down
+        float summary_y = b_delta >= 0 ? low : high
+
+        if na(rt_lbl_sum)
+            rt_lbl_sum := label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto)
         else
-            label.delete(rt_lbl_sell)
-            rt_lbl_sell := na
+            label.set_xy(rt_lbl_sum, bar_index, summary_y)
+            label.set_text(rt_lbl_sum, summary_txt)
+            label.set_textcolor(rt_lbl_sum, summary_col)
+            label.set_style(rt_lbl_sum, summary_style)
+    else
+        label.delete(rt_lbl_sum)
+        rt_lbl_sum := na
 
-        // Update Summary RT
-        if vol_intensity_buy > 0 or vol_intensity_sell > 0
-            float b_delta = buy_volume - sell_volume
-            float b_total = buy_volume + sell_volume
-            float b_delta_pct = b_total > 0 ? (b_delta / b_total) * 100 : 0
-            string summary_txt = "\n\n" + "B" + format_vol(buy_volume) + "/" + "S" + format_vol(sell_volume) + "\n" + (b_delta >= 0 ? "+" : "") + str.tostring(b_delta_pct, "#.#") + "%\n" + (b_delta >= 0 ? "+" : "") + format_vol(b_delta) + "\n\n"
-            color summary_col = b_delta >= 0 ? col_bull : col_bear
-            string summary_style = b_delta >= 0 ? label.style_label_up : label.style_label_down
-            float summary_y = b_delta >= 0 ? low : high
-
-            if na(rt_lbl_sum)
-                rt_lbl_sum := label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto)
-            else
-                label.set_xy(rt_lbl_sum, bar_index, summary_y)
-                label.set_text(rt_lbl_sum, summary_txt)
-                label.set_textcolor(rt_lbl_sum, summary_col)
-                label.set_style(rt_lbl_sum, summary_style)
-        else
-            label.delete(rt_lbl_sum)
-            rt_lbl_sum := na
-
-// Cleanup old objects
-if array.size(bubble_labels) > 400
+// Cleanup old objects to maintain high performance and prevent limits
+while array.size(bubble_dots) > 400
+    label.delete(array.shift(bubble_dots))
+while array.size(bubble_labels) > 400
     label.delete(array.shift(bubble_labels))
-if array.size(bubble_lines) > 400
+while array.size(bubble_lines) > 400
     line.delete(array.shift(bubble_lines))
-if array.size(bubble_summaries) > 400
+while array.size(bubble_summaries) > 400
     label.delete(array.shift(bubble_summaries))
-
-// Bubble (Optimized 3-tier Scaling for High Accuracy & Visual Depth)
-plotchar(show_b and vol_intensity_buy > 0.75 ? buy_loc : na, "B1H", char="●", location=location.absolute, color=color.new(c_buy_bubble, 20), size=size.normal)
-plotchar(show_b and vol_intensity_buy <= 0.75 and vol_intensity_buy > 0.3 ? buy_loc : na, "B2M", char="●", location=location.absolute, color=color.new(c_buy_bubble, 45), size=size.small)
-//plotchar(show_b and vol_intensity_buy <= 0.3 ? buy_loc : na, "B3L", char="●", location=location.absolute, color=color.new(c_buy_bubble, 70), size=size.tiny)
-
-// Sell Side
-plotchar(show_s and vol_intensity_sell > 0.75 ? sell_loc : na, "S1H", char="●", location=location.absolute, color=color.new(c_sell_bubble, 20), size=size.normal)
-plotchar(show_s and vol_intensity_sell <= 0.75 and vol_intensity_sell > 0.3 ? sell_loc : na, "S2M", char="●", location=location.absolute, color=color.new(c_sell_bubble, 45), size=size.small)
-//plotchar(show_s and vol_intensity_sell <= 0.3 ? sell_loc : na, "S3L", char="●", location=location.absolute, color=color.new(c_sell_bubble, 70), size=size.tiny)
 
 // -----------------------------------------------------------------------------
 // 6. SUPER GRADIENT VP + DELTA
