@@ -2229,16 +2229,10 @@ if show_table and barstate.islast
 
 
 // -----------------------------------------------------------------------------
-// 9. EMAs
+// 9. EMAs & PLOT LINES
 // -----------------------------------------------------------------------------
-float ema_h   = ta.ema(high, 1)
-float ema_c   = ta.ema(close, 1)
-float ema_l   = ta.ema(low, 1)
-
-p_h = plot(ema_h, "EMA High", color=mitigated_color, linewidth =1, display=show_plotline?display.all : display.none)
-p_l = plot(ema_l, "EMA Low", color=mitigated_color, linewidth=1, display=show_plotline?display.all : display.none)
-p_b = plot(hist_avg_buy_gl, "EMA buy", color=col_bull, linewidth=1, display=show_plotline?display.all : display.none)
-p_s = plot(hist_avg_sell_gl, "EMA sell", color=col_bear, linewidth=1, display=show_plotline?display.all : display.none)
+p_b = plot(hist_avg_buy_gl, "EMA buy", color=col_bull, linewidth=1, display=show_plotline ? display.all : display.none)
+p_s = plot(hist_avg_sell_gl, "EMA sell", color=col_bear, linewidth=1, display=show_plotline ? display.all : display.none)
 
 plot(show_ema_long ? ema_long_val : na, "Long EMA", color=color_ema_long, linewidth=1)
 
