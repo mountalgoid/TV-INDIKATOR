@@ -195,44 +195,57 @@ get_heatmap_color(float s, bool is_long, float level, bool is_core) =>
 add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight) =>
     float grid_price = math.round(raw_price * inv_liq_step) * liq_step
     update_heat(grid_price, weight * 1.5)
-    bool found = false
-    int sz_liq = array.size(liq_zones)
-    if sz_liq > 0
-        for i = 0 to sz_liq - 1
-            LiqZone z = array.get(liq_zones, i)
-            if z.active and z.is_long_liq == is_long and math.abs(z.level - grid_price) < (z.step * 0.75)
-                z.strength += weight
-                color c_edge = get_heatmap_color(z.strength, is_long, z.level, false)
-                color c_core = get_heatmap_color(z.strength, is_long, z.level, true)
-                if line.get_x1(z.t_ln) == bar_index
-                    linefill.set_color(z.f_top, c_edge)
-                    linefill.set_color(z.f_bot, c_core)
-                else
-                    line.set_x2(z.t_ln, bar_index)
-                    line.set_x2(z.m_ln, bar_index)
-                    line.set_x2(z.b_ln, bar_index)
-                    array.push(liq_lines_hist, z.t_ln)
-                    array.push(liq_lines_hist, z.m_ln)
-                    array.push(liq_lines_hist, z.b_ln)
-                    array.push(liq_fills_hist, z.f_top)
-                    array.push(liq_fills_hist, z.f_bot)
-                    
-                    z.t_ln := line.new(bar_index, z.level + z.step/2, bar_index + 10, z.level + z.step/2, color=na, width=1)
-                    z.m_ln := line.new(bar_index, z.level, bar_index + 10, z.level, color=na, width=1)
-                    z.b_ln := line.new(bar_index, z.level - z.step/2, bar_index + 10, z.level - z.step/2, color=na, width=1)
-                    z.f_top := linefill.new(z.t_ln, z.m_ln, color=c_edge)
-                    z.f_bot := linefill.new(z.m_ln, z.b_ln, color=c_core)
-                found := true
-                break
-    if not found
-        color c_edge = get_heatmap_color(weight, is_long, grid_price, false)
-        color c_core = get_heatmap_color(weight, is_long, grid_price, true)
-        l_t = line.new(bar_idx, grid_price + liq_step/2, bar_index + 10, grid_price + liq_step/2, color=na, width=1)
-        l_m = line.new(bar_idx, grid_price, bar_index + 10, grid_price, color=na, width=1)
-        l_b = line.new(bar_idx, grid_price - liq_step/2, bar_index + 10, grid_price - liq_step/2, color=na, width=1)
-        f_top = linefill.new(l_t, l_m, color=c_edge)
-        f_bot = linefill.new(l_m, l_b, color=c_core)
-        array.push(liq_zones, LiqZone.new(l_t, l_m, l_b, f_top, f_bot, grid_price, liq_step, weight, is_long, true))
+
+    // Only create line drawings on recent bars to prevent overflow on 1m timeframes
+    bool allow_drawings = bar_index > (last_bar_index - 300)
+    if allow_drawings
+        bool found = false
+        int sz_liq = array.size(liq_zones)
+        if sz_liq > 0
+            for i = 0 to sz_liq - 1
+                LiqZone z = array.get(liq_zones, i)
+                if z.active and z.is_long_liq == is_long and math.abs(z.level - grid_price) < (z.step * 0.75)
+                    z.strength += weight
+                    color c_edge = get_heatmap_color(z.strength, is_long, z.level, false)
+                    color c_core = get_heatmap_color(z.strength, is_long, z.level, true)
+                    if line.get_x1(z.t_ln) == bar_index
+                        linefill.set_color(z.f_top, c_edge)
+                        linefill.set_color(z.f_bot, c_core)
+                    else
+                        line.set_x2(z.t_ln, bar_index)
+                        line.set_x2(z.m_ln, bar_index)
+                        line.set_x2(z.b_ln, bar_index)
+                        array.push(liq_lines_hist, z.t_ln)
+                        array.push(liq_lines_hist, z.m_ln)
+                        array.push(liq_lines_hist, z.b_ln)
+                        array.push(liq_fills_hist, z.f_top)
+                        array.push(liq_fills_hist, z.f_bot)
+
+                        z.t_ln := line.new(bar_index, z.level + z.step/2, bar_index + 10, z.level + z.step/2, color=na, width=1)
+                        z.m_ln := line.new(bar_index, z.level, bar_index + 10, z.level, color=na, width=1)
+                        z.b_ln := line.new(bar_index, z.level - z.step/2, bar_index + 10, z.level - z.step/2, color=na, width=1)
+                        z.f_top := linefill.new(z.t_ln, z.m_ln, color=c_edge)
+                        z.f_bot := linefill.new(z.m_ln, z.b_ln, color=c_core)
+                    found := true
+                    break
+        if not found
+            color c_edge = get_heatmap_color(weight, is_long, grid_price, false)
+            color c_core = get_heatmap_color(weight, is_long, grid_price, true)
+            l_t = line.new(bar_idx, grid_price + liq_step/2, bar_index + 10, grid_price + liq_step/2, color=na, width=1)
+            l_m = line.new(bar_idx, grid_price, bar_index + 10, grid_price, color=na, width=1)
+            l_b = line.new(bar_idx, grid_price - liq_step/2, bar_index + 10, grid_price - liq_step/2, color=na, width=1)
+            f_top = linefill.new(l_t, l_m, color=c_edge)
+            f_bot = linefill.new(l_m, l_b, color=c_core)
+            array.push(liq_zones, LiqZone.new(l_t, l_m, l_b, f_top, f_bot, grid_price, liq_step, weight, is_long, true))
+
+            while array.size(liq_zones) > 25
+                LiqZone old_z = array.shift(liq_zones)
+                if not na(old_z.t_ln)
+                    line.delete(old_z.t_ln)
+                if not na(old_z.m_ln)
+                    line.delete(old_z.m_ln)
+                if not na(old_z.b_ln)
+                    line.delete(old_z.b_ln)
 
 // Fire levels on liquidity detection
 if show_liq_heatmap
@@ -331,13 +344,9 @@ if show_liq_heatmap
             
             if remove
                 array.remove(liq_zones, i)
-    if array.size(liq_lines_hist) > 0
-        for i = array.size(liq_lines_hist) - 1 to 0
-            ln = array.get(liq_lines_hist, i)
-            if line.get_x1(ln) < bar_index - 500
-                line.delete(ln)
-                array.remove(liq_lines_hist, i)
-    if array.size(liq_fills_hist) > 500
+    while array.size(liq_lines_hist) > 120
+        line.delete(array.shift(liq_lines_hist))
+    while array.size(liq_fills_hist) > 80
         linefill.delete(array.shift(liq_fills_hist))
 
 
