@@ -910,15 +910,17 @@ if barstate.isconfirmed
 
             int count_b_draw = math.min(3, array.size(b_indices))
             if show_b and count_b_draw > 0
+                float max_sub_b_candle = array.get(candle_sub_buy_vol, array.get(b_indices, 0))
                 for i = 0 to count_b_draw - 1
                     int k = array.get(b_indices, i)
                     float sub_p = array.get(candle_sub_prices, k)
                     float sub_bv = array.get(candle_sub_buy_vol, k)
-                    float sub_intensity_buy = max_sub_vol_history > 0 ? math.pow(math.min(sub_bv / max_sub_vol_history * sensitivity, 1.0), 0.8) : 0.0
+                    float rel_ratio_b = max_sub_b_candle > 0 ? sub_bv / max_sub_b_candle : 0.0
+                    float sub_intensity_buy = rel_ratio_b * math.max(0.3, math.pow(vol_intensity_buy, 0.5))
 
                     color sub_c_buy = get_bubble_color(sub_intensity_buy, true)
-                    string sz_b = sub_intensity_buy > 0.45 ? size.normal : (sub_intensity_buy > 0.15 ? size.small : size.tiny)
-                    int transp_b = sub_intensity_buy > 0.45 ? 20 : (sub_intensity_buy > 0.15 ? 45 : 70)
+                    string sz_b = sub_intensity_buy > 0.5 ? size.normal : (sub_intensity_buy > 0.2 ? size.small : size.tiny)
+                    int transp_b = sub_intensity_buy > 0.5 ? 20 : (sub_intensity_buy > 0.2 ? 45 : 70)
                     label d_b = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_buy, transp_b), size=sz_b)
                     array.push(bubble_dots, d_b)
 
@@ -929,15 +931,17 @@ if barstate.isconfirmed
 
             int count_s_draw = math.min(3, array.size(s_indices))
             if show_s and count_s_draw > 0
+                float max_sub_s_candle = array.get(candle_sub_sell_vol, array.get(s_indices, 0))
                 for i = 0 to count_s_draw - 1
                     int k = array.get(s_indices, i)
                     float sub_p = array.get(candle_sub_prices, k)
                     float sub_sv = array.get(candle_sub_sell_vol, k)
-                    float sub_intensity_sell = max_sub_vol_history > 0 ? math.pow(math.min(sub_sv / max_sub_vol_history * sensitivity, 1.0), 0.8) : 0.0
+                    float rel_ratio_s = max_sub_s_candle > 0 ? sub_sv / max_sub_s_candle : 0.0
+                    float sub_intensity_sell = rel_ratio_s * math.max(0.3, math.pow(vol_intensity_sell, 0.5))
 
                     color sub_c_sell = get_bubble_color(sub_intensity_sell, false)
-                    string sz_s = sub_intensity_sell > 0.45 ? size.normal : (sub_intensity_sell > 0.15 ? size.small : size.tiny)
-                    int transp_s = sub_intensity_sell > 0.45 ? 20 : (sub_intensity_sell > 0.15 ? 45 : 70)
+                    string sz_s = sub_intensity_sell > 0.5 ? size.normal : (sub_intensity_sell > 0.2 ? size.small : size.tiny)
+                    int transp_s = sub_intensity_sell > 0.5 ? 20 : (sub_intensity_sell > 0.2 ? 45 : 70)
                     label d_s = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_sell, transp_s), size=sz_s)
                     array.push(bubble_dots, d_s)
 
@@ -1010,15 +1014,17 @@ if barstate.isrealtime and not barstate.isconfirmed
 
         int count_b_rt = math.min(3, array.size(rt_b_indices))
         if show_b and count_b_rt > 0
+            float max_sub_b_rt = array.get(candle_sub_buy_vol, array.get(rt_b_indices, 0))
             for i = 0 to count_b_rt - 1
                 int k = array.get(rt_b_indices, i)
                 float sub_p = array.get(candle_sub_prices, k)
                 float sub_bv = array.get(candle_sub_buy_vol, k)
-                float sub_intensity_buy = max_sub_vol_history > 0 ? math.pow(math.min(sub_bv / max_sub_vol_history * sensitivity, 1.0), 0.8) : 0.0
+                float rel_ratio_b = max_sub_b_rt > 0 ? sub_bv / max_sub_b_rt : 0.0
+                float sub_intensity_buy = rel_ratio_b * math.max(0.3, math.pow(vol_intensity_buy, 0.5))
 
                 color sub_c_buy = get_bubble_color(sub_intensity_buy, true)
-                string sz_b = sub_intensity_buy > 0.45 ? size.normal : (sub_intensity_buy > 0.15 ? size.small : size.tiny)
-                int transp_b = sub_intensity_buy > 0.45 ? 20 : (sub_intensity_buy > 0.15 ? 45 : 70)
+                string sz_b = sub_intensity_buy > 0.5 ? size.normal : (sub_intensity_buy > 0.2 ? size.small : size.tiny)
+                int transp_b = sub_intensity_buy > 0.5 ? 20 : (sub_intensity_buy > 0.2 ? 45 : 70)
                 label d_b = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_buy, transp_b), size=sz_b)
                 array.push(rt_bubble_dots, d_b)
 
@@ -1029,15 +1035,17 @@ if barstate.isrealtime and not barstate.isconfirmed
 
         int count_s_rt = math.min(3, array.size(rt_s_indices))
         if show_s and count_s_rt > 0
+            float max_sub_s_rt = array.get(candle_sub_sell_vol, array.get(rt_s_indices, 0))
             for i = 0 to count_s_rt - 1
                 int k = array.get(rt_s_indices, i)
                 float sub_p = array.get(candle_sub_prices, k)
                 float sub_sv = array.get(candle_sub_sell_vol, k)
-                float sub_intensity_sell = max_sub_vol_history > 0 ? math.pow(math.min(sub_sv / max_sub_vol_history * sensitivity, 1.0), 0.8) : 0.0
+                float rel_ratio_s = max_sub_s_rt > 0 ? sub_sv / max_sub_s_rt : 0.0
+                float sub_intensity_sell = rel_ratio_s * math.max(0.3, math.pow(vol_intensity_sell, 0.5))
 
                 color sub_c_sell = get_bubble_color(sub_intensity_sell, false)
-                string sz_s = sub_intensity_sell > 0.45 ? size.normal : (sub_intensity_sell > 0.15 ? size.small : size.tiny)
-                int transp_s = sub_intensity_sell > 0.45 ? 20 : (sub_intensity_sell > 0.15 ? 45 : 70)
+                string sz_s = sub_intensity_sell > 0.5 ? size.normal : (sub_intensity_sell > 0.2 ? size.small : size.tiny)
+                int transp_s = sub_intensity_sell > 0.5 ? 20 : (sub_intensity_sell > 0.2 ? 45 : 70)
                 label d_s = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_sell, transp_s), size=sz_s)
                 array.push(rt_bubble_dots, d_s)
 
