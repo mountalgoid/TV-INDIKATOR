@@ -522,6 +522,7 @@ if barstate.islast
                     string label_text = show_dom_labels and norm_len > 2 ? format_liq_val(l_tot) : ""
                     
                     box bx = box.new(dom_x_start, y_top, x_end, y_bot,
+                                     xloc=xloc.bar_index,
                                      border_color=color.new(base_dom_c, 30),
                                      border_width=1,
                                      bgcolor=fill_dom_c,
@@ -535,9 +536,9 @@ if barstate.islast
             // Highlight DOM Liquidity POC Line & Label
             if show_dom_poc and max_bin_liq > 0
                 float dom_poc_p = dom_low + dom_poc_idx * bin_h + bin_h / 2
-                line l_poc = line.new(dom_x_start, dom_poc_p, dom_x_max + 5, dom_poc_p, color=col_poc, width=2, style=line.style_solid)
+                line l_poc = line.new(dom_x_start, dom_poc_p, dom_x_max + 5, dom_poc_p, xloc=xloc.bar_index, color=col_poc, width=2, style=line.style_solid)
                 array.push(dom_lines, l_poc)
 
                 string poc_txt = "LQ POC: " + str.tostring(dom_poc_p, format.mintick) + " (" + format_liq_val(max_bin_liq) + ")"
-                label lbl_poc = label.new(dom_x_max + 6, dom_poc_p, poc_txt, color=color.new(dark, 50), textcolor=col_poc, style=label.style_label_left, size=size.tiny)
+                label lbl_poc = label.new(dom_x_max + 6, dom_poc_p, poc_txt, xloc=xloc.bar_index, color=color.new(dark, 50), textcolor=col_poc, style=label.style_label_left, size=size.tiny)
                 array.push(dom_labels, lbl_poc)
