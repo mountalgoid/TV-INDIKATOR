@@ -901,20 +901,36 @@ if show_plots and bubble_mode == "Multi-Level (Cluster)"
 
             // Buy Cluster Bubble
             if lvl_bv > 0 and (buy_volume > 0 and (lvl_bv / buy_volume) >= min_cluster_vol_pct) and b_count < max_cluster_bubbles
-                string b_txt = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(lvl_bv))
-                label lbl_b = label.new(bar_index, lvl_price, b_txt,
-                                        color=color.new(dark, 70), textcolor=col_bull,
-                                        style=label.style_label_center, size=size.auto)
-                array.push(bubble_labels, lbl_b)
+                float lvl_b_intensity = max_vol_history > 0 ? math.pow(math.min(lvl_bv / (max_vol_history * 0.2) * sensitivity, 1.0), 0.8) : 0.5
+                color lvl_b_col = get_bubble_color(lvl_b_intensity, true)
+                string sz_b = lvl_b_intensity > 0.75 ? size.large : (lvl_b_intensity > 0.4 ? size.normal : (lvl_b_intensity > 0.15 ? size.small : size.tiny))
+
+                label dot_b = label.new(bar_index, lvl_price, "●", color=color.new(dark, 100), textcolor=color.new(lvl_b_col, 20), style=label.style_label_center, size=sz_b)
+                array.push(bubble_labels, dot_b)
+
+                if show_bubble_labels
+                    string b_txt = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(lvl_bv))
+                    label lbl_b = label.new(bar_index, lvl_price, b_txt,
+                                            color=color.new(dark, 70), textcolor=col_bull,
+                                            style=label.style_label_center, size=size.auto)
+                    array.push(bubble_labels, lbl_b)
                 b_count += 1
 
             // Sell Cluster Bubble
             if lvl_sv > 0 and (sell_volume > 0 and (lvl_sv / sell_volume) >= min_cluster_vol_pct) and s_count < max_cluster_bubbles
-                string s_txt = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(lvl_sv))
-                label lbl_s = label.new(bar_index, lvl_price, s_txt,
-                                        color=color.new(dark, 70), textcolor=col_bear,
-                                        style=label.style_label_center, size=size.auto)
-                array.push(bubble_labels, lbl_s)
+                float lvl_s_intensity = max_vol_history > 0 ? math.pow(math.min(lvl_sv / (max_vol_history * 0.2) * sensitivity, 1.0), 0.8) : 0.5
+                color lvl_s_col = get_bubble_color(lvl_s_intensity, false)
+                string sz_s = lvl_s_intensity > 0.75 ? size.large : (lvl_s_intensity > 0.4 ? size.normal : (lvl_s_intensity > 0.15 ? size.small : size.tiny))
+
+                label dot_s = label.new(bar_index, lvl_price, "●", color=color.new(dark, 100), textcolor=color.new(lvl_s_col, 20), style=label.style_label_center, size=sz_s)
+                array.push(bubble_labels, dot_s)
+
+                if show_bubble_labels
+                    string s_txt = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(lvl_sv))
+                    label lbl_s = label.new(bar_index, lvl_price, s_txt,
+                                            color=color.new(dark, 70), textcolor=col_bear,
+                                            style=label.style_label_center, size=size.auto)
+                    array.push(bubble_labels, lbl_s)
                 s_count += 1
 
         // Confirm Summary
@@ -945,20 +961,36 @@ if show_plots and bubble_mode == "Multi-Level (Cluster)"
 
             // Buy Cluster Bubble
             if lvl_bv > 0 and (buy_volume > 0 and (lvl_bv / buy_volume) >= min_cluster_vol_pct) and b_count < max_cluster_bubbles
-                string b_txt = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(lvl_bv))
-                label lbl_b = label.new(bar_index, lvl_price, b_txt,
-                                        color=color.new(dark, 70), textcolor=col_bull,
-                                        style=label.style_label_center, size=size.auto)
-                array.push(rt_cluster_labels, lbl_b)
+                float lvl_b_intensity = max_vol_history > 0 ? math.pow(math.min(lvl_bv / (max_vol_history * 0.2) * sensitivity, 1.0), 0.8) : 0.5
+                color lvl_b_col = get_bubble_color(lvl_b_intensity, true)
+                string sz_b = lvl_b_intensity > 0.75 ? size.large : (lvl_b_intensity > 0.4 ? size.normal : (lvl_b_intensity > 0.15 ? size.small : size.tiny))
+
+                label dot_b = label.new(bar_index, lvl_price, "●", color=color.new(dark, 100), textcolor=color.new(lvl_b_col, 20), style=label.style_label_center, size=sz_b)
+                array.push(rt_cluster_labels, dot_b)
+
+                if show_bubble_labels
+                    string b_txt = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(lvl_bv))
+                    label lbl_b = label.new(bar_index, lvl_price, b_txt,
+                                            color=color.new(dark, 70), textcolor=col_bull,
+                                            style=label.style_label_center, size=size.auto)
+                    array.push(rt_cluster_labels, lbl_b)
                 b_count += 1
 
             // Sell Cluster Bubble
             if lvl_sv > 0 and (sell_volume > 0 and (lvl_sv / sell_volume) >= min_cluster_vol_pct) and s_count < max_cluster_bubbles
-                string s_txt = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(lvl_sv))
-                label lbl_s = label.new(bar_index, lvl_price, s_txt,
-                                        color=color.new(dark, 70), textcolor=col_bear,
-                                        style=label.style_label_center, size=size.auto)
-                array.push(rt_cluster_labels, lbl_s)
+                float lvl_s_intensity = max_vol_history > 0 ? math.pow(math.min(lvl_sv / (max_vol_history * 0.2) * sensitivity, 1.0), 0.8) : 0.5
+                color lvl_s_col = get_bubble_color(lvl_s_intensity, false)
+                string sz_s = lvl_s_intensity > 0.75 ? size.large : (lvl_s_intensity > 0.4 ? size.normal : (lvl_s_intensity > 0.15 ? size.small : size.tiny))
+
+                label dot_s = label.new(bar_index, lvl_price, "●", color=color.new(dark, 100), textcolor=color.new(lvl_s_col, 20), style=label.style_label_center, size=sz_s)
+                array.push(rt_cluster_labels, dot_s)
+
+                if show_bubble_labels
+                    string s_txt = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(lvl_sv))
+                    label lbl_s = label.new(bar_index, lvl_price, s_txt,
+                                            color=color.new(dark, 70), textcolor=col_bear,
+                                            style=label.style_label_center, size=size.auto)
+                    array.push(rt_cluster_labels, lbl_s)
                 s_count += 1
 
         // Summary RT
