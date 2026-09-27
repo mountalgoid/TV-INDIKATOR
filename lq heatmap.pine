@@ -112,9 +112,9 @@ color va_color_sh = trans_col_bear
 color va_border   = col_poc
 
 // DOM Profile (Right Chart) Settings
-bool   show_dom_profile = input.bool(true, "Show DOM Profile (Right Side)", group=grp_dom)
+bool   show_dom_profile = input.bool(true, "Show DOM Profile (Right Candle)", group=grp_dom)
 int    dom_width        = input.int(25, "DOM Profile Width (Bars)", minval=5, maxval=100, group=grp_dom)
-int    dom_offset       = input.int(10, "DOM Profile Right Offset (Bars)", minval=0, maxval=50, group=grp_dom)
+int    dom_offset       = input.int(10, "DOM Profile Offset from Right Candle (Bars)", minval=0, maxval=100, group=grp_dom)
 int    dom_bins         = input.int(35, "DOM Price Level Bins", minval=10, maxval=100, group=grp_dom)
 bool   show_dom_poc     = input.bool(true, "Highlight DOM Liquidity POC", group=grp_dom)
 bool   show_dom_labels  = input.bool(true, "Show DOM Volume Labels", group=grp_dom)
@@ -475,7 +475,7 @@ fill(p_d24, p_d32, color=get_smooth_heat_color(array.get(heat_grid, 32), false, 
 fill(p_d32, p_d48, color=get_smooth_heat_color(array.get(heat_grid, 20), false, heat_base_p - 40 * liq_step))
 
 // -----------------------------------------------------------------------------
-// 3. DOM LIQUIDITY PROFILE ENGINE (RIGHT SIDE CHART ATTACHED)
+// 3. DOM LIQUIDITY PROFILE ENGINE (RIGHT CANDLE ATTACHED WITH OFFSET)
 // -----------------------------------------------------------------------------
 var box[]   dom_boxes  = array.new_box()
 var line[]  dom_lines  = array.new_line()
@@ -564,7 +564,7 @@ if barstate.islast
 
             float inv_max_bin = max_bin_liq > 0 ? 1.0 / max_bin_liq : 1.0
 
-            // Position DOM profile relative to right edge of current bar
+            // Position DOM profile relative to right side of current candle (bar_index) with offset distance
             int dom_x_start = bar_index + dom_offset
             int dom_x_max   = dom_x_start + dom_width
 
