@@ -196,6 +196,9 @@ bool   show_plotline     = input.bool(false, "Use Plot line", group=grp_candle)
 
 // Visuals (Bubbles)
 bool   show_plots            = input.bool(true, "Show Volume Bubbles", group=grp_vis)
+string bubble_mode           = input.string("Multi-Level (Cluster)", "Bubble Display Mode", options=["Multi-Level (Cluster)", "Single Level (Weighted Avg)"], group=grp_vis, tooltip="Choose whether to display multiple precise level bubbles per candle or a single aggregated bubble")
+int    max_cluster_bubbles   = input.int(5, "Max Bubbles Per Candle Side", minval=1, maxval=10, group=grp_vis, tooltip="Maximum number of buy or sell bubbles to display per candle in Multi-Level mode")
+float  min_cluster_vol_pct   = input.float(5.0, "Min Cluster Volume Share (%)", minval=0.0, maxval=50.0, step=1.0, group=grp_vis, tooltip="Minimum percentage share of candle volume for a price level cluster to spawn a bubble") / 100.0
 bool   show_bubble_labels    = input.bool(true, "Show Bubble Labels", group=grp_vis)
 string bubble_label_type     = "Volume"
 bool   show_mitigation_boxes = input.bool(true, "Show Large Vol Mitigation Boxes", group=grp_vis)
@@ -433,7 +436,43 @@ distribute_vol(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h,
                         array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
                         array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
 
-// 10 Price Levels per Candle Engine for Super Precise Bubble Placement
+// 10 Price Levels per Candle Engine for Super Precise Multi-Bubble Placement
+get_candle_clusters(int _levels) =>
+    array<float> c_prices = array.new_float(_levels, 0.0)
+    array<float> c_buy_v  = array.new_float(_levels, 0.0)
+    array<float> c_sell_v = array.new_float(_levels, 0.0)
+
+    float range_val = high - low
+    if range_val > 0
+        float sub_step = range_val / _levels
+        float inv_step = 1.0 / sub_step
+        array<float> dummy_tot = array.new_float(_levels, 0.0)
+
+        int ltf_sz = array.size(ltf_v)
+        if ltf_sz > 0
+            for i = 0 to ltf_sz - 1
+                float _o = array.get(ltf_o, i)
+                float _h = array.get(ltf_h, i)
+                float _l = array.get(ltf_l, i)
+                float _c = array.get(ltf_c, i)
+                float _v = array.get(ltf_v, i)
+                distribute_vol(_levels, low, inv_step, _o, _h, _l, _c, _v, dummy_tot, c_buy_v, c_sell_v)
+
+        float ltf_v_tot = array.sum(dummy_tot)
+        float rem_v = math.max(0, get_tick_volume() - ltf_v_tot)
+        if rem_v > 0
+            distribute_vol(_levels, low, inv_step, open, high, low, close, rem_v, dummy_tot, c_buy_v, c_sell_v)
+
+        for k = 0 to _levels - 1
+            array.set(c_prices, k, low + (k + 0.5) * sub_step)
+    else
+        array.set(c_prices, 0, close)
+        [flat_b_v, flat_s_v] = calc_vol_partition(get_tick_volume())
+        array.set(c_buy_v, 0, flat_b_v)
+        array.set(c_sell_v, 0, flat_s_v)
+
+    [c_prices, c_buy_v, c_sell_v]
+
 get_candle_sub_pocs(float _o, float _h, float _l, float _c, float _v) =>
     float range_val = _h - _l
     float b_buy_poc = _c
@@ -841,13 +880,112 @@ var label[] bubble_summaries = array.new_label()
 var label rt_lbl_buy = na
 var label rt_lbl_sell = na
 var label rt_lbl_sum = na
+var label[] rt_cluster_labels = array.new_label()
 
-if show_bubble_labels
+if show_plots and bubble_mode == "Multi-Level (Cluster)"
+    [c_prices, c_buy_v, c_sell_v] = get_candle_clusters(10)
+
+    // Sort clusters to find top volume levels
+    if barstate.isconfirmed
+        int b_count = 0
+        int s_count = 0
+
+        for level_idx = 0 to 9
+            float lvl_price = array.get(c_prices, level_idx)
+            float lvl_bv    = array.get(c_buy_v, level_idx)
+            float lvl_sv    = array.get(c_sell_v, level_idx)
+
+            // Buy Cluster Bubble
+            if lvl_bv > 0 and (buy_volume > 0 and (lvl_bv / buy_volume) >= min_cluster_vol_pct) and b_count < max_cluster_bubbles
+                float lvl_b_intensity = max_vol_history > 0 ? math.pow(math.min(lvl_bv / (max_vol_history * 0.2) * sensitivity, 1.0), 0.8) : 0.5
+                color lvl_b_col = get_bubble_color(lvl_b_intensity, true)
+                string b_txt = show_bubble_labels ? "▲ " + format_vol(lvl_bv) : "●"
+
+                label lbl_b = label.new(bar_index, lvl_price, b_txt,
+                                        color=color.new(dark, 40), textcolor=lvl_b_col,
+                                        style=label.style_label_center, size=size.tiny)
+                array.push(bubble_labels, lbl_b)
+                b_count += 1
+
+            // Sell Cluster Bubble
+            if lvl_sv > 0 and (sell_volume > 0 and (lvl_sv / sell_volume) >= min_cluster_vol_pct) and s_count < max_cluster_bubbles
+                float lvl_s_intensity = max_vol_history > 0 ? math.pow(math.min(lvl_sv / (max_vol_history * 0.2) * sensitivity, 1.0), 0.8) : 0.5
+                color lvl_s_col = get_bubble_color(lvl_s_intensity, false)
+                string s_txt = show_bubble_labels ? "▼ " + format_vol(lvl_sv) : "●"
+
+                label lbl_s = label.new(bar_index, lvl_price, s_txt,
+                                        color=color.new(dark, 40), textcolor=lvl_s_col,
+                                        style=label.style_label_center, size=size.tiny)
+                array.push(bubble_labels, lbl_s)
+                s_count += 1
+
+        // Confirm Summary
+        if vol_intensity_buy > 0 or vol_intensity_sell > 0
+            float b_delta = buy_volume - sell_volume
+            float b_total = buy_volume + sell_volume
+            float b_delta_pct = b_total > 0 ? (b_delta / b_total) * 100 : 0
+            string summary_txt = "\n\n" + (b_delta >= 0 ? "+" : "") + str.tostring(b_delta_pct, "#.#") + "%\n" + (b_delta >= 0 ? "+" : "") + format_vol(b_delta) + "\n\n"
+            color summary_col = b_delta >= 0 ? col_bull : col_bear
+            string summary_style = b_delta >= 0 ? label.style_label_up : label.style_label_down
+            float summary_y = b_delta >= 0 ? low : high
+
+            label l_s = label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto)
+            array.push(bubble_summaries, l_s)
+
+    if barstate.isrealtime and not barstate.isconfirmed
+        // Clear previous real-time cluster labels
+        while array.size(rt_cluster_labels) > 0
+            label.delete(array.pop(rt_cluster_labels))
+
+        int b_count = 0
+        int s_count = 0
+
+        for level_idx = 0 to 9
+            float lvl_price = array.get(c_prices, level_idx)
+            float lvl_bv    = array.get(c_buy_v, level_idx)
+            float lvl_sv    = array.get(c_sell_v, level_idx)
+
+            // Buy Cluster Bubble
+            if lvl_bv > 0 and (buy_volume > 0 and (lvl_bv / buy_volume) >= min_cluster_vol_pct) and b_count < max_cluster_bubbles
+                string b_txt = show_bubble_labels ? "▲ " + format_vol(lvl_bv) : "●"
+                label lbl_b = label.new(bar_index, lvl_price, b_txt,
+                                        color=color.new(dark, 40), textcolor=col_bull,
+                                        style=label.style_label_center, size=size.tiny)
+                array.push(rt_cluster_labels, lbl_b)
+                b_count += 1
+
+            // Sell Cluster Bubble
+            if lvl_sv > 0 and (sell_volume > 0 and (lvl_sv / sell_volume) >= min_cluster_vol_pct) and s_count < max_cluster_bubbles
+                string s_txt = show_bubble_labels ? "▼ " + format_vol(lvl_sv) : "●"
+                label lbl_s = label.new(bar_index, lvl_price, s_txt,
+                                        color=color.new(dark, 40), textcolor=col_bear,
+                                        style=label.style_label_center, size=size.tiny)
+                array.push(rt_cluster_labels, lbl_s)
+                s_count += 1
+
+        // Summary RT
+        if vol_intensity_buy > 0 or vol_intensity_sell > 0
+            float b_delta = buy_volume - sell_volume
+            float b_total = buy_volume + sell_volume
+            float b_delta_pct = b_total > 0 ? (b_delta / b_total) * 100 : 0
+            string summary_txt = "\n\n" + "B" + format_vol(buy_volume) + "/" + "S" + format_vol(sell_volume) + "\n" + (b_delta >= 0 ? "+" : "") + str.tostring(b_delta_pct, "#.#") + "%\n" + (b_delta >= 0 ? "+" : "") + format_vol(b_delta) + "\n\n"
+            color summary_col = b_delta >= 0 ? col_bull : col_bear
+            string summary_style = b_delta >= 0 ? label.style_label_up : label.style_label_down
+            float summary_y = b_delta >= 0 ? low : high
+
+            if na(rt_lbl_sum)
+                rt_lbl_sum := label.new(bar_index, summary_y, summary_txt, color=color.new(dark, 100), textcolor=summary_col, style=summary_style, size=size.auto)
+            else
+                label.set_xy(rt_lbl_sum, bar_index, summary_y)
+                label.set_text(rt_lbl_sum, summary_txt)
+                label.set_textcolor(rt_lbl_sum, summary_col)
+                label.set_style(rt_lbl_sum, summary_style)
+
+else if show_bubble_labels and bubble_mode == "Single Level (Weighted Avg)"
     if barstate.isconfirmed
         // Confirm Buy Side
         if vol_intensity_buy > 0
             label l  = na
-            line li = na
             if not na(rt_lbl_buy)
                 l := rt_lbl_buy
                 rt_lbl_buy := na
@@ -864,7 +1002,6 @@ if show_bubble_labels
         // Confirm Sell Side
         if vol_intensity_sell > 0
             label l  = na
-            line li = na
             if not na(rt_lbl_sell)
                 l := rt_lbl_sell
                 rt_lbl_sell := na
@@ -959,15 +1096,14 @@ if array.size(bubble_lines) > 400
 if array.size(bubble_summaries) > 400
     label.delete(array.shift(bubble_summaries))
 
-// Bubble (Optimized 3-tier Scaling for High Accuracy & Visual Depth)
-plotchar(show_b and vol_intensity_buy > 0.75 ? buy_loc : na, "B1H", char="●", location=location.absolute, color=color.new(c_buy_bubble, 20), size=size.normal)
-plotchar(show_b and vol_intensity_buy <= 0.75 and vol_intensity_buy > 0.3 ? buy_loc : na, "B2M", char="●", location=location.absolute, color=color.new(c_buy_bubble, 45), size=size.small)
-//plotchar(show_b and vol_intensity_buy <= 0.3 ? buy_loc : na, "B3L", char="●", location=location.absolute, color=color.new(c_buy_bubble, 70), size=size.tiny)
+// Single level plotchar bubbles (when single level mode is selected)
+bool show_single_bubbles = bubble_mode == "Single Level (Weighted Avg)"
+plotchar(show_b and show_single_bubbles and vol_intensity_buy > 0.75 ? buy_loc : na, "B1H", char="●", location=location.absolute, color=color.new(c_buy_bubble, 20), size=size.normal)
+plotchar(show_b and show_single_bubbles and vol_intensity_buy <= 0.75 and vol_intensity_buy > 0.3 ? buy_loc : na, "B2M", char="●", location=location.absolute, color=color.new(c_buy_bubble, 45), size=size.small)
 
 // Sell Side
-plotchar(show_s and vol_intensity_sell > 0.75 ? sell_loc : na, "S1H", char="●", location=location.absolute, color=color.new(c_sell_bubble, 20), size=size.normal)
-plotchar(show_s and vol_intensity_sell <= 0.75 and vol_intensity_sell > 0.3 ? sell_loc : na, "S2M", char="●", location=location.absolute, color=color.new(c_sell_bubble, 45), size=size.small)
-//plotchar(show_s and vol_intensity_sell <= 0.3 ? sell_loc : na, "S3L", char="●", location=location.absolute, color=color.new(c_sell_bubble, 70), size=size.tiny)
+plotchar(show_s and show_single_bubbles and vol_intensity_sell > 0.75 ? sell_loc : na, "S1H", char="●", location=location.absolute, color=color.new(c_sell_bubble, 20), size=size.normal)
+plotchar(show_s and show_single_bubbles and vol_intensity_sell <= 0.75 and vol_intensity_sell > 0.3 ? sell_loc : na, "S2M", char="●", location=location.absolute, color=color.new(c_sell_bubble, 45), size=size.small)
 
 // -----------------------------------------------------------------------------
 // 6. SUPER GRADIENT VP + DELTA
