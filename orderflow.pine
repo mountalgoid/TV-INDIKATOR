@@ -697,7 +697,7 @@ if barstate.isconfirmed
     if cur_max_sub > max_sub_vol_history
         max_sub_vol_history := cur_max_sub
     else
-        max_sub_vol_history := math.max(max_sub_vol_history * 0.995, cur_max_sub)
+        max_sub_vol_history := math.max(max_sub_vol_history * 0.96, cur_max_sub)
 
 float vol_intensity_buy  = max_vol_history > 0 ? math.pow(math.min(buy_volume / max_vol_history * sensitivity, 1.0), 0.8) : 0
 float vol_intensity_sell = max_vol_history > 0 ? math.pow(math.min(sell_volume / max_vol_history * sensitivity, 1.0), 0.8) : 0
@@ -917,8 +917,8 @@ if barstate.isconfirmed
                     float sub_intensity_buy = max_sub_vol_history > 0 ? math.pow(math.min(sub_bv / max_sub_vol_history * sensitivity, 1.0), 0.8) : 0.0
 
                     color sub_c_buy = get_bubble_color(sub_intensity_buy, true)
-                    string sz_b = sub_intensity_buy > 0.65 ? size.normal : (sub_intensity_buy > 0.25 ? size.small : size.tiny)
-                    int transp_b = sub_intensity_buy > 0.65 ? 20 : (sub_intensity_buy > 0.25 ? 45 : 70)
+                    string sz_b = sub_intensity_buy > 0.45 ? size.normal : (sub_intensity_buy > 0.15 ? size.small : size.tiny)
+                    int transp_b = sub_intensity_buy > 0.45 ? 20 : (sub_intensity_buy > 0.15 ? 45 : 70)
                     label d_b = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_buy, transp_b), size=sz_b)
                     array.push(bubble_dots, d_b)
 
@@ -936,8 +936,8 @@ if barstate.isconfirmed
                     float sub_intensity_sell = max_sub_vol_history > 0 ? math.pow(math.min(sub_sv / max_sub_vol_history * sensitivity, 1.0), 0.8) : 0.0
 
                     color sub_c_sell = get_bubble_color(sub_intensity_sell, false)
-                    string sz_s = sub_intensity_sell > 0.65 ? size.normal : (sub_intensity_sell > 0.25 ? size.small : size.tiny)
-                    int transp_s = sub_intensity_sell > 0.65 ? 20 : (sub_intensity_sell > 0.25 ? 45 : 70)
+                    string sz_s = sub_intensity_sell > 0.45 ? size.normal : (sub_intensity_sell > 0.15 ? size.small : size.tiny)
+                    int transp_s = sub_intensity_sell > 0.45 ? 20 : (sub_intensity_sell > 0.15 ? 45 : 70)
                     label d_s = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_sell, transp_s), size=sz_s)
                     array.push(bubble_dots, d_s)
 
@@ -1017,8 +1017,8 @@ if barstate.isrealtime and not barstate.isconfirmed
                 float sub_intensity_buy = max_sub_vol_history > 0 ? math.pow(math.min(sub_bv / max_sub_vol_history * sensitivity, 1.0), 0.8) : 0.0
 
                 color sub_c_buy = get_bubble_color(sub_intensity_buy, true)
-                string sz_b = sub_intensity_buy > 0.65 ? size.normal : (sub_intensity_buy > 0.25 ? size.small : size.tiny)
-                int transp_b = sub_intensity_buy > 0.65 ? 20 : (sub_intensity_buy > 0.25 ? 45 : 70)
+                string sz_b = sub_intensity_buy > 0.45 ? size.normal : (sub_intensity_buy > 0.15 ? size.small : size.tiny)
+                int transp_b = sub_intensity_buy > 0.45 ? 20 : (sub_intensity_buy > 0.15 ? 45 : 70)
                 label d_b = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_buy, transp_b), size=sz_b)
                 array.push(rt_bubble_dots, d_b)
 
@@ -1036,8 +1036,8 @@ if barstate.isrealtime and not barstate.isconfirmed
                 float sub_intensity_sell = max_sub_vol_history > 0 ? math.pow(math.min(sub_sv / max_sub_vol_history * sensitivity, 1.0), 0.8) : 0.0
 
                 color sub_c_sell = get_bubble_color(sub_intensity_sell, false)
-                string sz_s = sub_intensity_sell > 0.65 ? size.normal : (sub_intensity_sell > 0.25 ? size.small : size.tiny)
-                int transp_s = sub_intensity_sell > 0.65 ? 20 : (sub_intensity_sell > 0.25 ? 45 : 70)
+                string sz_s = sub_intensity_sell > 0.45 ? size.normal : (sub_intensity_sell > 0.15 ? size.small : size.tiny)
+                int transp_s = sub_intensity_sell > 0.45 ? 20 : (sub_intensity_sell > 0.15 ? 45 : 70)
                 label d_s = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_sell, transp_s), size=sz_s)
                 array.push(rt_bubble_dots, d_s)
 
