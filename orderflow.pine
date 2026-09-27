@@ -874,81 +874,117 @@ var label[] rt_bubble_dots = array.new_label()
 var label[] rt_bubble_labels = array.new_label()
 var label rt_lbl_sum = na
 
+// Top 3 Sub-Level Price & Volume Intensity extraction for Plotchar rendering
+array<int> b_indices = array.new_int()
+array<int> s_indices = array.new_int()
+for k = 0 to sub_levels_count - 1
+    if array.get(candle_sub_buy_vol, k) > 0
+        array.push(b_indices, k)
+    if array.get(candle_sub_sell_vol, k) > 0
+        array.push(s_indices, k)
+
+int num_b = array.size(b_indices)
+if num_b > 1
+    for i = 0 to num_b - 2
+        for j = i + 1 to num_b - 1
+            int idx1 = array.get(b_indices, i)
+            int idx2 = array.get(b_indices, j)
+            if array.get(candle_sub_buy_vol, idx2) > array.get(candle_sub_buy_vol, idx1)
+                array.set(b_indices, i, idx2)
+                array.set(b_indices, j, idx1)
+
+int num_s = array.size(s_indices)
+if num_s > 1
+    for i = 0 to num_s - 2
+        for j = i + 1 to num_s - 1
+            int idx1 = array.get(s_indices, i)
+            int idx2 = array.get(s_indices, j)
+            if array.get(candle_sub_sell_vol, idx2) > array.get(candle_sub_sell_vol, idx1)
+                array.set(s_indices, i, idx2)
+                array.set(s_indices, j, idx1)
+
+float max_sub_b_candle = num_b > 0 ? array.get(candle_sub_buy_vol, array.get(b_indices, 0)) : 0.0
+float max_sub_s_candle = num_s > 0 ? array.get(candle_sub_sell_vol, array.get(s_indices, 0)) : 0.0
+
+float buy_sub1_p = na
+float buy_sub1_v = 0.0
+float buy_sub1_intensity = 0.0
+if num_b > 0
+    int k1 = array.get(b_indices, 0)
+    buy_sub1_p := array.get(candle_sub_prices, k1)
+    buy_sub1_v := array.get(candle_sub_buy_vol, k1)
+    buy_sub1_intensity := max_sub_b_candle > 0 ? (buy_sub1_v / max_sub_b_candle) * math.max(0.3, math.pow(vol_intensity_buy, 0.5)) : 0.0
+
+float buy_sub2_p = na
+float buy_sub2_v = 0.0
+float buy_sub2_intensity = 0.0
+if num_b > 1
+    int k2 = array.get(b_indices, 1)
+    buy_sub2_p := array.get(candle_sub_prices, k2)
+    buy_sub2_v := array.get(candle_sub_buy_vol, k2)
+    buy_sub2_intensity := max_sub_b_candle > 0 ? (buy_sub2_v / max_sub_b_candle) * math.max(0.3, math.pow(vol_intensity_buy, 0.5)) : 0.0
+
+float buy_sub3_p = na
+float buy_sub3_v = 0.0
+float buy_sub3_intensity = 0.0
+if num_b > 2
+    int k3 = array.get(b_indices, 2)
+    buy_sub3_p := array.get(candle_sub_prices, k3)
+    buy_sub3_v := array.get(candle_sub_buy_vol, k3)
+    buy_sub3_intensity := max_sub_b_candle > 0 ? (buy_sub3_v / max_sub_b_candle) * math.max(0.3, math.pow(vol_intensity_buy, 0.5)) : 0.0
+
+float sell_sub1_p = na
+float sell_sub1_v = 0.0
+float sell_sub1_intensity = 0.0
+if num_s > 0
+    int k1 = array.get(s_indices, 0)
+    sell_sub1_p := array.get(candle_sub_prices, k1)
+    sell_sub1_v := array.get(candle_sub_sell_vol, k1)
+    sell_sub1_intensity := max_sub_s_candle > 0 ? (sell_sub1_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
+
+float sell_sub2_p = na
+float sell_sub2_v = 0.0
+float sell_sub2_intensity = 0.0
+if num_s > 1
+    int k2 = array.get(s_indices, 1)
+    sell_sub2_p := array.get(candle_sub_prices, k2)
+    sell_sub2_v := array.get(candle_sub_sell_vol, k2)
+    sell_sub2_intensity := max_sub_s_candle > 0 ? (sell_sub2_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
+
+float sell_sub3_p = na
+float sell_sub3_v = 0.0
+float sell_sub3_intensity = 0.0
+if num_s > 2
+    int k3 = array.get(s_indices, 2)
+    sell_sub3_p := array.get(candle_sub_prices, k3)
+    sell_sub3_v := array.get(candle_sub_sell_vol, k3)
+    sell_sub3_intensity := max_sub_s_candle > 0 ? (sell_sub3_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
+
 if barstate.isconfirmed
-    // Render Super Precise Multi-Bubbles across sub-levels (max 3 per side per candle)
-    if show_plots
+    // Render Volume Text Labels (if enabled)
+    if show_plots and show_bubble_labels
         int start_bar_idx = math.max(0, last_bar_index - lookback)
         if bar_index >= start_bar_idx
-            // Sort / Top 3 indices for Buy and Sell sub-levels
-            array<int> b_indices = array.new_int()
-            array<int> s_indices = array.new_int()
-            for k = 0 to sub_levels_count - 1
-                if array.get(candle_sub_buy_vol, k) > 0
-                    array.push(b_indices, k)
-                if array.get(candle_sub_sell_vol, k) > 0
-                    array.push(s_indices, k)
-
-            int num_b = array.size(b_indices)
-            if num_b > 1
-                for i = 0 to num_b - 2
-                    for j = i + 1 to num_b - 1
-                        int idx1 = array.get(b_indices, i)
-                        int idx2 = array.get(b_indices, j)
-                        if array.get(candle_sub_buy_vol, idx2) > array.get(candle_sub_buy_vol, idx1)
-                            array.set(b_indices, i, idx2)
-                            array.set(b_indices, j, idx1)
-
-            int num_s = array.size(s_indices)
-            if num_s > 1
-                for i = 0 to num_s - 2
-                    for j = i + 1 to num_s - 1
-                        int idx1 = array.get(s_indices, i)
-                        int idx2 = array.get(s_indices, j)
-                        if array.get(candle_sub_sell_vol, idx2) > array.get(candle_sub_sell_vol, idx1)
-                            array.set(s_indices, i, idx2)
-                            array.set(s_indices, j, idx1)
-
-            int count_b_draw = math.min(3, array.size(b_indices))
-            if show_b and count_b_draw > 0
-                float max_sub_b_candle = array.get(candle_sub_buy_vol, array.get(b_indices, 0))
-                for i = 0 to count_b_draw - 1
-                    int k = array.get(b_indices, i)
-                    float sub_p = array.get(candle_sub_prices, k)
-                    float sub_bv = array.get(candle_sub_buy_vol, k)
-                    float rel_ratio_b = max_sub_b_candle > 0 ? sub_bv / max_sub_b_candle : 0.0
-                    float sub_intensity_buy = rel_ratio_b * math.max(0.3, math.pow(vol_intensity_buy, 0.5))
-
-                    color sub_c_buy = get_bubble_color(sub_intensity_buy, true)
-                    string sz_b = sub_intensity_buy > 0.5 ? size.normal : (sub_intensity_buy > 0.2 ? size.small : size.tiny)
-                    int transp_b = sub_intensity_buy > 0.5 ? 20 : (sub_intensity_buy > 0.2 ? 45 : 70)
-                    label d_b = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_buy, transp_b), size=sz_b)
-                    array.push(bubble_dots, d_b)
-
-                    if show_bubble_labels
-                        string txt_b = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(sub_bv))
-                        label l_b = label.new(bar_index, sub_p, txt_b, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto)
-                        array.push(bubble_labels, l_b)
-
-            int count_s_draw = math.min(3, array.size(s_indices))
-            if show_s and count_s_draw > 0
-                float max_sub_s_candle = array.get(candle_sub_sell_vol, array.get(s_indices, 0))
-                for i = 0 to count_s_draw - 1
-                    int k = array.get(s_indices, i)
-                    float sub_p = array.get(candle_sub_prices, k)
-                    float sub_sv = array.get(candle_sub_sell_vol, k)
-                    float rel_ratio_s = max_sub_s_candle > 0 ? sub_sv / max_sub_s_candle : 0.0
-                    float sub_intensity_sell = rel_ratio_s * math.max(0.3, math.pow(vol_intensity_sell, 0.5))
-
-                    color sub_c_sell = get_bubble_color(sub_intensity_sell, false)
-                    string sz_s = sub_intensity_sell > 0.5 ? size.normal : (sub_intensity_sell > 0.2 ? size.small : size.tiny)
-                    int transp_s = sub_intensity_sell > 0.5 ? 20 : (sub_intensity_sell > 0.2 ? 45 : 70)
-                    label d_s = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_sell, transp_s), size=sz_s)
-                    array.push(bubble_dots, d_s)
-
-                    if show_bubble_labels
-                        string txt_s = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sub_sv))
-                        label l_s = label.new(bar_index, sub_p, txt_s, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto)
-                        array.push(bubble_labels, l_s)
+            if show_b
+                if not na(buy_sub1_p) and buy_sub1_v > 0
+                    string txt_b1 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub1_v))
+                    array.push(bubble_labels, label.new(bar_index, buy_sub1_p, txt_b1, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto))
+                if not na(buy_sub2_p) and buy_sub2_v > 0
+                    string txt_b2 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub2_v))
+                    array.push(bubble_labels, label.new(bar_index, buy_sub2_p, txt_b2, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto))
+                if not na(buy_sub3_p) and buy_sub3_v > 0
+                    string txt_b3 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub3_v))
+                    array.push(bubble_labels, label.new(bar_index, buy_sub3_p, txt_b3, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto))
+            if show_s
+                if not na(sell_sub1_p) and sell_sub1_v > 0
+                    string txt_s1 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub1_v))
+                    array.push(bubble_labels, label.new(bar_index, sell_sub1_p, txt_s1, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto))
+                if not na(sell_sub2_p) and sell_sub2_v > 0
+                    string txt_s2 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub2_v))
+                    array.push(bubble_labels, label.new(bar_index, sell_sub2_p, txt_s2, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto))
+                if not na(sell_sub3_p) and sell_sub3_v > 0
+                    string txt_s3 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub3_v))
+                    array.push(bubble_labels, label.new(bar_index, sell_sub3_p, txt_s3, color=color.new(dark, 70), textcolor=col_poc, style=label.style_label_center, size=size.auto))
 
     // Confirm Summary
     if show_bubble_labels and (vol_intensity_buy > 0 or vol_intensity_sell > 0)
@@ -976,83 +1012,31 @@ if barstate.isconfirmed
         rt_lbl_sum := na
 
 if barstate.isrealtime and not barstate.isconfirmed
-    // Clear previous real-time dots & labels
-    while array.size(rt_bubble_dots) > 0
-        label.delete(array.shift(rt_bubble_dots))
+    // Clear previous real-time labels
     while array.size(rt_bubble_labels) > 0
         label.delete(array.shift(rt_bubble_labels))
 
-    if show_plots
-        // Sort / Top 3 indices for Buy and Sell sub-levels (Real-time)
-        array<int> rt_b_indices = array.new_int()
-        array<int> rt_s_indices = array.new_int()
-        for k = 0 to sub_levels_count - 1
-            if array.get(candle_sub_buy_vol, k) > 0
-                array.push(rt_b_indices, k)
-            if array.get(candle_sub_sell_vol, k) > 0
-                array.push(rt_s_indices, k)
-
-        int num_b = array.size(rt_b_indices)
-        if num_b > 1
-            for i = 0 to num_b - 2
-                for j = i + 1 to num_b - 1
-                    int idx1 = array.get(rt_b_indices, i)
-                    int idx2 = array.get(rt_b_indices, j)
-                    if array.get(candle_sub_buy_vol, idx2) > array.get(candle_sub_buy_vol, idx1)
-                        array.set(rt_b_indices, i, idx2)
-                        array.set(rt_b_indices, j, idx1)
-
-        int num_s = array.size(rt_s_indices)
-        if num_s > 1
-            for i = 0 to num_s - 2
-                for j = i + 1 to num_s - 1
-                    int idx1 = array.get(rt_s_indices, i)
-                    int idx2 = array.get(rt_s_indices, j)
-                    if array.get(candle_sub_sell_vol, idx2) > array.get(candle_sub_sell_vol, idx1)
-                        array.set(rt_s_indices, i, idx2)
-                        array.set(rt_s_indices, j, idx1)
-
-        int count_b_rt = math.min(3, array.size(rt_b_indices))
-        if show_b and count_b_rt > 0
-            float max_sub_b_rt = array.get(candle_sub_buy_vol, array.get(rt_b_indices, 0))
-            for i = 0 to count_b_rt - 1
-                int k = array.get(rt_b_indices, i)
-                float sub_p = array.get(candle_sub_prices, k)
-                float sub_bv = array.get(candle_sub_buy_vol, k)
-                float rel_ratio_b = max_sub_b_rt > 0 ? sub_bv / max_sub_b_rt : 0.0
-                float sub_intensity_buy = rel_ratio_b * math.max(0.3, math.pow(vol_intensity_buy, 0.5))
-
-                color sub_c_buy = get_bubble_color(sub_intensity_buy, true)
-                string sz_b = sub_intensity_buy > 0.5 ? size.normal : (sub_intensity_buy > 0.2 ? size.small : size.tiny)
-                int transp_b = sub_intensity_buy > 0.5 ? 20 : (sub_intensity_buy > 0.2 ? 45 : 70)
-                label d_b = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_buy, transp_b), size=sz_b)
-                array.push(rt_bubble_dots, d_b)
-
-                if show_bubble_labels
-                    string txt_b = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(sub_bv))
-                    label l_b = label.new(bar_index, sub_p, txt_b, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto)
-                    array.push(rt_bubble_labels, l_b)
-
-        int count_s_rt = math.min(3, array.size(rt_s_indices))
-        if show_s and count_s_rt > 0
-            float max_sub_s_rt = array.get(candle_sub_sell_vol, array.get(rt_s_indices, 0))
-            for i = 0 to count_s_rt - 1
-                int k = array.get(rt_s_indices, i)
-                float sub_p = array.get(candle_sub_prices, k)
-                float sub_sv = array.get(candle_sub_sell_vol, k)
-                float rel_ratio_s = max_sub_s_rt > 0 ? sub_sv / max_sub_s_rt : 0.0
-                float sub_intensity_sell = rel_ratio_s * math.max(0.3, math.pow(vol_intensity_sell, 0.5))
-
-                color sub_c_sell = get_bubble_color(sub_intensity_sell, false)
-                string sz_s = sub_intensity_sell > 0.5 ? size.normal : (sub_intensity_sell > 0.2 ? size.small : size.tiny)
-                int transp_s = sub_intensity_sell > 0.5 ? 20 : (sub_intensity_sell > 0.2 ? 45 : 70)
-                label d_s = label.new(bar_index, sub_p, "●", style=label.style_none, textcolor=color.new(sub_c_sell, transp_s), size=sz_s)
-                array.push(rt_bubble_dots, d_s)
-
-                if show_bubble_labels
-                    string txt_s = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sub_sv))
-                    label l_s = label.new(bar_index, sub_p, txt_s, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto)
-                    array.push(rt_bubble_labels, l_s)
+    if show_plots and show_bubble_labels
+        if show_b
+            if not na(buy_sub1_p) and buy_sub1_v > 0
+                string txt_b1 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub1_v))
+                array.push(rt_bubble_labels, label.new(bar_index, buy_sub1_p, txt_b1, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto))
+            if not na(buy_sub2_p) and buy_sub2_v > 0
+                string txt_b2 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub2_v))
+                array.push(rt_bubble_labels, label.new(bar_index, buy_sub2_p, txt_b2, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto))
+            if not na(buy_sub3_p) and buy_sub3_v > 0
+                string txt_b3 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub3_v))
+                array.push(rt_bubble_labels, label.new(bar_index, buy_sub3_p, txt_b3, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto))
+        if show_s
+            if not na(sell_sub1_p) and sell_sub1_v > 0
+                string txt_s1 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub1_v))
+                array.push(rt_bubble_labels, label.new(bar_index, sell_sub1_p, txt_s1, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto))
+            if not na(sell_sub2_p) and sell_sub2_v > 0
+                string txt_s2 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub2_v))
+                array.push(rt_bubble_labels, label.new(bar_index, sell_sub2_p, txt_s2, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto))
+            if not na(sell_sub3_p) and sell_sub3_v > 0
+                string txt_s3 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub3_v))
+                array.push(rt_bubble_labels, label.new(bar_index, sell_sub3_p, txt_s3, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto))
 
     // Update Summary RT
     if show_bubble_labels and (vol_intensity_buy > 0 or vol_intensity_sell > 0)
@@ -1084,6 +1068,37 @@ while array.size(bubble_lines) > 400
     line.delete(array.shift(bubble_lines))
 while array.size(bubble_summaries) > 400
     label.delete(array.shift(bubble_summaries))
+
+// Multi-Bubble Plotchar Engine (Render Native Chart Dots)
+// Buy Sub 1
+plotchar(show_b and buy_sub1_intensity > 0.5 ? buy_sub1_p : na, "B1_H", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 20), size=size.normal)
+plotchar(show_b and buy_sub1_intensity <= 0.5 and buy_sub1_intensity > 0.2 ? buy_sub1_p : na, "B1_M", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 45), size=size.small)
+plotchar(show_b and buy_sub1_intensity <= 0.2 and buy_sub1_intensity > 0.05 ? buy_sub1_p : na, "B1_L", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 70), size=size.tiny)
+
+// Buy Sub 2
+plotchar(show_b and buy_sub2_intensity > 0.5 ? buy_sub2_p : na, "B2_H", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 20), size=size.normal)
+plotchar(show_b and buy_sub2_intensity <= 0.5 and buy_sub2_intensity > 0.2 ? buy_sub2_p : na, "B2_M", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 45), size=size.small)
+plotchar(show_b and buy_sub2_intensity <= 0.2 and buy_sub2_intensity > 0.05 ? buy_sub2_p : na, "B2_L", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 70), size=size.tiny)
+
+// Buy Sub 3
+plotchar(show_b and buy_sub3_intensity > 0.5 ? buy_sub3_p : na, "B3_H", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 20), size=size.normal)
+plotchar(show_b and buy_sub3_intensity <= 0.5 and buy_sub3_intensity > 0.2 ? buy_sub3_p : na, "B3_M", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 45), size=size.small)
+plotchar(show_b and buy_sub3_intensity <= 0.2 and buy_sub3_intensity > 0.05 ? buy_sub3_p : na, "B3_L", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 70), size=size.tiny)
+
+// Sell Sub 1
+plotchar(show_s and sell_sub1_intensity > 0.5 ? sell_sub1_p : na, "S1_H", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 20), size=size.normal)
+plotchar(show_s and sell_sub1_intensity <= 0.5 and sell_sub1_intensity > 0.2 ? sell_sub1_p : na, "S1_M", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 45), size=size.small)
+plotchar(show_s and sell_sub1_intensity <= 0.2 and sell_sub1_intensity > 0.05 ? sell_sub1_p : na, "S1_L", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 70), size=size.tiny)
+
+// Sell Sub 2
+plotchar(show_s and sell_sub2_intensity > 0.5 ? sell_sub2_p : na, "S2_H", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 20), size=size.normal)
+plotchar(show_s and sell_sub2_intensity <= 0.5 and sell_sub2_intensity > 0.2 ? sell_sub2_p : na, "S2_M", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 45), size=size.small)
+plotchar(show_s and sell_sub2_intensity <= 0.2 and sell_sub2_intensity > 0.05 ? sell_sub2_p : na, "S2_L", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 70), size=size.tiny)
+
+// Sell Sub 3
+plotchar(show_s and sell_sub3_intensity > 0.5 ? sell_sub3_p : na, "S3_H", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 20), size=size.normal)
+plotchar(show_s and sell_sub3_intensity <= 0.5 and sell_sub3_intensity > 0.2 ? sell_sub3_p : na, "S3_M", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 45), size=size.small)
+plotchar(show_s and sell_sub3_intensity <= 0.2 and sell_sub3_intensity > 0.05 ? sell_sub3_p : na, "S3_L", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 70), size=size.tiny)
 
 // -----------------------------------------------------------------------------
 // 6. SUPER GRADIENT VP + DELTA
