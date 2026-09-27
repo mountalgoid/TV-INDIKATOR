@@ -704,6 +704,91 @@ float vol_intensity_sell = max_vol_history > 0 ? math.pow(math.min(sell_volume /
 bool is_imbalance_buy    = buy_volume > sell_volume * 3 and vol_intensity_buy > 0.3
 bool is_imbalance_sell   = sell_volume > buy_volume * 3 and vol_intensity_sell > 0.3
 
+// Top 3 Sub-Level Price & Volume Intensity extraction for Plotchar rendering & Box positioning
+array<int> b_indices = array.new_int()
+array<int> s_indices = array.new_int()
+for k = 0 to sub_levels_count - 1
+    if array.get(candle_sub_buy_vol, k) > 0
+        array.push(b_indices, k)
+    if array.get(candle_sub_sell_vol, k) > 0
+        array.push(s_indices, k)
+
+int num_b = array.size(b_indices)
+if num_b > 1
+    for i = 0 to num_b - 2
+        for j = i + 1 to num_b - 1
+            int idx1 = array.get(b_indices, i)
+            int idx2 = array.get(b_indices, j)
+            if array.get(candle_sub_buy_vol, idx2) > array.get(candle_sub_buy_vol, idx1)
+                array.set(b_indices, i, idx2)
+                array.set(b_indices, j, idx1)
+
+int num_s = array.size(s_indices)
+if num_s > 1
+    for i = 0 to num_s - 2
+        for j = i + 1 to num_s - 1
+            int idx1 = array.get(s_indices, i)
+            int idx2 = array.get(s_indices, j)
+            if array.get(candle_sub_sell_vol, idx2) > array.get(candle_sub_sell_vol, idx1)
+                array.set(s_indices, i, idx2)
+                array.set(s_indices, j, idx1)
+
+float max_sub_b_candle = num_b > 0 ? array.get(candle_sub_buy_vol, array.get(b_indices, 0)) : 0.0
+float max_sub_s_candle = num_s > 0 ? array.get(candle_sub_sell_vol, array.get(s_indices, 0)) : 0.0
+
+float buy_sub1_p = na
+float buy_sub1_v = 0.0
+float buy_sub1_intensity = 0.0
+if num_b > 0
+    int k1 = array.get(b_indices, 0)
+    buy_sub1_p := array.get(candle_sub_prices, k1)
+    buy_sub1_v := array.get(candle_sub_buy_vol, k1)
+    buy_sub1_intensity := max_sub_b_candle > 0 ? (buy_sub1_v / max_sub_b_candle) * math.max(0.3, math.pow(vol_intensity_buy, 0.5)) : 0.0
+
+float buy_sub2_p = na
+float buy_sub2_v = 0.0
+float buy_sub2_intensity = 0.0
+if num_b > 1
+    int k2 = array.get(b_indices, 1)
+    buy_sub2_p := array.get(candle_sub_prices, k2)
+    buy_sub2_v := array.get(candle_sub_buy_vol, k2)
+    buy_sub2_intensity := max_sub_b_candle > 0 ? (buy_sub2_v / max_sub_b_candle) * math.max(0.3, math.pow(vol_intensity_buy, 0.5)) : 0.0
+
+float buy_sub3_p = na
+float buy_sub3_v = 0.0
+float buy_sub3_intensity = 0.0
+if num_b > 2
+    int k3 = array.get(b_indices, 2)
+    buy_sub3_p := array.get(candle_sub_prices, k3)
+    buy_sub3_v := array.get(candle_sub_buy_vol, k3)
+    buy_sub3_intensity := max_sub_b_candle > 0 ? (buy_sub3_v / max_sub_b_candle) * math.max(0.3, math.pow(vol_intensity_buy, 0.5)) : 0.0
+
+float sell_sub1_p = na
+float sell_sub1_v = 0.0
+float sell_sub1_intensity = 0.0
+if num_s > 0
+    int k1 = array.get(s_indices, 0)
+    sell_sub1_p := array.get(candle_sub_prices, k1)
+    sell_sub1_v := array.get(candle_sub_sell_vol, k1)
+    sell_sub1_intensity := max_sub_s_candle > 0 ? (sell_sub1_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
+
+float sell_sub2_p = na
+float sell_sub2_v = 0.0
+float sell_sub2_intensity = 0.0
+if num_s > 1
+    int k2 = array.get(s_indices, 1)
+    sell_sub2_p := array.get(candle_sub_prices, k2)
+    sell_sub2_v := array.get(candle_sub_sell_vol, k2)
+    sell_sub2_intensity := max_sub_s_candle > 0 ? (sell_sub2_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
+
+float sell_sub3_p = na
+float sell_sub3_v = 0.0
+float sell_sub3_intensity = 0.0
+if num_s > 2
+    int k3 = array.get(s_indices, 2)
+    sell_sub3_p := array.get(candle_sub_prices, k3)
+    sell_sub3_v := array.get(candle_sub_sell_vol, k3)
+    sell_sub3_intensity := max_sub_s_candle > 0 ? (sell_sub3_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
 
 // Imbalance Box Logic
 type ImbalanceBox
@@ -732,40 +817,49 @@ var array<LargeVolBox> lv_boxes = array.new<LargeVolBox>()
 
 
 if barstate.isconfirmed
+    float box_zone_size = not na(mkt_atr_cur) and mkt_atr_cur > 0 ? mkt_atr_cur * 0.15 : (high - low > 0 ? (high - low) * 0.15 : syminfo.mintick * 10)
+
     if show_imb_boxes and is_imbalance_buy
         string imb_b_txt = "Buy Imb\n" + format_vol(buy_volume)
-        b = box.new(bar_index, high, bar_index + 5, high - math.max(range_p * 0.25, syminfo.mintick * 5),
+        float target_b_y = not na(buy_sub1_p) ? buy_sub1_p : buy_loc
+        b = box.new(bar_index, target_b_y + box_zone_size/2, bar_index + 5, target_b_y - box_zone_size/2,
              border_color=transparent_col, border_width=0,
              bgcolor=color.new(c_buy, 75), text=imb_b_txt, text_size=size.auto, text_color=col_poc)
-        array.push(imbalance_boxes, ImbalanceBox.new(b, high - (range_p * 0.25), true, true))
+        array.push(imbalance_boxes, ImbalanceBox.new(b, target_b_y, true, true))
 
     if show_imb_boxes and is_imbalance_sell
         string imb_s_txt = "Sell Imb\n" + format_vol(sell_volume)
-        b = box.new(bar_index, low + math.max(range_p * 0.25, syminfo.mintick * 5), bar_index + 5, low,
+        float target_s_y = not na(sell_sub1_p) ? sell_sub1_p : sell_loc
+        b = box.new(bar_index, target_s_y + box_zone_size/2, bar_index + 5, target_s_y - box_zone_size/2,
              border_color=transparent_col, border_width=0,
              bgcolor=color.new(c_sell, 75), text=imb_s_txt, text_size=size.auto, text_color=col_poc)
-        array.push(imbalance_boxes, ImbalanceBox.new(b, low + (range_p * 0.25), false, true))
+        array.push(imbalance_boxes, ImbalanceBox.new(b, target_s_y, false, true))
 
     if show_mitigation_boxes
-        float zone_size = not na(mkt_atr_cur) and mkt_atr_cur > 0 ? mkt_atr_cur * 0.15 : (high - low > 0 ? (high - low) * 0.15 : syminfo.mintick * 10)
-        if vol_intensity_buy >= large_vol_threshold
-            int dyn_alpha = math.round(100 - vol_intensity_buy * 70)
-            b = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, 
+        float target_b_y = not na(buy_sub1_p) ? buy_sub1_p : buy_loc
+        float target_s_y = not na(sell_sub1_p) ? sell_sub1_p : sell_loc
+
+        if vol_intensity_buy >= large_vol_threshold or buy_sub1_intensity >= large_vol_threshold
+            float cur_b_int = math.max(vol_intensity_buy, buy_sub1_intensity)
+            int dyn_alpha = math.round(100 - cur_b_int * 70)
+            b = box.new(bar_index, target_b_y + box_zone_size/2, bar_index + 10, target_b_y - box_zone_size/2,
                  border_color=color.new(col_bull, 60), border_width=1, bgcolor=color.new(col_bull, 100),
                  text="LARGE BUY VOL", text_size=size.auto, text_color=col_poc)
-            bvb = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
-            svb = box.new(bar_index, buy_loc + zone_size/2, bar_index + 10, buy_loc - zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
-            lvl_ln = line.new(bar_index, buy_loc, bar_index + 10, buy_loc, color=color.new(col_bull, 20), width=2, style=line.style_dashed)
-            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, lvl_ln, buy_loc, buy_volume, sell_volume, true, 0, true, zone_size))
-        if vol_intensity_sell >= large_vol_threshold
-            int dyn_alpha = math.round(100 - vol_intensity_sell * 70)
-            b = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, 
+            bvb = box.new(bar_index, target_b_y + box_zone_size/2, bar_index + 10, target_b_y - box_zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
+            svb = box.new(bar_index, target_b_y + box_zone_size/2, bar_index + 10, target_b_y - box_zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
+            lvl_ln = line.new(bar_index, target_b_y, bar_index + 10, target_b_y, color=color.new(col_bull, 20), width=2, style=line.style_dashed)
+            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, lvl_ln, target_b_y, buy_volume, sell_volume, true, 0, true, box_zone_size))
+
+        if vol_intensity_sell >= large_vol_threshold or sell_sub1_intensity >= large_vol_threshold
+            float cur_s_int = math.max(vol_intensity_sell, sell_sub1_intensity)
+            int dyn_alpha = math.round(100 - cur_s_int * 70)
+            b = box.new(bar_index, target_s_y + box_zone_size/2, bar_index + 10, target_s_y - box_zone_size/2,
                  border_color=color.new(col_bear, 60), border_width=1, bgcolor=color.new(col_bear, 100),
                  text="LARGE SELL VOL", text_size=size.auto, text_color=col_poc)
-            bvb = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
-            svb = box.new(bar_index, sell_loc + zone_size/2, bar_index + 10, sell_loc - zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
-            lvl_ln = line.new(bar_index, sell_loc, bar_index + 10, sell_loc, color=color.new(col_bear, 20), width=2, style=line.style_dashed)
-            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, lvl_ln, sell_loc, buy_volume, sell_volume, false, 0, true, zone_size))
+            bvb = box.new(bar_index, target_s_y + box_zone_size/2, bar_index + 10, target_s_y - box_zone_size/2, bgcolor=color.new(col_bull, dyn_alpha), border_color=na)
+            svb = box.new(bar_index, target_s_y + box_zone_size/2, bar_index + 10, target_s_y - box_zone_size/2, bgcolor=color.new(col_bear, dyn_alpha), border_color=na)
+            lvl_ln = line.new(bar_index, target_s_y, bar_index + 10, target_s_y, color=color.new(col_bear, 20), width=2, style=line.style_dashed)
+            array.push(lv_boxes, LargeVolBox.new(b, bvb, svb, lvl_ln, target_s_y, buy_volume, sell_volume, false, 0, true, box_zone_size))
 
 // Mitigation Logic for Imbalance Boxes (Only check for bars AFTER the creation bar)
 if array.size(imbalance_boxes) > 0
@@ -873,92 +967,6 @@ var label[] bubble_summaries = array.new_label()
 var label[] rt_bubble_dots = array.new_label()
 var label[] rt_bubble_labels = array.new_label()
 var label rt_lbl_sum = na
-
-// Top 3 Sub-Level Price & Volume Intensity extraction for Plotchar rendering
-array<int> b_indices = array.new_int()
-array<int> s_indices = array.new_int()
-for k = 0 to sub_levels_count - 1
-    if array.get(candle_sub_buy_vol, k) > 0
-        array.push(b_indices, k)
-    if array.get(candle_sub_sell_vol, k) > 0
-        array.push(s_indices, k)
-
-int num_b = array.size(b_indices)
-if num_b > 1
-    for i = 0 to num_b - 2
-        for j = i + 1 to num_b - 1
-            int idx1 = array.get(b_indices, i)
-            int idx2 = array.get(b_indices, j)
-            if array.get(candle_sub_buy_vol, idx2) > array.get(candle_sub_buy_vol, idx1)
-                array.set(b_indices, i, idx2)
-                array.set(b_indices, j, idx1)
-
-int num_s = array.size(s_indices)
-if num_s > 1
-    for i = 0 to num_s - 2
-        for j = i + 1 to num_s - 1
-            int idx1 = array.get(s_indices, i)
-            int idx2 = array.get(s_indices, j)
-            if array.get(candle_sub_sell_vol, idx2) > array.get(candle_sub_sell_vol, idx1)
-                array.set(s_indices, i, idx2)
-                array.set(s_indices, j, idx1)
-
-float max_sub_b_candle = num_b > 0 ? array.get(candle_sub_buy_vol, array.get(b_indices, 0)) : 0.0
-float max_sub_s_candle = num_s > 0 ? array.get(candle_sub_sell_vol, array.get(s_indices, 0)) : 0.0
-
-float buy_sub1_p = na
-float buy_sub1_v = 0.0
-float buy_sub1_intensity = 0.0
-if num_b > 0
-    int k1 = array.get(b_indices, 0)
-    buy_sub1_p := array.get(candle_sub_prices, k1)
-    buy_sub1_v := array.get(candle_sub_buy_vol, k1)
-    buy_sub1_intensity := max_sub_b_candle > 0 ? (buy_sub1_v / max_sub_b_candle) * math.max(0.3, math.pow(vol_intensity_buy, 0.5)) : 0.0
-
-float buy_sub2_p = na
-float buy_sub2_v = 0.0
-float buy_sub2_intensity = 0.0
-if num_b > 1
-    int k2 = array.get(b_indices, 1)
-    buy_sub2_p := array.get(candle_sub_prices, k2)
-    buy_sub2_v := array.get(candle_sub_buy_vol, k2)
-    buy_sub2_intensity := max_sub_b_candle > 0 ? (buy_sub2_v / max_sub_b_candle) * math.max(0.3, math.pow(vol_intensity_buy, 0.5)) : 0.0
-
-float buy_sub3_p = na
-float buy_sub3_v = 0.0
-float buy_sub3_intensity = 0.0
-if num_b > 2
-    int k3 = array.get(b_indices, 2)
-    buy_sub3_p := array.get(candle_sub_prices, k3)
-    buy_sub3_v := array.get(candle_sub_buy_vol, k3)
-    buy_sub3_intensity := max_sub_b_candle > 0 ? (buy_sub3_v / max_sub_b_candle) * math.max(0.3, math.pow(vol_intensity_buy, 0.5)) : 0.0
-
-float sell_sub1_p = na
-float sell_sub1_v = 0.0
-float sell_sub1_intensity = 0.0
-if num_s > 0
-    int k1 = array.get(s_indices, 0)
-    sell_sub1_p := array.get(candle_sub_prices, k1)
-    sell_sub1_v := array.get(candle_sub_sell_vol, k1)
-    sell_sub1_intensity := max_sub_s_candle > 0 ? (sell_sub1_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
-
-float sell_sub2_p = na
-float sell_sub2_v = 0.0
-float sell_sub2_intensity = 0.0
-if num_s > 1
-    int k2 = array.get(s_indices, 1)
-    sell_sub2_p := array.get(candle_sub_prices, k2)
-    sell_sub2_v := array.get(candle_sub_sell_vol, k2)
-    sell_sub2_intensity := max_sub_s_candle > 0 ? (sell_sub2_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
-
-float sell_sub3_p = na
-float sell_sub3_v = 0.0
-float sell_sub3_intensity = 0.0
-if num_s > 2
-    int k3 = array.get(s_indices, 2)
-    sell_sub3_p := array.get(candle_sub_prices, k3)
-    sell_sub3_v := array.get(candle_sub_sell_vol, k3)
-    sell_sub3_intensity := max_sub_s_candle > 0 ? (sell_sub3_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
 
 if barstate.isconfirmed
     // Render Volume Text Labels (if enabled)
