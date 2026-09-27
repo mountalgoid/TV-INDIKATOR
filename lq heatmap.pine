@@ -474,6 +474,19 @@ if barstate.islast
                         else
                             array.set(bin_liq_short, b_idx, array.get(bin_liq_short, b_idx) + h_val * 0.5)
 
+            // Aggregate recent bar volume into DOM bins to guarantee full baseline market depth profile visibility
+            int lookback_dom = math.min(bar_index, 50)
+            if lookback_dom > 0
+                for k = 0 to lookback_dom - 1
+                    float p_c = close[k]
+                    if p_c >= dom_low and p_c <= dom_high
+                        int b_idx = math.min(n_bins - 1, math.max(0, math.floor((p_c - dom_low) * inv_bin_h)))
+                        float v_k = volume[k]
+                        if p_c >= open[k]
+                            array.set(bin_liq_long, b_idx, array.get(bin_liq_long, b_idx) + v_k * 0.1)
+                        else
+                            array.set(bin_liq_short, b_idx, array.get(bin_liq_short, b_idx) + v_k * 0.1)
+
             // Find Maximum DOM Liquidity and POC Level
             float max_bin_liq = 0.0
             int dom_poc_idx = 0
@@ -499,17 +512,17 @@ if barstate.islast
                     float y_bot = dom_low + b * bin_h
                     float y_top = y_bot + bin_h
                     float norm_len = (l_tot * inv_max_bin) * dom_width
-                    int x_end = dom_x_start + math.round(norm_len)
+                    int x_end = dom_x_start + math.max(1, math.round(norm_len))
 
                     bool is_long_dominant = l_long >= l_short
                     color base_dom_c = is_long_dominant ? col_bull : col_bear
-                    int dom_transp   = math.round(85 - (l_tot * inv_max_bin) * 60)
-                    color fill_dom_c = color.new(base_dom_c, math.max(15, math.min(90, dom_transp)))
+                    int dom_transp   = math.round(75 - (l_tot * inv_max_bin) * 55)
+                    color fill_dom_c = color.new(base_dom_c, math.max(15, math.min(85, dom_transp)))
 
-                    string label_text = show_dom_labels and norm_len > 3 ? format_liq_val(l_tot) : ""
+                    string label_text = show_dom_labels and norm_len > 2 ? format_liq_val(l_tot) : ""
                     
                     box bx = box.new(dom_x_start, y_top, x_end, y_bot,
-                                     border_color=color.new(base_dom_c, 50),
+                                     border_color=color.new(base_dom_c, 30),
                                      border_width=1,
                                      bgcolor=fill_dom_c,
                                      text=label_text,
