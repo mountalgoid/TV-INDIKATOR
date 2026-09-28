@@ -122,8 +122,10 @@ float pl_long  = ta.pivotlow(low, liq_length_long, liq_length_long)
 
 // Equal High / Equal Low (EQH/EQL) Confluence Detection
 float eqh_thresh = ta.atr(14) * 0.15
-bool is_eqh = not na(ph_short) and math.abs(ph_short - ta.valuewhen(not na(ph_short), ph_short, 1)) <= eqh_thresh
-bool is_eql = not na(pl_short) and math.abs(pl_short - ta.valuewhen(not na(pl_short), pl_short, 1)) <= eqh_thresh
+float prev_ph_short = ta.valuewhen(not na(ph_short), ph_short, 1)
+float prev_pl_short = ta.valuewhen(not na(pl_short), pl_short, 1)
+bool is_eqh = not na(ph_short) and math.abs(ph_short - prev_ph_short) <= eqh_thresh
+bool is_eql = not na(pl_short) and math.abs(pl_short - prev_pl_short) <= eqh_thresh
 
 // Relative Volume Weighting
 float vol_sma = ta.sma(volume, 20)
@@ -132,11 +134,12 @@ float rel_vol = vol_sma > 0 ? math.min(3.0, math.max(0.5, volume / vol_sma)) : 1
 // Accumulation Base Detection
 [bb_mid, bb_upper, bb_lower] = ta.bb(close, liq_length_long, 2)
 float bb_width = (bb_upper - bb_lower) / bb_mid
+float bb_width_sma = ta.sma(bb_width, liq_length_long * 2)
 float range_atr = ta.atr(liq_length_long)
 float range_high = ta.highest(high, liq_length_long)
 float range_low = ta.lowest(low, liq_length_long)
 float range_diff = range_high - range_low
-bool is_base = range_diff < range_atr * 1.2 and bb_width < ta.sma(bb_width, liq_length_long * 2)
+bool is_base = range_diff < range_atr * 1.2 and bb_width < bb_width_sma
 
 float base_sum_pv = 0.0
 float base_sum_v = 0.0
