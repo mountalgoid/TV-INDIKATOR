@@ -2376,12 +2376,26 @@ if show_plotline
 
     if barstate.islast
         int ext_x2 = bar_index + math.max(15, l_off)
-        if not na(last_buy_loc) and not na(last_buy_bar)
-            line.delete(buy_right_ext_line)
-            buy_right_ext_line := line.new(last_buy_bar, last_buy_loc, ext_x2, last_buy_loc, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
-        if not na(last_sell_loc) and not na(last_sell_bar)
-            line.delete(sell_right_ext_line)
-            sell_right_ext_line := line.new(last_sell_bar, last_sell_loc, ext_x2, last_sell_loc, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
+        float cur_buy_y = show_b ? buy_loc : close
+        float cur_sell_y = show_s ? sell_loc : close
+
+        int buy_start_x = not na(last_buy_bar) ? last_buy_bar : bar_index
+        float buy_start_y = not na(last_buy_loc) ? last_buy_loc : cur_buy_y
+
+        int sell_start_x = not na(last_sell_bar) ? last_sell_bar : bar_index
+        float sell_start_y = not na(last_sell_loc) ? last_sell_loc : cur_sell_y
+
+        if na(buy_right_ext_line)
+            buy_right_ext_line := line.new(buy_start_x, buy_start_y, ext_x2, cur_buy_y, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
+        else
+            line.set_xy1(buy_right_ext_line, buy_start_x, buy_start_y)
+            line.set_xy2(buy_right_ext_line, ext_x2, cur_buy_y)
+
+        if na(sell_right_ext_line)
+            sell_right_ext_line := line.new(sell_start_x, sell_start_y, ext_x2, cur_sell_y, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
+        else
+            line.set_xy1(sell_right_ext_line, sell_start_x, sell_start_y)
+            line.set_xy2(sell_right_ext_line, ext_x2, cur_sell_y)
 else if barstate.islast
     line.delete(buy_right_ext_line)
     line.delete(sell_right_ext_line)
