@@ -2350,8 +2350,10 @@ var float last_buy_loc  = na
 var int   last_buy_bar  = na
 var float last_sell_loc = na
 var int   last_sell_bar = na
-var line  buy_right_ext_line  = na
-var line  sell_right_ext_line = na
+var line  buy_right_ext_line   = na
+var line  sell_right_ext_line  = na
+var line  buy_rt_connect_line  = na
+var line  sell_rt_connect_line = na
 
 if show_plotline
     if barstate.isconfirmed
@@ -2376,31 +2378,69 @@ if show_plotline
 
     if barstate.islast
         int ext_x2 = bar_index + math.max(15, l_off)
-        float cur_buy_y = show_b ? buy_loc : close
-        float cur_sell_y = show_s ? sell_loc : close
 
-        int buy_start_x = not na(last_buy_bar) ? last_buy_bar : bar_index
-        float buy_start_y = not na(last_buy_loc) ? last_buy_loc : cur_buy_y
+        // Real-time connector when live bar has an active bubble
+        if barstate.isrealtime and not barstate.isconfirmed
+            if show_b and not na(last_buy_bar) and not na(last_buy_loc)
+                if na(buy_rt_connect_line)
+                    buy_rt_connect_line := line.new(last_buy_bar, last_buy_loc, bar_index, buy_loc, color=color.new(col_bull, 20), width=1, style=line.style_solid)
+                else
+                    line.set_xy1(buy_rt_connect_line, last_buy_bar, last_buy_loc)
+                    line.set_xy2(buy_rt_connect_line, bar_index, buy_loc)
+            else
+                line.delete(buy_rt_connect_line)
+                buy_rt_connect_line := na
 
-        int sell_start_x = not na(last_sell_bar) ? last_sell_bar : bar_index
-        float sell_start_y = not na(last_sell_loc) ? last_sell_loc : cur_sell_y
-
-        if na(buy_right_ext_line)
-            buy_right_ext_line := line.new(buy_start_x, buy_start_y, ext_x2, cur_buy_y, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
+            if show_s and not na(last_sell_bar) and not na(last_sell_loc)
+                if na(sell_rt_connect_line)
+                    sell_rt_connect_line := line.new(last_sell_bar, last_sell_loc, bar_index, sell_loc, color=color.new(col_bear, 20), width=1, style=line.style_solid)
+                else
+                    line.set_xy1(sell_rt_connect_line, last_sell_bar, last_sell_loc)
+                    line.set_xy2(sell_rt_connect_line, bar_index, sell_loc)
+            else
+                line.delete(sell_rt_connect_line)
+                sell_rt_connect_line := na
         else
-            line.set_xy1(buy_right_ext_line, buy_start_x, buy_start_y)
-            line.set_xy2(buy_right_ext_line, ext_x2, cur_buy_y)
+            line.delete(buy_rt_connect_line)
+            line.delete(sell_rt_connect_line)
+            buy_rt_connect_line := na
+            sell_rt_connect_line := na
 
-        if na(sell_right_ext_line)
-            sell_right_ext_line := line.new(sell_start_x, sell_start_y, ext_x2, cur_sell_y, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
+        // Flat horizontal right-extension lines
+        float active_buy_y  = show_b ? buy_loc : last_buy_loc
+        int   ext_buy_x1    = show_b ? bar_index : (not na(last_buy_bar) ? last_buy_bar : bar_index)
+
+        float active_sell_y = show_s ? sell_loc : last_sell_loc
+        int   ext_sell_x1   = show_s ? bar_index : (not na(last_sell_bar) ? last_sell_bar : bar_index)
+
+        if not na(active_buy_y)
+            if na(buy_right_ext_line)
+                buy_right_ext_line := line.new(ext_buy_x1, active_buy_y, ext_x2, active_buy_y, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
+            else
+                line.set_xy1(buy_right_ext_line, ext_buy_x1, active_buy_y)
+                line.set_xy2(buy_right_ext_line, ext_x2, active_buy_y)
         else
-            line.set_xy1(sell_right_ext_line, sell_start_x, sell_start_y)
-            line.set_xy2(sell_right_ext_line, ext_x2, cur_sell_y)
+            line.delete(buy_right_ext_line)
+            buy_right_ext_line := na
+
+        if not na(active_sell_y)
+            if na(sell_right_ext_line)
+                sell_right_ext_line := line.new(ext_sell_x1, active_sell_y, ext_x2, active_sell_y, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
+            else
+                line.set_xy1(sell_right_ext_line, ext_sell_x1, active_sell_y)
+                line.set_xy2(sell_right_ext_line, ext_x2, active_sell_y)
+        else
+            line.delete(sell_right_ext_line)
+            sell_right_ext_line := na
 else if barstate.islast
     line.delete(buy_right_ext_line)
     line.delete(sell_right_ext_line)
+    line.delete(buy_rt_connect_line)
+    line.delete(sell_rt_connect_line)
     buy_right_ext_line := na
     sell_right_ext_line := na
+    buy_rt_connect_line := na
+    sell_rt_connect_line := na
     if array.size(buy_trail_lines) > 0
         for i = 0 to array.size(buy_trail_lines) - 1
             line.delete(array.get(buy_trail_lines, i))
