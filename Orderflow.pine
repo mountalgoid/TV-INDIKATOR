@@ -2344,11 +2344,61 @@ if show_table and barstate.islast
 // -----------------------------------------------------------------------------
 // 9. EMAs & PLOT LINES
 // -----------------------------------------------------------------------------
-float buy_trail_val  = show_b ? buy_loc : na
-float sell_trail_val = show_s ? sell_loc : na
+var line[] buy_trail_lines  = array.new_line()
+var line[] sell_trail_lines = array.new_line()
+var float last_buy_loc  = na
+var int   last_buy_bar  = na
+var float last_sell_loc = na
+var int   last_sell_bar = na
+var line  buy_right_ext_line  = na
+var line  sell_right_ext_line = na
 
-p_b = plot(buy_trail_val, "Micro Trail Buy Line", color=col_bull, linewidth=1, style=plot.style_line, display=show_plotline ? display.all : display.none)
-p_s = plot(sell_trail_val, "Micro Trail Sell Line", color=col_bear, linewidth=1, style=plot.style_line, display=show_plotline ? display.all : display.none)
+if show_plotline
+    if barstate.isconfirmed
+        if show_b
+            if not na(last_buy_loc) and not na(last_buy_bar)
+                line ln_b = line.new(last_buy_bar, last_buy_loc, bar_index, buy_loc, color=color.new(col_bull, 20), width=1, style=line.style_solid)
+                array.push(buy_trail_lines, ln_b)
+            last_buy_loc := buy_loc
+            last_buy_bar := bar_index
+
+        if show_s
+            if not na(last_sell_loc) and not na(last_sell_bar)
+                line ln_s = line.new(last_sell_bar, last_sell_loc, bar_index, sell_loc, color=color.new(col_bear, 20), width=1, style=line.style_solid)
+                array.push(sell_trail_lines, ln_s)
+            last_sell_loc := sell_loc
+            last_sell_bar := bar_index
+
+        while array.size(buy_trail_lines) > 300
+            line.delete(array.shift(buy_trail_lines))
+        while array.size(sell_trail_lines) > 300
+            line.delete(array.shift(sell_trail_lines))
+
+    if barstate.islast
+        int ext_x2 = bar_index + math.max(15, l_off)
+        if not na(last_buy_loc) and not na(last_buy_bar)
+            line.delete(buy_right_ext_line)
+            buy_right_ext_line := line.new(last_buy_bar, last_buy_loc, ext_x2, last_buy_loc, color=color.new(col_bull, 20), width=1, style=line.style_dashed)
+        if not na(last_sell_loc) and not na(last_sell_bar)
+            line.delete(sell_right_ext_line)
+            sell_right_ext_line := line.new(last_sell_bar, last_sell_loc, ext_x2, last_sell_loc, color=color.new(col_bear, 20), width=1, style=line.style_dashed)
+else if barstate.islast
+    line.delete(buy_right_ext_line)
+    line.delete(sell_right_ext_line)
+    buy_right_ext_line := na
+    sell_right_ext_line := na
+    if array.size(buy_trail_lines) > 0
+        for i = 0 to array.size(buy_trail_lines) - 1
+            line.delete(array.get(buy_trail_lines, i))
+        array.clear(buy_trail_lines)
+    if array.size(sell_trail_lines) > 0
+        for i = 0 to array.size(sell_trail_lines) - 1
+            line.delete(array.get(sell_trail_lines, i))
+        array.clear(sell_trail_lines)
+    last_buy_loc  := na
+    last_buy_bar  := na
+    last_sell_loc := na
+    last_sell_bar := na
 
 plot(show_ema_long ? ema_long_val : na, "Long EMA", color=color_ema_long, linewidth=1)
 
