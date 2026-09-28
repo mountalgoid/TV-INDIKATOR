@@ -146,6 +146,8 @@ color color_lvn     = input.color(color.new(#62647a, 90), "LVN Color", group=grp
 bool show_hvn       = input.bool(true, "Show HVN (High Volume Nodes)", group=grp_vp)
 float hvn_threshold = input.float(0.7, "HVN Threshold (%)", minval=0.01, maxval=1.0, step=0.01, group=grp_vp)
 color color_hvn     = input.color(color.new(#ff9800, 90), "HVN Color", group=grp_vp)
+bool filter_hvn_highest = input.bool(false, "Filter HVN: Show Highest HVN Only", group=grp_vp)
+string hvn_highest_mode = input.string("Highest Volume", "Highest HVN Criterion", options=["Highest Volume", "Highest Price"], group=grp_vp)
 
 // --- Advanced Filters & Layouts ---
 bool use_ema_filter = input.bool(true, "Use EMA Filter for HVN/LVN", group=grp_vp)
@@ -197,6 +199,11 @@ bool   show_plotline     = input.bool(false, "Use Plot line", group=grp_candle)
 bool   show_plots            = input.bool(true, "Show Volume Bubbles", group=grp_vis)
 bool   show_bubble_labels    = input.bool(true, "Show Bubble Labels", group=grp_vis)
 string bubble_label_type     = "Volume"
+bool   filter_large_vol_bubbles = input.bool(false, "Filter Bubbles: Large Volume Only (>0.5)", group=grp_vis)
+bool   filter_absorption_bubbles = input.bool(false, "Filter Bubbles: Large Absorption Only (Pivot Swing Area)", group=grp_vis)
+int    pivot_left_bars           = input.int(5, "Pivot Left Bars", minval=1, maxval=50, group=grp_vis)
+int    pivot_right_bars          = input.int(5, "Pivot Right Bars", minval=1, maxval=50, group=grp_vis)
+float  pivot_area_mult           = input.float(1.0, "Pivot Area Tolerance (ATR x)", minval=0.1, step=0.1, group=grp_vis)
 bool   show_mitigation_boxes = input.bool(false, "Show Large Vol Mitigation Boxes", group=grp_vis)
 float  large_vol_threshold   = input.float(0.6, "Large Volume Threshold", minval=0.1, maxval=1.0, step=0.1, group=grp_vis)
 color  color_imbalance       = col_poc
@@ -789,6 +796,55 @@ if num_s > 2
     sell_sub3_v := array.get(candle_sub_sell_vol, k3)
     sell_sub3_intensity := max_sub_s_candle > 0 ? (sell_sub3_v / max_sub_s_candle) * math.max(0.3, math.pow(vol_intensity_sell, 0.5)) : 0.0
 
+// Pivot Engine for Absorption Area Filtering
+float ph_val = ta.pivothigh(high, pivot_left_bars, pivot_right_bars)
+float pl_val = ta.pivotlow(low, pivot_left_bars, pivot_right_bars)
+
+var float last_ph = na
+var float last_pl = na
+
+if not na(ph_val)
+    last_ph := ph_val
+if not na(pl_val)
+    last_pl := pl_val
+
+float pivot_tol = not na(mkt_atr_cur) and mkt_atr_cur > 0 ? mkt_atr_cur * pivot_area_mult : syminfo.mintick * 10
+
+// Enhanced Precision Absorption Engine
+float candle_rng = high - low
+float upper_wick_len = high - math.max(open, close)
+float lower_wick_len = math.min(open, close) - low
+bool has_upper_wick = candle_rng > 0 and (upper_wick_len / candle_rng) >= 0.25
+bool has_lower_wick = candle_rng > 0 and (lower_wick_len / candle_rng) >= 0.25
+
+// Buying Absorption: Aggressive buying absorbed at peak swing high (Pivot High area)
+bool near_ph_b1 = na(last_ph) or (not na(buy_sub1_p) and math.abs(buy_sub1_p - last_ph) <= pivot_tol) or math.abs(high - last_ph) <= pivot_tol
+bool is_abs_b1  = (close <= buy_sub1_p or close <= open or has_upper_wick) and buy_sub1_intensity > 0.05 and near_ph_b1
+
+bool near_ph_b2 = na(last_ph) or (not na(buy_sub2_p) and math.abs(buy_sub2_p - last_ph) <= pivot_tol) or math.abs(high - last_ph) <= pivot_tol
+bool is_abs_b2  = (close <= buy_sub2_p or close <= open or has_upper_wick) and buy_sub2_intensity > 0.05 and near_ph_b2
+
+bool near_ph_b3 = na(last_ph) or (not na(buy_sub3_p) and math.abs(buy_sub3_p - last_ph) <= pivot_tol) or math.abs(high - last_ph) <= pivot_tol
+bool is_abs_b3  = (close <= buy_sub3_p or close <= open or has_upper_wick) and buy_sub3_intensity > 0.05 and near_ph_b3
+
+bool pass_b1 = (not filter_large_vol_bubbles or buy_sub1_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_b1)
+bool pass_b2 = (not filter_large_vol_bubbles or buy_sub2_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_b2)
+bool pass_b3 = (not filter_large_vol_bubbles or buy_sub3_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_b3)
+
+// Selling Absorption: Aggressive selling absorbed at peak swing low (Pivot Low area)
+bool near_pl_s1 = na(last_pl) or (not na(sell_sub1_p) and math.abs(sell_sub1_p - last_pl) <= pivot_tol) or math.abs(low - last_pl) <= pivot_tol
+bool is_abs_s1  = (close >= sell_sub1_p or close >= open or has_lower_wick) and sell_sub1_intensity > 0.05 and near_pl_s1
+
+bool near_pl_s2 = na(last_pl) or (not na(sell_sub2_p) and math.abs(sell_sub2_p - last_pl) <= pivot_tol) or math.abs(low - last_pl) <= pivot_tol
+bool is_abs_s2  = (close >= sell_sub2_p or close >= open or has_lower_wick) and sell_sub2_intensity > 0.05 and near_pl_s2
+
+bool near_pl_s3 = na(last_pl) or (not na(sell_sub3_p) and math.abs(sell_sub3_p - last_pl) <= pivot_tol) or math.abs(low - last_pl) <= pivot_tol
+bool is_abs_s3  = (close >= sell_sub3_p or close >= open or has_lower_wick) and sell_sub3_intensity > 0.05 and near_pl_s3
+
+bool pass_s1 = (not filter_large_vol_bubbles or sell_sub1_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_s1)
+bool pass_s2 = (not filter_large_vol_bubbles or sell_sub2_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_s2)
+bool pass_s3 = (not filter_large_vol_bubbles or sell_sub3_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_s3)
+
 // Imbalance Box Logic
 type ImbalanceBox
     box id
@@ -973,23 +1029,23 @@ if barstate.isconfirmed
         int start_bar_idx = math.max(0, last_bar_index - lookback)
         if bar_index >= start_bar_idx
             if show_b
-                if not na(buy_sub1_p) and buy_sub1_v > 0
+                if pass_b1 and not na(buy_sub1_p) and buy_sub1_v > 0
                     string txt_b1 = bubble_label_type == "Symbol" ? "[B]" : ("B ▲" + format_vol(buy_sub1_v))
                     array.push(bubble_labels, label.new(bar_index, buy_sub1_p, txt_b1, color=color.new(dark, 0), textcolor=col_bull, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
-                if not na(buy_sub2_p) and buy_sub2_v > 0
+                if pass_b2 and not na(buy_sub2_p) and buy_sub2_v > 0
                     string txt_b2 = bubble_label_type == "Symbol" ? "[B]" : ("B ▲" + format_vol(buy_sub2_v))
                     array.push(bubble_labels, label.new(bar_index, buy_sub2_p, txt_b2, color=color.new(dark, 0), textcolor=col_bull, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
-                if not na(buy_sub3_p) and buy_sub3_v > 0
+                if pass_b3 and not na(buy_sub3_p) and buy_sub3_v > 0
                     string txt_b3 = bubble_label_type == "Symbol" ? "[B]" : ("B ▲" + format_vol(buy_sub3_v))
                     array.push(bubble_labels, label.new(bar_index, buy_sub3_p, txt_b3, color=color.new(dark, 0), textcolor=col_bull, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
             if show_s
-                if not na(sell_sub1_p) and sell_sub1_v > 0
+                if pass_s1 and not na(sell_sub1_p) and sell_sub1_v > 0
                     string txt_s1 = bubble_label_type == "Symbol" ? "[S]" : ("S ▼" + format_vol(sell_sub1_v))
                     array.push(bubble_labels, label.new(bar_index, sell_sub1_p, txt_s1, color=color.new(dark, 0), textcolor=col_bear, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
-                if not na(sell_sub2_p) and sell_sub2_v > 0
+                if pass_s2 and not na(sell_sub2_p) and sell_sub2_v > 0
                     string txt_s2 = bubble_label_type == "Symbol" ? "[S]" : ("S ▼" + format_vol(sell_sub2_v))
                     array.push(bubble_labels, label.new(bar_index, sell_sub2_p, txt_s2, color=color.new(dark, 0), textcolor=col_bear, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
-                if not na(sell_sub3_p) and sell_sub3_v > 0
+                if pass_s3 and not na(sell_sub3_p) and sell_sub3_v > 0
                     string txt_s3 = bubble_label_type == "Symbol" ? "[S]" : ("S ▼" + format_vol(sell_sub3_v))
                     array.push(bubble_labels, label.new(bar_index, sell_sub3_p, txt_s3, color=color.new(dark, 0), textcolor=col_bear, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
 
@@ -1025,23 +1081,23 @@ if barstate.isrealtime and not barstate.isconfirmed
 
     if show_plots and show_bubble_labels
         if show_b
-            if not na(buy_sub1_p) and buy_sub1_v > 0
+            if pass_b1 and not na(buy_sub1_p) and buy_sub1_v > 0
                 string txt_b1 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub1_v))
                 array.push(rt_bubble_labels, label.new(bar_index, buy_sub1_p, txt_b1, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto))
-            if not na(buy_sub2_p) and buy_sub2_v > 0
+            if pass_b2 and not na(buy_sub2_p) and buy_sub2_v > 0
                 string txt_b2 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub2_v))
                 array.push(rt_bubble_labels, label.new(bar_index, buy_sub2_p, txt_b2, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto))
-            if not na(buy_sub3_p) and buy_sub3_v > 0
+            if pass_b3 and not na(buy_sub3_p) and buy_sub3_v > 0
                 string txt_b3 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub3_v))
                 array.push(rt_bubble_labels, label.new(bar_index, buy_sub3_p, txt_b3, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto))
         if show_s
-            if not na(sell_sub1_p) and sell_sub1_v > 0
+            if pass_s1 and not na(sell_sub1_p) and sell_sub1_v > 0
                 string txt_s1 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub1_v))
                 array.push(rt_bubble_labels, label.new(bar_index, sell_sub1_p, txt_s1, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto))
-            if not na(sell_sub2_p) and sell_sub2_v > 0
+            if pass_s2 and not na(sell_sub2_p) and sell_sub2_v > 0
                 string txt_s2 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub2_v))
                 array.push(rt_bubble_labels, label.new(bar_index, sell_sub2_p, txt_s2, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto))
-            if not na(sell_sub3_p) and sell_sub3_v > 0
+            if pass_s3 and not na(sell_sub3_p) and sell_sub3_v > 0
                 string txt_s3 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub3_v))
                 array.push(rt_bubble_labels, label.new(bar_index, sell_sub3_p, txt_s3, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto))
 
@@ -1078,34 +1134,34 @@ while array.size(bubble_summaries) > 400
 
 // Multi-Bubble Plotchar Engine (Render Native Chart Dots)
 // Buy Sub 1
-plotchar(show_b and buy_sub1_intensity > 0.5 ? buy_sub1_p : na, "B1_H", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 20), size=size.small)
-plotchar(show_b and buy_sub1_intensity <= 0.5 and buy_sub1_intensity > 0.2 ? buy_sub1_p : na, "B1_M", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 45), size=size.tiny)
-plotchar(show_b and buy_sub1_intensity <= 0.2 and buy_sub1_intensity > 0.05 ? buy_sub1_p : na, "B1_L", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 80), size=size.tiny)
+plotchar(show_b and pass_b1 and buy_sub1_intensity > 0.5 ? buy_sub1_p : na, "B1_H", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 20), size=size.small)
+plotchar(show_b and pass_b1 and buy_sub1_intensity <= 0.5 and buy_sub1_intensity > 0.2 ? buy_sub1_p : na, "B1_M", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 45), size=size.tiny)
+plotchar(show_b and pass_b1 and buy_sub1_intensity <= 0.2 and buy_sub1_intensity > 0.05 ? buy_sub1_p : na, "B1_L", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 80), size=size.tiny)
 
 // Buy Sub 2
-plotchar(show_b and buy_sub2_intensity > 0.5 ? buy_sub2_p : na, "B2_H", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 20), size=size.small)
-plotchar(show_b and buy_sub2_intensity <= 0.5 and buy_sub2_intensity > 0.2 ? buy_sub2_p : na, "B2_M", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 45), size=size.tiny)
-plotchar(show_b and buy_sub2_intensity <= 0.2 and buy_sub2_intensity > 0.05 ? buy_sub2_p : na, "B2_L", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 80), size=size.tiny)
+plotchar(show_b and pass_b2 and buy_sub2_intensity > 0.5 ? buy_sub2_p : na, "B2_H", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 20), size=size.small)
+plotchar(show_b and pass_b2 and buy_sub2_intensity <= 0.5 and buy_sub2_intensity > 0.2 ? buy_sub2_p : na, "B2_M", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 45), size=size.tiny)
+plotchar(show_b and pass_b2 and buy_sub2_intensity <= 0.2 and buy_sub2_intensity > 0.05 ? buy_sub2_p : na, "B2_L", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 80), size=size.tiny)
 
 // Buy Sub 3
-plotchar(show_b and buy_sub3_intensity > 0.5 ? buy_sub3_p : na, "B3_H", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 20), size=size.small)
-plotchar(show_b and buy_sub3_intensity <= 0.5 and buy_sub3_intensity > 0.2 ? buy_sub3_p : na, "B3_M", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 45), size=size.tiny)
-plotchar(show_b and buy_sub3_intensity <= 0.2 and buy_sub3_intensity > 0.05 ? buy_sub3_p : na, "B3_L", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 80), size=size.tiny)
+plotchar(show_b and pass_b3 and buy_sub3_intensity > 0.5 ? buy_sub3_p : na, "B3_H", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 20), size=size.small)
+plotchar(show_b and pass_b3 and buy_sub3_intensity <= 0.5 and buy_sub3_intensity > 0.2 ? buy_sub3_p : na, "B3_M", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 45), size=size.tiny)
+plotchar(show_b and pass_b3 and buy_sub3_intensity <= 0.2 and buy_sub3_intensity > 0.05 ? buy_sub3_p : na, "B3_L", char="●", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 80), size=size.tiny)
 
 // Sell Sub 1
-plotchar(show_s and sell_sub1_intensity > 0.5 ? sell_sub1_p : na, "S1_H", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 20), size=size.small)
-plotchar(show_s and sell_sub1_intensity <= 0.5 and sell_sub1_intensity > 0.2 ? sell_sub1_p : na, "S1_M", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 45), size=size.tiny)
-plotchar(show_s and sell_sub1_intensity <= 0.2 and sell_sub1_intensity > 0.05 ? sell_sub1_p : na, "S1_L", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 80), size=size.tiny)
+plotchar(show_s and pass_s1 and sell_sub1_intensity > 0.5 ? sell_sub1_p : na, "S1_H", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 20), size=size.small)
+plotchar(show_s and pass_s1 and sell_sub1_intensity <= 0.5 and sell_sub1_intensity > 0.2 ? sell_sub1_p : na, "S1_M", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 45), size=size.tiny)
+plotchar(show_s and pass_s1 and sell_sub1_intensity <= 0.2 and sell_sub1_intensity > 0.05 ? sell_sub1_p : na, "S1_L", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 80), size=size.tiny)
 
 // Sell Sub 2
-plotchar(show_s and sell_sub2_intensity > 0.5 ? sell_sub2_p : na, "S2_H", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 20), size=size.small)
-plotchar(show_s and sell_sub2_intensity <= 0.5 and sell_sub2_intensity > 0.2 ? sell_sub2_p : na, "S2_M", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 45), size=size.tiny)
-plotchar(show_s and sell_sub2_intensity <= 0.2 and sell_sub2_intensity > 0.05 ? sell_sub2_p : na, "S2_L", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 80), size=size.tiny)
+plotchar(show_s and pass_s2 and sell_sub2_intensity > 0.5 ? sell_sub2_p : na, "S2_H", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 20), size=size.small)
+plotchar(show_s and pass_s2 and sell_sub2_intensity <= 0.5 and sell_sub2_intensity > 0.2 ? sell_sub2_p : na, "S2_M", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 45), size=size.tiny)
+plotchar(show_s and pass_s2 and sell_sub2_intensity <= 0.2 and sell_sub2_intensity > 0.05 ? sell_sub2_p : na, "S2_L", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 80), size=size.tiny)
 
 // Sell Sub 3
-plotchar(show_s and sell_sub3_intensity > 0.5 ? sell_sub3_p : na, "S3_H", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 20), size=size.small)
-plotchar(show_s and sell_sub3_intensity <= 0.5 and sell_sub3_intensity > 0.2 ? sell_sub3_p : na, "S3_M", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 45), size=size.tiny)
-plotchar(show_s and sell_sub3_intensity <= 0.2 and sell_sub3_intensity > 0.05 ? sell_sub3_p : na, "S3_L", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 80), size=size.tiny)
+plotchar(show_s and pass_s3 and sell_sub3_intensity > 0.5 ? sell_sub3_p : na, "S3_H", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 20), size=size.small)
+plotchar(show_s and pass_s3 and sell_sub3_intensity <= 0.5 and sell_sub3_intensity > 0.2 ? sell_sub3_p : na, "S3_M", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 45), size=size.tiny)
+plotchar(show_s and pass_s3 and sell_sub3_intensity <= 0.2 and sell_sub3_intensity > 0.05 ? sell_sub3_p : na, "S3_L", char="●", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 80), size=size.tiny)
 
 // -----------------------------------------------------------------------------
 // 6. SUPER GRADIENT VP + DELTA
@@ -1307,6 +1363,21 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     if v_curr > v_prev and v_curr > v_next and v_curr >= thresh_s_hvn and i != poc_s_idx
                         array.push(hvn_s_indices, i)
                 
+                if filter_hvn_highest and array.size(hvn_s_indices) > 1
+                    int best_s_idx = array.get(hvn_s_indices, 0)
+                    float best_s_vol = array.get(s_vol_filter_arr, best_s_idx)
+                    for h_idx in hvn_s_indices
+                        if hvn_highest_mode == "Highest Volume"
+                            float v_h = array.get(s_vol_filter_arr, h_idx)
+                            if v_h > best_s_vol
+                                best_s_vol := v_h
+                                best_s_idx := h_idx
+                        else // "Highest Price"
+                            if h_idx > best_s_idx
+                                best_s_idx := h_idx
+                    array.clear(hvn_s_indices)
+                    array.push(hvn_s_indices, best_s_idx)
+
             int poc_idx = array.indexof(bucket_vol_total, max_total_vol)
             float total_profile_vol = array.sum(bucket_vol_total)
             
@@ -1359,6 +1430,21 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     float v_next = array.get(main_vol_filter_arr, i + 1)
                     if v_curr > v_prev and v_curr > v_next and v_curr >= threshold_hvn_vol and i != poc_idx
                         array.push(hvn_indices, i)
+
+                if filter_hvn_highest and array.size(hvn_indices) > 1
+                    int best_main_idx = array.get(hvn_indices, 0)
+                    float best_main_vol = array.get(main_vol_filter_arr, best_main_idx)
+                    for h_idx in hvn_indices
+                        if hvn_highest_mode == "Highest Volume"
+                            float v_h = array.get(main_vol_filter_arr, h_idx)
+                            if v_h > best_main_vol
+                                best_main_vol := v_h
+                                best_main_idx := h_idx
+                        else // "Highest Price"
+                            if h_idx > best_main_idx
+                                best_main_idx := h_idx
+                    array.clear(hvn_indices)
+                    array.push(hvn_indices, best_main_idx)
 
             // --- HVTs IDENTIFICATION FOR PREDICTION ---
             array.clear(targets_all)
@@ -1947,7 +2033,7 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                         float v_prev = array.get(main_vol_filter_arr, r - 1)
                         float v_curr = array.get(main_vol_filter_arr, r)
                         float v_next = array.get(main_vol_filter_arr, r + 1)
-                        if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= max_main_filter_vol * hvn_threshold and r != poc_idx
+                        if show_hvn and array.includes(hvn_indices, r)
                             is_hvn := true
                         if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < max_main_filter_vol * lvn_threshold
                             is_lvn := true
