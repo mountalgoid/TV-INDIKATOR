@@ -1744,6 +1744,11 @@ if barstate.islast and (trigger_vp or not show_vp or not show_predict)
                     array.push(vp_boxes, b)
             
             if show_vp_short
+                // Short Profile Boundaries Backgrounds
+                array.push(vp_s_boxes, box.new(x_s_line_start, highest_p, x_s_line_end, vah_s_price, bgcolor=color.new(col_bear,80), border_color=color.new(mitigated_color ,60),border_width = 2))
+                array.push(vp_s_boxes, box.new(x_s_line_start, vah_s_price, x_s_line_end, val_s_price, bgcolor=color.new(dark, 100), border_color=color.new(mitigated_color,60),border_width = 2))
+                array.push(vp_s_boxes, box.new(x_s_line_start, val_s_price, x_s_line_end, lowest_p, bgcolor=color.new(col_bull,80), border_color=color.new(mitigated_color ,60),border_width = 2))
+
                 float poc_s_p = lowest_p + (poc_s_idx * row_height) + (row_height/2)
                 
                 // Draw segmented 3-part divider lines for the main spine
