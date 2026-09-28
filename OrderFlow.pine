@@ -812,29 +812,31 @@ if not na(pl_val)
 float pivot_tol = not na(mkt_atr_cur) and mkt_atr_cur > 0 ? mkt_atr_cur * pivot_area_mult : syminfo.mintick * 10
 
 // Bubble Absorption & Large Volume Filter Conditions
-bool near_pl1 = na(last_pl) or (not na(buy_sub1_p) and math.abs(buy_sub1_p - last_pl) <= pivot_tol) or math.abs(low - last_pl) <= pivot_tol
-bool is_abs_b1 = (close <= buy_sub1_p or close <= open) and buy_sub1_intensity > 0.5 and (not filter_pivot_absorption or near_pl1)
-bool pass_b1   = (not filter_large_vol_bubbles or buy_sub1_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_b1)
+// Buy Absorption occurs when aggressive buy volume gets absorbed at Pivot High (resistance)
+bool near_ph_b1 = na(last_ph) or (not na(buy_sub1_p) and math.abs(buy_sub1_p - last_ph) <= pivot_tol) or math.abs(high - last_ph) <= pivot_tol
+bool is_abs_b1  = (close <= buy_sub1_p or close <= open) and buy_sub1_intensity > 0.5 and (not filter_pivot_absorption or near_ph_b1)
+bool pass_b1    = (not filter_large_vol_bubbles or buy_sub1_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_b1)
 
-bool near_pl2 = na(last_pl) or (not na(buy_sub2_p) and math.abs(buy_sub2_p - last_pl) <= pivot_tol) or math.abs(low - last_pl) <= pivot_tol
-bool is_abs_b2 = (close <= buy_sub2_p or close <= open) and buy_sub2_intensity > 0.5 and (not filter_pivot_absorption or near_pl2)
-bool pass_b2   = (not filter_large_vol_bubbles or buy_sub2_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_b2)
+bool near_ph_b2 = na(last_ph) or (not na(buy_sub2_p) and math.abs(buy_sub2_p - last_ph) <= pivot_tol) or math.abs(high - last_ph) <= pivot_tol
+bool is_abs_b2  = (close <= buy_sub2_p or close <= open) and buy_sub2_intensity > 0.5 and (not filter_pivot_absorption or near_ph_b2)
+bool pass_b2    = (not filter_large_vol_bubbles or buy_sub2_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_b2)
 
-bool near_pl3 = na(last_pl) or (not na(buy_sub3_p) and math.abs(buy_sub3_p - last_pl) <= pivot_tol) or math.abs(low - last_pl) <= pivot_tol
-bool is_abs_b3 = (close <= buy_sub3_p or close <= open) and buy_sub3_intensity > 0.5 and (not filter_pivot_absorption or near_pl3)
-bool pass_b3   = (not filter_large_vol_bubbles or buy_sub3_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_b3)
+bool near_ph_b3 = na(last_ph) or (not na(buy_sub3_p) and math.abs(buy_sub3_p - last_ph) <= pivot_tol) or math.abs(high - last_ph) <= pivot_tol
+bool is_abs_b3  = (close <= buy_sub3_p or close <= open) and buy_sub3_intensity > 0.5 and (not filter_pivot_absorption or near_ph_b3)
+bool pass_b3    = (not filter_large_vol_bubbles or buy_sub3_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_b3)
 
-bool near_ph1 = na(last_ph) or (not na(sell_sub1_p) and math.abs(sell_sub1_p - last_ph) <= pivot_tol) or math.abs(high - last_ph) <= pivot_tol
-bool is_abs_s1 = (close >= sell_sub1_p or close >= open) and sell_sub1_intensity > 0.5 and (not filter_pivot_absorption or near_ph1)
-bool pass_s1   = (not filter_large_vol_bubbles or sell_sub1_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_s1)
+// Sell Absorption occurs when aggressive sell volume gets absorbed at Pivot Low (support)
+bool near_pl_s1 = na(last_pl) or (not na(sell_sub1_p) and math.abs(sell_sub1_p - last_pl) <= pivot_tol) or math.abs(low - last_pl) <= pivot_tol
+bool is_abs_s1  = (close >= sell_sub1_p or close >= open) and sell_sub1_intensity > 0.5 and (not filter_pivot_absorption or near_pl_s1)
+bool pass_s1    = (not filter_large_vol_bubbles or sell_sub1_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_s1)
 
-bool near_ph2 = na(last_ph) or (not na(sell_sub2_p) and math.abs(sell_sub2_p - last_ph) <= pivot_tol) or math.abs(high - last_ph) <= pivot_tol
-bool is_abs_s2 = (close >= sell_sub2_p or close >= open) and sell_sub2_intensity > 0.5 and (not filter_pivot_absorption or near_ph2)
-bool pass_s2   = (not filter_large_vol_bubbles or sell_sub2_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_s2)
+bool near_pl_s2 = na(last_pl) or (not na(sell_sub2_p) and math.abs(sell_sub2_p - last_pl) <= pivot_tol) or math.abs(low - last_pl) <= pivot_tol
+bool is_abs_s2  = (close >= sell_sub2_p or close >= open) and sell_sub2_intensity > 0.5 and (not filter_pivot_absorption or near_pl_s2)
+bool pass_s2    = (not filter_large_vol_bubbles or sell_sub2_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_s2)
 
-bool near_ph3 = na(last_ph) or (not na(sell_sub3_p) and math.abs(sell_sub3_p - last_ph) <= pivot_tol) or math.abs(high - last_ph) <= pivot_tol
-bool is_abs_s3 = (close >= sell_sub3_p or close >= open) and sell_sub3_intensity > 0.5 and (not filter_pivot_absorption or near_ph3)
-bool pass_s3   = (not filter_large_vol_bubbles or sell_sub3_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_s3)
+bool near_pl_s3 = na(last_pl) or (not na(sell_sub3_p) and math.abs(sell_sub3_p - last_pl) <= pivot_tol) or math.abs(low - last_pl) <= pivot_tol
+bool is_abs_s3  = (close >= sell_sub3_p or close >= open) and sell_sub3_intensity > 0.5 and (not filter_pivot_absorption or near_pl_s3)
+bool pass_s3    = (not filter_large_vol_bubbles or sell_sub3_intensity > 0.5) and (not filter_absorption_bubbles or is_abs_s3)
 
 // Imbalance Box Logic
 type ImbalanceBox
