@@ -5,11 +5,7 @@ indicator("Liquidity Heatmap V4 𝙈𝙤𝙪𝙣𝙩𝘼𝙡𝙜𝙤", shorttitl
 // 0. USER DEFINED TYPES
 // -----------------------------------------------------------------------------
 type LiqZone
-    line t_ln
-    line m_ln
-    line b_ln
-    linefill f_top
-    linefill f_bot
+    line ln
     float level
     float step
     float strength
@@ -20,7 +16,7 @@ type LiqZone
 // 1. INPUTS & CONFIGURATION
 // -----------------------------------------------------------------------------
 string GlobalGroup = "Visual Themes & Global"
-string grp_liq     = "Liquidity Boxes & Heatmap Engine"
+string grp_liq     = "Liquidity Levels & Heatmap Engine"
 
 // --- THEME SYSTEM ---
 string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Charts Desk', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup)
@@ -89,12 +85,12 @@ color transparent_col = color.new(dark, 100)
 
 // Liquidity Heatmap Settings
 bool   auto_mode        = input.bool(true, "Auto Mode (Dynamic Step)", group=grp_liq)
-bool   show_liq_heatmap = input.bool(true, "Show Liquidity Heatmap", group=grp_liq)
-int    liq_opacity      = input.int(80, "Heatmap Opacity (%)", minval=0, maxval=100, step=5, group=grp_liq)
+bool   show_liq_heatmap = input.bool(true, "Show Liquidity Heatmap Levels", group=grp_liq)
+int    liq_opacity      = input.int(85, "Heatmap Opacity (%)", minval=0, maxval=100, step=5, group=grp_liq)
 string liq_method       = input.string("Multi-Pivot + Base", "Liquidity Method", options=["Multi-Pivot + Base", "Pivots Only", "Accumulation Base Only"], group=grp_liq)
 int    liq_length       = input.int(3, "Short Pivot Lookback", minval=1, group=grp_liq)
 int    liq_length_long  = input.int(10, "Long Pivot Lookback", minval=2, group=grp_liq)
-float  heatmap_sens     = input.float(0.1, "Heatmap Price Step (%)", minval=0.01, step=0.01, group=grp_liq)
+float  heatmap_sens     = input.float(0.05, "Heatmap Price Step (%)", minval=0.005, step=0.005, group=grp_liq)
 float  maint_margin     = input.float(0.5, "Maintenance Margin (%)", minval=0.0, maxval=5.0, step=0.1, group=grp_liq) / 100
 
 // Multi-Tier Leverage Multipliers
@@ -110,7 +106,6 @@ bool  use_lev_100 = input.bool(true, "Enable 100x Leverage", group=grp_liq)
 // -----------------------------------------------------------------------------
 var array<LiqZone> liq_zones = array.new<LiqZone>()
 var array<line> liq_lines_hist = array.new_line()
-var array<linefill> liq_fills_hist = array.new<linefill>()
 
 // Persistent heat grid for Smooth Background Heatmap Density (120 bins)
 var float[] heat_grid = array.new_float(120, 0.0) // 60 above, 60 below
@@ -146,10 +141,10 @@ bool is_base = range_diff < range_atr * 1.2 and bb_width < bb_width_sma
 
 float base_vwap = (range_high + range_low) / 2
 
-// Grid Step Calculation
-float atr_step = ta.atr(14) * 0.25
+// Compact Grid Step Calculation for Super Precision
+float atr_step = ta.atr(14) * 0.08
 float auto_sens = (atr_step / close) * 100
-float final_sens = auto_mode ? math.max(0.01, auto_sens) : heatmap_sens
+float final_sens = auto_mode ? math.max(0.005, auto_sens) : heatmap_sens
 float liq_step = (close * final_sens / 100)
 float inv_liq_step = liq_step > 0 ? 1.0 / liq_step : 0.0
 
@@ -165,7 +160,7 @@ update_heat(float target_p, float amount) =>
             array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
 
 // Dynamic Theme-Integrated Gradient Mapping
-get_liquidity_heat_color(float val, color t_col, bool is_core, float proximity_factor) =>
+get_liquidity_heat_color(float val, color t_col, float proximity_factor) =>
     float eff_val = val * (1.0 + proximity_factor * 1.5)
     float capped_val = math.min(eff_val, 20.0)
 
@@ -177,19 +172,19 @@ get_liquidity_heat_color(float val, color t_col, bool is_core, float proximity_f
 
     float norm_v = math.min(1.0, capped_val / 20.0)
     float q_weight = math.pow(norm_v, 0.6)
-    int base_alpha = is_core ? math.round((1.0 - q_weight) * 15) : math.round((1.0 - q_weight) * 45 + 5)
-    int prox_alpha_adj = math.round(proximity_factor * 20.0)
+    int base_alpha = math.round((1.0 - q_weight) * 20)
+    int prox_alpha_adj = math.round(proximity_factor * 15.0)
     int final_alpha = math.max(0, base_alpha - prox_alpha_adj)
     int final_transp = math.round(100 - (100 - final_alpha) * (liq_opacity / 100.0))
     color.new(res, math.min(100, math.max(0, final_transp)))
 
-get_heatmap_color(float s, bool is_long, float level, bool is_core, float current_close, float current_atr) =>
+get_heatmap_color(float s, bool is_long, float level, float current_close, float current_atr) =>
     float dist = math.abs(level - current_close)
     float atr_ref = current_atr > 0 ? current_atr : 1.0
     float proximity_factor = math.max(0.0, math.min(1.0, 1.0 - (dist / (atr_ref * 6.0))))
     float prox_boost = math.pow(proximity_factor, 1.2)
     color t_col = is_long ? col_bull : col_bear
-    get_liquidity_heat_color(s, t_col, is_core, prox_boost)
+    get_liquidity_heat_color(s, t_col, prox_boost)
 
 add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight, float current_atr) =>
     float grid_price = math.round(raw_price * inv_liq_step) * liq_step
@@ -201,37 +196,23 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight, floa
             LiqZone z = array.get(liq_zones, i)
             if z.active and z.is_long_liq == is_long and math.abs(z.level - grid_price) < (z.step * 0.75)
                 z.strength += weight
-                color c_edge = get_heatmap_color(z.strength, is_long, z.level, false, close, current_atr)
-                color c_core = get_heatmap_color(z.strength, is_long, z.level, true, close, current_atr)
-                if line.get_x1(z.t_ln) == bar_index
-                    linefill.set_color(z.f_top, c_edge)
-                    linefill.set_color(z.f_bot, c_core)
+                color c_line = get_heatmap_color(z.strength, is_long, z.level, close, current_atr)
+                int l_width = z.strength > 10.0 ? 2 : 1
+                if line.get_x1(z.ln) == bar_index
+                    line.set_color(z.ln, c_line)
+                    line.set_width(z.ln, l_width)
                 else
-                    line.set_x2(z.t_ln, bar_index)
-                    line.set_x2(z.m_ln, bar_index)
-                    line.set_x2(z.b_ln, bar_index)
-                    array.push(liq_lines_hist, z.t_ln)
-                    array.push(liq_lines_hist, z.m_ln)
-                    array.push(liq_lines_hist, z.b_ln)
-                    array.push(liq_fills_hist, z.f_top)
-                    array.push(liq_fills_hist, z.f_bot)
+                    line.set_x2(z.ln, bar_index)
+                    array.push(liq_lines_hist, z.ln)
                     
-                    z.t_ln := line.new(bar_index, z.level + z.step/2, bar_index + 10, z.level + z.step/2, color=na, width=1)
-                    z.m_ln := line.new(bar_index, z.level, bar_index + 10, z.level, color=na, width=1)
-                    z.b_ln := line.new(bar_index, z.level - z.step/2, bar_index + 10, z.level - z.step/2, color=na, width=1)
-                    z.f_top := linefill.new(z.t_ln, z.m_ln, color=c_edge)
-                    z.f_bot := linefill.new(z.m_ln, z.b_ln, color=c_core)
+                    z.ln := line.new(bar_index, z.level, bar_index + 10, z.level, color=c_line, width=l_width)
                 found := true
                 break
     if not found
-        color c_edge = get_heatmap_color(weight, is_long, grid_price, false, close, current_atr)
-        color c_core = get_heatmap_color(weight, is_long, grid_price, true, close, current_atr)
-        l_t = line.new(bar_idx, grid_price + liq_step/2, bar_index + 10, grid_price + liq_step/2, color=na, width=1)
-        l_m = line.new(bar_idx, grid_price, bar_index + 10, grid_price, color=na, width=1)
-        l_b = line.new(bar_idx, grid_price - liq_step/2, bar_index + 10, grid_price - liq_step/2, color=na, width=1)
-        f_top = linefill.new(l_t, l_m, color=c_edge)
-        f_bot = linefill.new(l_m, l_b, color=c_core)
-        array.push(liq_zones, LiqZone.new(l_t, l_m, l_b, f_top, f_bot, grid_price, liq_step, weight, is_long, true))
+        color c_line = get_heatmap_color(weight, is_long, grid_price, close, current_atr)
+        int l_width = weight > 10.0 ? 2 : 1
+        l_main = line.new(bar_idx, grid_price, bar_index + 10, grid_price, color=c_line, width=l_width)
+        array.push(liq_zones, LiqZone.new(l_main, grid_price, liq_step, weight, is_long, true))
 
 // Fire levels on liquidity detection
 if show_liq_heatmap
@@ -313,53 +294,34 @@ if show_liq_heatmap
             LiqZone z = array.get(liq_zones, i)
             bool remove = false
             if z.active
-                color c_edge = get_heatmap_color(z.strength, z.is_long_liq, z.level, false, close, range_atr)
-                color c_core = get_heatmap_color(z.strength, z.is_long_liq, z.level, true, close, range_atr)
+                color c_line = get_heatmap_color(z.strength, z.is_long_liq, z.level, close, range_atr)
+                int l_width = z.strength > 10.0 ? 2 : 1
 
-                if line.get_x1(z.t_ln) == bar_index
-                    line.set_x2(z.t_ln, bar_index + (is_last_bar ? 10 : 1))
-                    line.set_x2(z.m_ln, bar_index + (is_last_bar ? 10 : 1))
-                    line.set_x2(z.b_ln, bar_index + (is_last_bar ? 10 : 1))
-                    linefill.set_color(z.f_top, c_edge)
-                    linefill.set_color(z.f_bot, c_core)
+                if line.get_x1(z.ln) == bar_index
+                    line.set_x2(z.ln, bar_index + (is_last_bar ? 10 : 1))
+                    line.set_color(z.ln, c_line)
+                    line.set_width(z.ln, l_width)
                 else
-                    line.set_x2(z.t_ln, bar_index)
-                    line.set_x2(z.m_ln, bar_index)
-                    line.set_x2(z.b_ln, bar_index)
-                    array.push(liq_lines_hist, z.t_ln)
-                    array.push(liq_lines_hist, z.m_ln)
-                    array.push(liq_lines_hist, z.b_ln)
-                    array.push(liq_fills_hist, z.f_top)
-                    array.push(liq_fills_hist, z.f_bot)
+                    line.set_x2(z.ln, bar_index)
+                    array.push(liq_lines_hist, z.ln)
 
-                    z.t_ln := line.new(bar_index, z.level + z.step/2, bar_index + (is_last_bar ? 10 : 1), z.level + z.step/2, color=na, width=1)
-                    z.m_ln := line.new(bar_index, z.level, bar_index + (is_last_bar ? 10 : 1), z.level, color=na, width=1)
-                    z.b_ln := line.new(bar_index, z.level - z.step/2, bar_index + (is_last_bar ? 10 : 1), z.level - z.step/2, color=na, width=1)
-                    z.f_top := linefill.new(z.t_ln, z.m_ln, color=c_edge)
-                    z.f_bot := linefill.new(z.m_ln, z.b_ln, color=c_core)
+                    z.ln := line.new(bar_index, z.level, bar_index + (is_last_bar ? 10 : 1), z.level, color=c_line, width=l_width)
 
                 bool swept = z.is_long_liq ? low <= (z.level + z.step * 0.1) : high >= (z.level - z.step * 0.1)
-                if swept and bar_index > line.get_x1(z.t_ln)
-                    line.set_x2(z.t_ln, bar_index)
-                    line.set_x2(z.m_ln, bar_index)
-                    line.set_x2(z.b_ln, bar_index)
+                if swept and bar_index > line.get_x1(z.ln)
+                    line.set_x2(z.ln, bar_index)
                     z.active := false
                     remove := true
             
-            if not remove and line.get_x1(z.t_ln) < bar_index - 300
-                line.delete(z.t_ln)
-                line.delete(z.m_ln)
-                line.delete(z.b_ln)
+            if not remove and line.get_x1(z.ln) < bar_index - 300
+                line.delete(z.ln)
                 remove := true
             
             if remove
                 array.remove(liq_zones, i)
 
-    while array.size(liq_lines_hist) > 300
+    while array.size(liq_lines_hist) > 400
         line.delete(array.shift(liq_lines_hist))
-
-    while array.size(liq_fills_hist) > 200
-        linefill.delete(array.shift(liq_fills_hist))
 
 // Heat Decay & Sweeping
 for i = 0 to 119
@@ -379,7 +341,7 @@ get_smooth_heat_color(float heat, bool is_above, float level, float current_clos
     float dist = math.abs(level - current_close)
     float atr_ref = current_atr > 0 ? current_atr : 1.0
     float proximity_factor = math.max(0.0, math.min(1.0, 1.0 - (dist / (atr_ref * 6.0))))
-    get_liquidity_heat_color(val, t_col, true, math.pow(proximity_factor, 1.2))
+    get_liquidity_heat_color(val, t_col, math.pow(proximity_factor, 1.2))
 
 // High-density Full-Chart Background Plot Grid Rendering
 show_plots_liq = show_liq_heatmap
