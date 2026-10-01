@@ -23,21 +23,21 @@ string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color The
 
 // Colors
 color dark   = #000000
-color white  = #c4d3ff
-color green  = #179c74
-color purple = #5134ff
-color gray   = #62647a
-color red    = #f23645
-color yellow = #f3ba2f
-color orange = #ff9800
-color blue   = #1848cc
+color white  = #ffffff
+color green  = #00e676
+color purple = #7c4dff
+color gray   = #78909c
+color red    = #ff1744
+color yellow = #ffd600
+color orange = #ff9100
+color blue   = #2979ff
 
 color col_bull = switch color_theme
     'Spartan Edge Theme' => red
     'MountAlgo Themes' => purple
-    'MountAlgo Neon' => #5134ff
-    'MountAlgo Frost' => #5134ff
-    'MountAlgo Cyber' => #1848cc
+    'MountAlgo Neon' => #7c4dff
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #2979ff
     'Standard Spartan Edge Theme' => green
     'Dark ICT Theme' => green
     'Charts Desk' => #a1ff3b
@@ -47,21 +47,23 @@ color col_bull = switch color_theme
     'DEX Deep' => #a1ff3b
     'Deep Sea' => blue
     => blue
+
 color col_bear = switch color_theme
     'Spartan Edge Theme' => gray
     'MountAlgo Themes' => green
-    'MountAlgo Neon' => #ff009a
-    'MountAlgo Frost' => #00e5ff
-    'MountAlgo Cyber' => #ff009a
+    'MountAlgo Neon' => #ff007f
+    'MountAlgo Frost' => #ff0055
+    'MountAlgo Cyber' => #ff007f
     'Standard Spartan Edge Theme' => red
     'Dark ICT Theme' => gray
     'Charts Desk' => gray
     'Garuda Gold' => gray
     'MountAlgo Super Premium Theme' => yellow
     'MountAlgo Orange White Theme' => gray
-    'DEX Deep' => #ff009a
+    'DEX Deep' => #ff007f
     'Deep Sea' => gray
     => white
+
 color col_poc = switch color_theme
     'Spartan Edge Theme' => white
     'MountAlgo Themes' => white
@@ -78,15 +80,12 @@ color col_poc = switch color_theme
     'Deep Sea' => white
     => white
 
-color trans_col_bear  = color.new(col_bear, 90)
-color trans_col_bull  = color.new(col_bull, 90)
-color trans_col_poc   = color.new(col_poc, 90)
 color transparent_col = color.new(dark, 100)
 
 // Liquidity Heatmap Settings
 bool   auto_mode        = input.bool(true, "Auto Mode (Dynamic Step)", group=grp_liq)
 bool   show_liq_heatmap = input.bool(true, "Show Liquidity Heatmap Levels", group=grp_liq)
-int    liq_opacity      = input.int(85, "Heatmap Opacity (%)", minval=0, maxval=100, step=5, group=grp_liq)
+int    liq_opacity      = input.int(90, "Heatmap Visibility/Intensity (%)", minval=0, maxval=100, step=5, group=grp_liq)
 string liq_method       = input.string("Multi-Pivot + Base", "Liquidity Method", options=["Multi-Pivot + Base", "Pivots Only", "Accumulation Base Only"], group=grp_liq)
 int    liq_length       = input.int(3, "Short Pivot Lookback", minval=1, group=grp_liq)
 int    liq_length_long  = input.int(10, "Long Pivot Lookback", minval=2, group=grp_liq)
@@ -159,32 +158,43 @@ update_heat(float target_p, float amount) =>
         if idx >= 0 and idx < 120
             array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
 
-// Dynamic Theme-Integrated Gradient Mapping
-get_liquidity_heat_color(float val, color t_col, float proximity_factor) =>
-    float eff_val = val * (1.0 + proximity_factor * 1.5)
-    float capped_val = math.min(eff_val, 20.0)
+// High-Contrast Multi-Stage Thermal Gradient Mapping
+get_high_contrast_heat_color(float s_val, color base_theme_col, float proximity_factor) =>
+    float norm_s = math.max(0.0, math.min(1.0, s_val / 12.0))
 
-    color c_low  = color.from_gradient(25, 0, 100, dark, t_col)
-    color c_mid  = t_col
-    color c_high = col_poc
+    // Tiered color spectrum for extreme visual distinction:
+    // Low liquidity: Muted dark tone of theme color
+    // Med liquidity: Pure vivid theme color
+    // High liquidity: Hot yellow / bright orange highlight
+    // Max liquidity / Hotspot: Brilliant White
+    color c_low  = color.from_gradient(50, 0, 100, dark, base_theme_col)
+    color c_mid  = base_theme_col
+    color c_high = orange
+    color c_max  = white
 
-    color res = capped_val <= 10.0 ? color.from_gradient(capped_val, 1.0, 10.0, c_low, c_mid) : color.from_gradient(capped_val, 10.0, 20.0, c_mid, c_high)
+    color base_res = color.black
+    if norm_s <= 0.33
+        base_res := color.from_gradient(norm_s * 3.0, 0.0, 1.0, c_low, c_mid)
+    else if norm_s <= 0.75
+        base_res := color.from_gradient((norm_s - 0.33) / 0.42, 0.0, 1.0, c_mid, c_high)
+    else
+        base_res := color.from_gradient((norm_s - 0.75) / 0.25, 0.0, 1.0, c_high, c_max)
 
-    float norm_v = math.min(1.0, capped_val / 20.0)
-    float q_weight = math.pow(norm_v, 0.6)
-    int base_alpha = math.round((1.0 - q_weight) * 20)
-    int prox_alpha_adj = math.round(proximity_factor * 15.0)
-    int final_alpha = math.max(0, base_alpha - prox_alpha_adj)
-    int final_transp = math.round(100 - (100 - final_alpha) * (liq_opacity / 100.0))
-    color.new(res, math.min(100, math.max(0, final_transp)))
+    // Dynamic transparency calculation: higher strength = crisper & more opaque line
+    int base_transp = math.round(70.0 - norm_s * 60.0)
+    int prox_transp_boost = math.round(proximity_factor * 15.0)
+    int final_transp = math.max(0, math.min(95, base_transp - prox_transp_boost))
+
+    // Scale by user opacity setting
+    int adjusted_transp = math.round(100 - (100 - final_transp) * (liq_opacity / 100.0))
+    color.new(base_res, adjusted_transp)
 
 get_heatmap_color(float s, bool is_long, float level, float current_close, float current_atr) =>
     float dist = math.abs(level - current_close)
     float atr_ref = current_atr > 0 ? current_atr : 1.0
-    float proximity_factor = math.max(0.0, math.min(1.0, 1.0 - (dist / (atr_ref * 6.0))))
-    float prox_boost = math.pow(proximity_factor, 1.2)
+    float proximity_factor = math.max(0.0, math.min(1.0, 1.0 - (dist / (atr_ref * 5.0))))
     color t_col = is_long ? col_bull : col_bear
-    get_liquidity_heat_color(s, t_col, prox_boost)
+    get_high_contrast_heat_color(s, t_col, proximity_factor)
 
 add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight, float current_atr) =>
     float grid_price = math.round(raw_price * inv_liq_step) * liq_step
@@ -197,7 +207,7 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight, floa
             if z.active and z.is_long_liq == is_long and math.abs(z.level - grid_price) < (z.step * 0.75)
                 z.strength += weight
                 color c_line = get_heatmap_color(z.strength, is_long, z.level, close, current_atr)
-                int l_width = z.strength > 10.0 ? 2 : 1
+                int l_width = z.strength >= 8.0 ? 3 : (z.strength >= 3.5 ? 2 : 1)
                 if line.get_x1(z.ln) == bar_index
                     line.set_color(z.ln, c_line)
                     line.set_width(z.ln, l_width)
@@ -210,7 +220,7 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight, floa
                 break
     if not found
         color c_line = get_heatmap_color(weight, is_long, grid_price, close, current_atr)
-        int l_width = weight > 10.0 ? 2 : 1
+        int l_width = weight >= 8.0 ? 3 : (weight >= 3.5 ? 2 : 1)
         l_main = line.new(bar_idx, grid_price, bar_index + 10, grid_price, color=c_line, width=l_width)
         array.push(liq_zones, LiqZone.new(l_main, grid_price, liq_step, weight, is_long, true))
 
@@ -295,7 +305,7 @@ if show_liq_heatmap
             bool remove = false
             if z.active
                 color c_line = get_heatmap_color(z.strength, z.is_long_liq, z.level, close, range_atr)
-                int l_width = z.strength > 10.0 ? 2 : 1
+                int l_width = z.strength >= 8.0 ? 3 : (z.strength >= 3.5 ? 2 : 1)
 
                 if line.get_x1(z.ln) == bar_index
                     line.set_x2(z.ln, bar_index + (is_last_bar ? 10 : 1))
@@ -336,12 +346,11 @@ for i = 0 to 119
 
 // Institutional Smooth Gradient Mapping
 get_smooth_heat_color(float heat, bool is_above, float level, float current_close, float current_atr) =>
-    float val = math.min(heat, 20.0)
     color t_col = is_above ? col_bear : col_bull
     float dist = math.abs(level - current_close)
     float atr_ref = current_atr > 0 ? current_atr : 1.0
-    float proximity_factor = math.max(0.0, math.min(1.0, 1.0 - (dist / (atr_ref * 6.0))))
-    get_liquidity_heat_color(val, t_col, math.pow(proximity_factor, 1.2))
+    float proximity_factor = math.max(0.0, math.min(1.0, 1.0 - (dist / (atr_ref * 5.0))))
+    get_high_contrast_heat_color(heat, t_col, proximity_factor)
 
 // High-density Full-Chart Background Plot Grid Rendering
 show_plots_liq = show_liq_heatmap
