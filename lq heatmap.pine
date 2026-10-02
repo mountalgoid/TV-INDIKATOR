@@ -114,6 +114,7 @@ int    lvz_transp       = input.int(85, "LVZ Glass Transparency (%)", minval=30,
 // --- LIQUIDITY DOM PROFILE & SPLIT CONFIGURATION ---
 string grp_dom          = "Liquidity DOM Depth Profile"
 bool   show_dom_profile = input.bool(true, "Show Liquidity DOM Depth Profile", group=grp_dom, tooltip="Tampilkan profil kedalaman likuiditas DOM (Depth of Market resting bid/ask limit orders) bersisian dengan profil GEX.")
+int    dom_rows         = input.int(60, "DOM Row Resolution", options=[30, 40, 60, 120], group=grp_dom, tooltip="Jumlah baris grid kedalaman DOM profile (hingga 120 baris presisi tinggi per harga level).")
 bool   dom_show_values  = input.bool(true, "Show Precision Values (1K, 1M, 1B)", group=grp_dom, tooltip="Tampilkan label nilai volume presisi dengan notasi K/M/B di dalam bar profil DOM.")
 bool   dom_highlight_max= input.bool(true, "Highlight Peak DOM Liquidity Node", group=grp_dom, tooltip="Beri sorotan glowing khusus pada tingkat harga dengan kedalaman likuiditas DOM tertinggi.")
 int    dom_max_width    = input.int(25, "Max DOM Profile Width (Bars)", minval=5, maxval=50, group=grp_dom, tooltip="Lebar maksimum horizontal bar kedalaman profil DOM dalam satuan bar chart.")
@@ -521,8 +522,10 @@ if show_dom_profile and barstate.islast
     f_cleanup_lines(dom_lines)
     int dom_x_start = bar_index + gex_h_offset
 
-    // Aggregate 120 heat grid bins into 40 clean DOM nodes (3 bins per node)
-    int dom_nodes = 40
+    // Configurable row resolution (up to 120 high precision rows)
+    int dom_nodes = dom_rows
+    int bins_per_node = math.max(1, math.floor(120 / dom_nodes))
+
     array<float> node_heat = array.new_float(dom_nodes, 0.0)
     array<float> node_price = array.new_float(dom_nodes, 0.0)
 
@@ -530,10 +533,14 @@ if show_dom_profile and barstate.islast
     int peak_dom_node = -1
 
     for n = 0 to dom_nodes - 1
-        int start_b = n * 3
-        float sum_h = array.get(heat_grid, start_b) + array.get(heat_grid, start_b + 1) + array.get(heat_grid, start_b + 2)
-        float avg_h = sum_h / 3.0
-        float mid_p = heat_base_p + ((start_b + 1) - 60) * liq_step
+        int start_b = n * bins_per_node
+        float sum_h = 0.0
+        for k = 0 to bins_per_node - 1
+            int b_idx = math.min(119, start_b + k)
+            sum_h += array.get(heat_grid, b_idx)
+
+        float avg_h = sum_h / bins_per_node
+        float mid_p = heat_base_p + ((start_b + bins_per_node / 2.0) - 60) * liq_step
 
         array.set(node_heat, n, avg_h)
         array.set(node_price, n, mid_p)
@@ -542,8 +549,8 @@ if show_dom_profile and barstate.islast
             max_heat_dom := avg_h
             peak_dom_node := n
 
-    float dom_p_top = heat_base_p + (119 - 60) * liq_step + liq_step * 1.5
-    float dom_p_bot = heat_base_p + (0 - 60) * liq_step - liq_step * 1.5
+    float dom_p_top = heat_base_p + (119 - 60) * liq_step + liq_step * 0.5
+    float dom_p_bot = heat_base_p + (0 - 60) * liq_step - liq_step * 0.5
 
     // Clean Outer Glass Boundary Frame
     box dom_frame = box.new(left=dom_x_start, top=dom_p_top, right=dom_x_start + dom_max_width, bottom=dom_p_bot,
@@ -553,6 +560,8 @@ if show_dom_profile and barstate.islast
     // Thick Left Vertical Baseline
     line dom_v_line = line.new(x1=dom_x_start, y1=dom_p_bot, x2=dom_x_start, y2=dom_p_top, color=col_poc, width=3)
     array.push(dom_lines, dom_v_line)
+
+    float half_h = liq_step * (120.0 / dom_nodes) * 0.48
 
     for n = 0 to dom_nodes - 1
         float avg_h = array.get(node_heat, n)
@@ -570,11 +579,11 @@ if show_dom_profile and barstate.islast
             color border_col = is_peak_dom ? col_poc : na
 
             string txt_prefix = is_bid ? "B: " : "A: "
-            string val_txt = (dom_show_values and (norm_heat >= 0.20 or is_peak_dom) and raw_dom_vol > 0) ? txt_prefix + f_format_num(raw_dom_vol) : ""
+            bool show_lbl = dom_show_values and (norm_heat >= (dom_nodes > 60 ? 0.35 : 0.20) or is_peak_dom) and raw_dom_vol > 0
+            string val_txt = show_lbl ? txt_prefix + f_format_num(raw_dom_vol) : ""
             if is_peak_dom
                 val_txt := val_txt + " ★ PEAK"
 
-            float half_h = liq_step * 1.35
             box dom_b = box.new(left=dom_x_start, top=p_center + half_h, right=dom_x_start + math.max(1, bar_len), bottom=p_center - half_h,
                                 bgcolor=fill_col, border_color=border_col, border_width=is_peak_dom ? 2 : 0,
                                 text=val_txt, text_color=is_peak_dom ? dark : white, text_size=size.tiny,
@@ -859,7 +868,6 @@ if show_gex and barstate.islast
 // Render Glass HUD Dashboard Table for Dealer Greeks
 var table gex_table = na
 if show_gex and show_gex_hud and barstate.islast
-    table.delete(gex_table)
     string pos_gex = switch hud_pos_gex
         "top_left"     => position.top_left
         "top_right"    => position.top_right
@@ -868,7 +876,10 @@ if show_gex and show_gex_hud and barstate.islast
         => position.top_right
 
     color gex_hdr_bg = color.new(col_bull, 75)
-    gex_table := table.new(pos_gex, 2, 8, bgcolor=color.new(dark, 85), border_width=1, border_color=color.new(col_poc, 80), frame_color=color.new(col_bull, 40), frame_width=1)
+    if na(gex_table)
+        gex_table := table.new(pos_gex, 2, 8, bgcolor=color.new(dark, 85), border_width=1, border_color=color.new(col_poc, 80), frame_color=color.new(col_bull, 40), frame_width=1)
+    else
+        table.set_position(gex_table, pos_gex)
 
     table.merge_cells(gex_table, 0, 0, 1, 0)
     table.cell(gex_table, 0, 0, "GEX & DEALER GREEKS MATRIX", bgcolor=gex_hdr_bg, text_color=col_poc, text_size=size.small, text_formatting=text.format_bold)
