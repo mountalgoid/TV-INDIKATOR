@@ -427,6 +427,22 @@ fill(p_d32, p_d48, color=get_smooth_heat_color(array.get(heat_grid, 20), false, 
 // Dynamic Unconditional Scope Calculations
 float gex_atr_14 = ta.atr(14)
 
+// Format Precision Volume Values (1K, 1M, 1B)
+f_format_num(float val) =>
+    if na(val) or val == 0
+        "0"
+    else
+        float abs_v = math.abs(val)
+        string sign = val < 0 ? "-" : ""
+        if abs_v >= 1e9
+            sign + str.tostring(abs_v / 1e9, "#.##") + "B"
+        else if abs_v >= 1e6
+            sign + str.tostring(abs_v / 1e6, "#.##") + "M"
+        else if abs_v >= 1e3
+            sign + str.tostring(abs_v / 1e3, "#.#") + "K"
+        else
+            sign + str.tostring(abs_v, "#")
+
 // -----------------------------------------------------------------------------
 // 2.5 LIQUIDITY VACUUM ZONE (LVZ) & DOM PROFILE ENGINE
 // -----------------------------------------------------------------------------
@@ -584,22 +600,6 @@ f_bsm_greeks(float S, float K, float T, float r, float vol) =>
     float speed      = nz(-gamma / safe_S * (d1 / vol_sqrt_T + 1.0), 0.0)
 
     [call_delta, put_delta, gamma, vanna, call_charm, speed]
-
-// Format Precision Volume Values (1K, 1M, 1B)
-f_format_num(float val) =>
-    if na(val) or val == 0
-        "0"
-    else
-        float abs_v = math.abs(val)
-        string sign = val < 0 ? "-" : ""
-        if abs_v >= 1e9
-            sign + str.tostring(abs_v / 1e9, "#.##") + "B"
-        else if abs_v >= 1e6
-            sign + str.tostring(abs_v / 1e6, "#.##") + "M"
-        else if abs_v >= 1e3
-            sign + str.tostring(abs_v / 1e3, "#.#") + "K"
-        else
-            sign + str.tostring(abs_v, "#")
 
 // Format GEX Currency Values
 f_format_gex(float val) =>
