@@ -23,7 +23,7 @@ string GlobalGroup = "Visual Themes & Global"
 string grp_liq     = "Liquidity Boxes & Heatmap Engine"
 
 // --- THEME SYSTEM ---
-string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Charts Desk', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup)
+string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Charts Desk', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup, tooltip="Pilih tema warna visual global untuk heatmap, garis level, badge, dan dashboard HUD.")
 
 // Colors
 color dark   = #000000
@@ -88,33 +88,35 @@ color trans_col_poc   = color.new(col_poc, 90)
 color transparent_col = color.new(dark, 100)
 
 // Liquidity Heatmap Settings
-bool   auto_mode        = input.bool(true, "Auto Mode (Dynamic Step)", group=grp_liq)
-bool   show_liq_heatmap = input.bool(true, "Show Liquidity Heatmap", group=grp_liq)
-int    liq_opacity      = input.int(80, "Heatmap Opacity (%)", minval=0, maxval=100, step=5, group=grp_liq)
-string liq_method       = input.string("Multi-Pivot + Base", "Liquidity Method", options=["Multi-Pivot + Base", "Pivots Only", "Accumulation Base Only"], group=grp_liq)
-int    liq_length       = input.int(3, "Short Pivot Lookback", minval=1, group=grp_liq)
-int    liq_length_long  = input.int(10, "Long Pivot Lookback", minval=2, group=grp_liq)
-float  heatmap_sens     = input.float(0.1, "Heatmap Price Step (%)", minval=0.01, step=0.01, group=grp_liq)
-float  maint_margin     = input.float(0.5, "Maintenance Margin (%)", minval=0.0, maxval=5.0, step=0.1, group=grp_liq) / 100
+bool   auto_mode        = input.bool(true, "Auto Mode (Dynamic Step)", group=grp_liq, tooltip="Penyesuaian otomatis jarak kisi harga heatmap berdasarkan volatilitas ATR pasar saat ini.")
+bool   show_liq_heatmap = input.bool(true, "Show Liquidity Heatmap", group=grp_liq, tooltip="Tampilkan background gradient heatmap kepadatan likuidasi institusional pada chart.")
+int    liq_opacity      = input.int(80, "Heatmap Opacity (%)", minval=0, maxval=100, step=5, group=grp_liq, tooltip="Atur tingkat transparansi visual kisaran area heatmap likuiditas.")
+string liq_method       = input.string("Multi-Pivot + Base", "Liquidity Method", options=["Multi-Pivot + Base", "Pivots Only", "Accumulation Base Only"], group=grp_liq, tooltip="Metode deteksi zona likuiditas: Pivot multi-periode, zona akumulasi base, atau kombinasi keduanya.")
+int    liq_length       = input.int(3, "Short Pivot Lookback", minval=1, group=grp_liq, tooltip="Periode lookback untuk mengidentifikasi pivot high/low jangka pendek.")
+int    liq_length_long  = input.int(10, "Long Pivot Lookback", minval=2, group=grp_liq, tooltip="Periode lookback untuk mengidentifikasi pivot high/low utama jangka panjang.")
+float  heatmap_sens     = input.float(0.1, "Heatmap Price Step (%)", minval=0.01, step=0.01, group=grp_liq, tooltip="Sensitivas ukuran interval harga manual jika Auto Mode dimatikan.")
+float  maint_margin     = input.float(0.5, "Maintenance Margin (%)", minval=0.0, maxval=5.0, step=0.1, group=grp_liq, tooltip="Persentase maintenance margin akun untuk estimasi harga likuidasi posisi terungkit.") / 100
 
 // Multi-Tier Leverage Multipliers
-bool  use_lev_10  = input.bool(true, "Enable 10x Leverage", group=grp_liq)
-bool  use_lev_25  = input.bool(true, "Enable 25x Leverage", group=grp_liq)
-bool  use_lev_50  = input.bool(true, "Enable 50x Leverage", group=grp_liq)
-bool  use_lev_75  = input.bool(true, "Enable 75x Leverage", group=grp_liq)
-bool  use_lev_100 = input.bool(true, "Enable 100x Leverage", group=grp_liq)
+bool  use_lev_10  = input.bool(true, "Enable 10x Leverage", group=grp_liq, tooltip="Hitung dan tampilkan proyeksi klaster likuidasi posisi leverage 10x.")
+bool  use_lev_25  = input.bool(true, "Enable 25x Leverage", group=grp_liq, tooltip="Hitung dan tampilkan proyeksi klaster likuidasi posisi leverage 25x.")
+bool  use_lev_50  = input.bool(true, "Enable 50x Leverage", group=grp_liq, tooltip="Hitung dan tampilkan proyeksi klaster likuidasi posisi leverage 50x.")
+bool  use_lev_75  = input.bool(true, "Enable 75x Leverage", group=grp_liq, tooltip="Hitung dan tampilkan proyeksi klaster likuidasi posisi leverage 75x.")
+bool  use_lev_100 = input.bool(true, "Enable 100x Leverage", group=grp_liq, tooltip="Hitung dan tampilkan proyeksi klaster likuidasi posisi leverage 100x.")
 
 // --- GEX & DEALER GREEKS OVERLAY CONFIGURATION ---
 string grp_gex          = "GEX & Dealer Greeks Overlay"
-bool   show_gex         = input.bool(true, "Show GEX Overlay & Dealer Greeks", group=grp_gex)
-string gex_profile_style = input.string("Glass Bars", "GEX Profile Style", options=["Glass Bars", "Solid Gradient"], group=grp_gex)
-bool   show_gex_walls   = input.bool(true, "Show Call/Put Walls & Flip Level", group=grp_gex)
-bool   show_gex_hud     = input.bool(true, "Show Dealer Greeks HUD Dashboard", group=grp_gex)
-string hud_pos_gex      = input.string("top_right", "HUD Table Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_gex)
-int    gex_dte          = input.int(30, "Days To Expiration (DTE)", minval=1, maxval=365, group=grp_gex)
-float  gex_risk_free    = input.float(4.0, "Risk-Free Rate (%)", minval=0.0, maxval=20.0, step=0.1, group=grp_gex) / 100.0
-int    gex_strikes      = input.int(40, "Strike Grid Resolution", minval=20, maxval=80, group=grp_gex)
-int    gex_h_offset     = input.int(15, "GEX Horizontal Offset (Bars)", minval=2, maxval=50, group=grp_gex)
+bool   show_gex         = input.bool(true, "Show GEX Overlay & Dealer Greeks", group=grp_gex, tooltip="Aktifkan seluruh mesin kalkulasi Gamma Exposure (GEX) & Dealer Greeks Black-Scholes.")
+string gex_profile_style = input.string("Glass Net Bars", "GEX Profile Style Mode", options=["Glass Net Bars", "Call/Put Split Glass", "Solid Skew Gradient"], group=grp_gex, tooltip="Gaya visual profil GEX: Glass Net Bars (Bar Net Glass), Call/Put Split Glass (Dual Bar Call Put), atau Solid Skew Gradient.")
+bool   highlight_peak_gex= input.bool(true, "Highlight Peak Gamma Strike", group=grp_gex, tooltip="Beri sorotan glowing khusus pada strike harga dengan konsentrasi gamma tertinggi.")
+bool   show_gex_walls   = input.bool(true, "Show Call/Put Walls & Flip Level", group=grp_gex, tooltip="Proyeksikan garis level Call Wall (Max Call Gamma), Put Wall (Max Put Gamma), dan GEX Flip (Zero Gamma).")
+bool   show_gex_hud     = input.bool(true, "Show Dealer Greeks HUD Dashboard", group=grp_gex, tooltip="Tampilkan tabel dashboard matriks risiko Dealer Greeks (Delta, Gamma, Vanna, Charm, Speed).")
+string hud_pos_gex      = input.string("top_right", "HUD Table Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_gex, tooltip="Posisi lokasi tabel dashboard matriks Dealer Greeks pada chart.")
+int    gex_dte          = input.int(30, "Days To Expiration (DTE)", minval=1, maxval=365, group=grp_gex, tooltip="Estimasi jumlah hari menuju tanggal kedaluwarsa kontrak opsi (Days To Expiration).")
+float  gex_risk_free    = input.float(4.0, "Risk-Free Rate (%)", minval=0.0, maxval=20.0, step=0.1, group=grp_gex, tooltip="Tingkat suku bunga bebas risiko tahunan (Risk-Free Rate %) dalam model Black-Scholes.") / 100.0
+int    gex_strikes      = input.int(40, "Strike Grid Resolution", minval=20, maxval=80, group=grp_gex, tooltip="Jumlah baris grid strike harga opsi di sekitar harga saat ini.")
+int    gex_max_width    = input.int(35, "Max Profile Width (Bars)", minval=10, maxval=60, group=grp_gex, tooltip="Lebar maksimum horizontal bar profil GEX dalam satuan jumlah bar chart.")
+int    gex_h_offset     = input.int(15, "GEX Horizontal Offset (Bars)", minval=2, maxval=50, group=grp_gex, tooltip="Jarak geser horizontal kisi profil GEX dari bar terakhir chart ke kanan.")
 
 
 // -----------------------------------------------------------------------------
@@ -531,11 +533,16 @@ if show_gex and barstate.islast
     // Arrays for profile bars
     array<float> strike_prices = array.new_float(gex_strikes)
     array<float> strike_net_gex = array.new_float(gex_strikes)
+    array<float> strike_call_gex = array.new_float(gex_strikes)
+    array<float> strike_put_gex = array.new_float(gex_strikes)
 
     float min_dist_to_zero = 1e10
     flip_level_price := close
 
     float max_abs_strike_gex = 0.0
+    float max_single_call_gex = 0.0
+    float max_single_put_gex = 0.0
+    float peak_gamma_strike = na
 
     for i = 0 to gex_strikes - 1
         float K = lowest_strike + i * strike_step
@@ -562,9 +569,18 @@ if show_gex and barstate.islast
         float net_gex = c_gex + p_gex
 
         array.set(strike_net_gex, i, net_gex)
+        array.set(strike_call_gex, i, c_gex)
+        array.set(strike_put_gex, i, p_gex)
 
         if math.abs(net_gex) > max_abs_strike_gex
             max_abs_strike_gex := math.abs(net_gex)
+            peak_gamma_strike := K
+
+        if c_gex > max_single_call_gex
+            max_single_call_gex := c_gex
+
+        if math.abs(p_gex) > max_single_put_gex
+            max_single_put_gex := math.abs(p_gex)
 
         total_net_gex += net_gex
         total_call_gex += c_gex
@@ -590,27 +606,65 @@ if show_gex and barstate.islast
             min_dist_to_zero := math.abs(net_gex)
             flip_level_price := K
 
-    // Render GEX Glass Profile Bars on Chart Right Margin
-    int max_bar_width = 30
+    // Render Advanced GEX Profile Bars on Chart Right Margin
+    int max_bar_width = gex_max_width
     int gex_x_start = bar_index + gex_h_offset
 
     for i = 0 to gex_strikes - 1
         float K = array.get(strike_prices, i)
         float net_gex = array.get(strike_net_gex, i)
+        float c_gex   = array.get(strike_call_gex, i)
+        float p_gex   = array.get(strike_put_gex, i)
+        bool is_peak  = highlight_peak_gex and not na(peak_gamma_strike) and K == peak_gamma_strike
 
-        if max_abs_strike_gex > 0
-            int bar_len = math.round((math.abs(net_gex) / max_abs_strike_gex) * max_bar_width)
-            if bar_len > 0
-                color gex_col = net_gex >= 0 ? col_bull : col_bear
-                color fill_col = gex_profile_style == "Glass Bars" ? color.new(gex_col, 60) : color.new(gex_col, 30)
-                color border_col = color.new(gex_col, 20)
+        float half_h = strike_step * 0.42
 
-                float half_h = strike_step * 0.4
-                box gex_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + bar_len, bottom=K - half_h,
-                                    bgcolor=fill_col, border_color=border_col, border_width=1,
-                                    text=f_format_gex(net_gex), text_color=white, text_size=size.auto,
-                                    text_halign=text.align_center, text_valign=text.align_center)
-                array.push(gex_boxes, gex_b)
+        if gex_profile_style == "Glass Net Bars"
+            if max_abs_strike_gex > 0
+                int bar_len = math.round((math.abs(net_gex) / max_abs_strike_gex) * max_bar_width)
+                if bar_len > 0
+                    color gex_col = net_gex >= 0 ? col_bull : col_bear
+                    color fill_col = is_peak ? color.new(col_poc, 15) : color.new(gex_col, 60)
+                    color border_col = is_peak ? col_poc : color.new(gex_col, 20)
+
+                    box gex_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + bar_len, bottom=K - half_h,
+                                        bgcolor=fill_col, border_color=border_col, border_width=is_peak ? 2 : 1,
+                                        text=f_format_gex(net_gex) + (is_peak ? " ★ PEAK" : ""), text_color=is_peak ? dark : white, text_size=size.auto,
+                                        text_halign=text.align_center, text_valign=text.align_center)
+                    array.push(gex_boxes, gex_b)
+
+        else if gex_profile_style == "Call/Put Split Glass"
+            float max_split = math.max(max_single_call_gex, max_single_put_gex)
+            if max_split > 0
+                int call_len = math.round((c_gex / max_split) * (max_bar_width / 2))
+                int put_len  = math.round((math.abs(p_gex) / max_split) * (max_bar_width / 2))
+
+                if call_len > 0
+                    box c_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + call_len, bottom=K,
+                                      bgcolor=color.new(col_bull, 60), border_color=color.new(col_bull, 20), border_width=1,
+                                      text=f_format_gex(c_gex), text_color=white, text_size=size.auto,
+                                      text_halign=text.align_center, text_valign=text.align_center)
+                    array.push(gex_boxes, c_b)
+
+                if put_len > 0
+                    box p_b = box.new(left=gex_x_start, top=K, right=gex_x_start + put_len, bottom=K - half_h,
+                                      bgcolor=color.new(col_bear, 60), border_color=color.new(col_bear, 20), border_width=1,
+                                      text=f_format_gex(p_gex), text_color=white, text_size=size.auto,
+                                      text_halign=text.align_center, text_valign=text.align_center)
+                    array.push(gex_boxes, p_b)
+
+        else if gex_profile_style == "Solid Skew Gradient"
+            if max_abs_strike_gex > 0
+                int bar_len = math.round((math.abs(net_gex) / max_abs_strike_gex) * max_bar_width)
+                if bar_len > 0
+                    float norm_ratio = math.min(1.0, math.max(0.0, (net_gex + max_abs_strike_gex) / (2.0 * max_abs_strike_gex)))
+                    color grad_col = color.from_gradient(norm_ratio, 0.0, 1.0, col_bear, col_bull)
+
+                    box grad_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + bar_len, bottom=K - half_h,
+                                         bgcolor=color.new(grad_col, 25), border_color=color.new(grad_col, 10), border_width=1,
+                                         text=f_format_gex(net_gex), text_color=white, text_size=size.auto,
+                                         text_halign=text.align_center, text_valign=text.align_center)
+                    array.push(gex_boxes, grad_b)
 
     // Render Key Level Overlay Lines & Badges
     int line_x2 = gex_x_start + max_bar_width + 12
