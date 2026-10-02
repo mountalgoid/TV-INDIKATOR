@@ -114,6 +114,7 @@ bool   show_gex_hud     = input.bool(true, "Show Dealer Greeks HUD Dashboard", g
 string hud_pos_gex      = input.string("top_right", "HUD Table Position", options=["top_left", "top_right", "bottom_left", "bottom_right"], group=grp_gex, tooltip="Posisi lokasi tabel dashboard matriks Dealer Greeks pada chart.")
 int    gex_dte          = input.int(30, "Days To Expiration (DTE)", minval=1, maxval=365, group=grp_gex, tooltip="Estimasi jumlah hari menuju tanggal kedaluwarsa kontrak opsi (Days To Expiration).")
 float  gex_risk_free    = input.float(4.0, "Risk-Free Rate (%)", minval=0.0, maxval=20.0, step=0.1, group=grp_gex, tooltip="Tingkat suku bunga bebas risiko tahunan (Risk-Free Rate %) dalam model Black-Scholes.") / 100.0
+float  gex_scale_mult   = input.float(1.0, "GEX Multiplier Scale", minval=0.1, maxval=100.0, step=0.1, group=grp_gex, tooltip="Faktor pengali skala nominal GEX untuk penyesuaian pasar crypto/forex/saham.")
 int    gex_strikes      = input.int(40, "Strike Grid Resolution", minval=20, maxval=80, group=grp_gex, tooltip="Jumlah baris grid strike harga opsi di sekitar harga saat ini.")
 int    gex_max_width    = input.int(35, "Max Profile Width (Bars)", minval=10, maxval=60, group=grp_gex, tooltip="Lebar maksimum horizontal bar profil GEX dalam satuan jumlah bar chart.")
 int    gex_h_offset     = input.int(15, "GEX Horizontal Offset (Bars)", minval=2, maxval=50, group=grp_gex, tooltip="Jarak geser horizontal kisi profil GEX dari bar terakhir chart ke kanan.")
@@ -563,9 +564,9 @@ if show_gex and barstate.islast
         float call_oi = oi_proxy * call_weight
         float put_oi  = oi_proxy * put_weight
 
-        // Dollar Gamma / GEX per strike (Call GEX + / Put GEX -)
-        float c_gex = nz(gamma * close * close * call_oi * 0.01)
-        float p_gex = nz(-gamma * close * close * put_oi * 0.01)
+        // Dollar Gamma / GEX per strike (Call GEX + / Put GEX -) multiplied by scale factor
+        float c_gex = nz(gamma * close * close * call_oi * 0.01 * gex_scale_mult)
+        float p_gex = nz(-gamma * close * close * put_oi * 0.01 * gex_scale_mult)
         float net_gex = c_gex + p_gex
 
         array.set(strike_net_gex, i, net_gex)
