@@ -503,24 +503,24 @@ if show_dom_profile and barstate.islast
             max_heat_dom := h_val
 
     if max_heat_dom > 0
-        for b = 0 to 119
-            if math.mod(b, 2) == 0
-                float h_val = array.get(heat_grid, b)
-                float p_center = heat_base_p + (b - 60) * liq_step
-                bool is_bid = p_center <= close
+        for step_idx = 0 to 59
+            int b = step_idx * 2
+            float h_val = array.get(heat_grid, b)
+            float p_center = heat_base_p + (b - 60) * liq_step
+            bool is_bid = p_center <= close
 
-                int bar_len = math.round((h_val / max_heat_dom) * dom_max_width)
-                if bar_len > 0
-                    color dom_col = is_bid ? col_bull : col_bear
-                    color fill_col = color.new(dom_col, 65)
-                    color border_col = color.new(dom_col, 30)
+            int bar_len = math.round((h_val / max_heat_dom) * dom_max_width)
+            if bar_len > 0
+                color dom_col = is_bid ? col_bull : col_bear
+                color fill_col = color.new(dom_col, 65)
+                color border_col = color.new(dom_col, 30)
 
-                    float half_h = liq_step * 0.9
-                    box dom_b = box.new(left=dom_x_start, top=p_center + half_h, right=dom_x_start + bar_len, bottom=p_center - half_h,
-                                        bgcolor=fill_col, border_color=border_col, border_width=1,
-                                        text=is_bid ? "BID" : "ASK", text_color=white, text_size=size.auto,
-                                        text_halign=text.align_center, text_valign=text.align_center)
-                    array.push(dom_boxes, dom_b)
+                float half_h = liq_step * 0.9
+                box dom_b = box.new(left=dom_x_start, top=p_center + half_h, right=dom_x_start + bar_len, bottom=p_center - half_h,
+                                    bgcolor=fill_col, border_color=border_col, border_width=1,
+                                    text=is_bid ? "BID" : "ASK", text_color=white, text_size=size.auto,
+                                    text_halign=text.align_center, text_valign=text.align_center)
+                array.push(dom_boxes, dom_b)
 
 // -----------------------------------------------------------------------------
 // 3. BSM OPTION GREEKS & GEX CALCULATIONS
