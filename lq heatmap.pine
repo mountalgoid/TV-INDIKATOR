@@ -448,6 +448,7 @@ f_format_num(float val) =>
 // -----------------------------------------------------------------------------
 var array<box> lvz_boxes = array.new_box()
 var array<box> dom_boxes = array.new_box()
+var array<line> dom_lines = array.new_line()
 
 f_cleanup_lvz_drawings() =>
     while array.size(lvz_boxes) > 0
@@ -456,6 +457,8 @@ f_cleanup_lvz_drawings() =>
 f_cleanup_dom_drawings() =>
     while array.size(dom_boxes) > 0
         box.delete(array.pop(dom_boxes))
+    while array.size(dom_lines) > 0
+        line.delete(array.pop(dom_lines))
 
 if show_lvz and barstate.islast
     f_cleanup_lvz_drawings()
@@ -524,6 +527,18 @@ if show_dom_profile and barstate.islast
             peak_dom_bin := b
 
     if max_heat_dom > 0
+        float dom_p_top = heat_base_p + (118 - 60) * liq_step + liq_step
+        float dom_p_bot = heat_base_p + (0 - 60) * liq_step - liq_step
+
+        // Clean Outer Glass Boundary Frame
+        box dom_frame = box.new(left=dom_x_start, top=dom_p_top, right=dom_x_start + dom_max_width, bottom=dom_p_bot,
+                                bgcolor=color.new(dark, 92), border_color=color.new(col_poc, 40), border_width=1, border_style=line.style_dashed)
+        array.push(dom_boxes, dom_frame)
+
+        // Thick Left Vertical Baseline
+        line dom_v_line = line.new(x1=dom_x_start, y1=dom_p_bot, x2=dom_x_start, y2=dom_p_top, color=col_poc, width=3)
+        array.push(dom_lines, dom_v_line)
+
         for step_idx = 0 to 59
             int b = step_idx * 2
             float h_val = array.get(heat_grid, b)
