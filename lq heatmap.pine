@@ -114,6 +114,8 @@ int    lvz_transp       = input.int(85, "LVZ Glass Transparency (%)", minval=30,
 // --- LIQUIDITY DOM PROFILE & SPLIT CONFIGURATION ---
 string grp_dom          = "Liquidity DOM Depth Profile"
 bool   show_dom_profile = input.bool(true, "Show Liquidity DOM Depth Profile", group=grp_dom, tooltip="Tampilkan profil kedalaman likuiditas DOM (Depth of Market resting bid/ask limit orders) bersisian dengan profil GEX.")
+bool   dom_show_values  = input.bool(true, "Show Precision Values (1K, 1M, 1B)", group=grp_dom, tooltip="Tampilkan label nilai volume presisi dengan notasi K/M/B di dalam bar profil DOM.")
+bool   dom_highlight_max= input.bool(true, "Highlight Peak DOM Liquidity Node", group=grp_dom, tooltip="Beri sorotan glowing khusus pada tingkat harga dengan kedalaman likuiditas DOM tertinggi.")
 int    dom_max_width    = input.int(25, "Max DOM Profile Width (Bars)", minval=5, maxval=50, group=grp_dom, tooltip="Lebar maksimum horizontal bar kedalaman profil DOM dalam satuan bar chart.")
 
 // --- GEX & DEALER GREEKS OVERLAY CONFIGURATION ---
@@ -498,10 +500,12 @@ if show_dom_profile and barstate.islast
     int dom_x_start = bar_index + gex_h_offset
 
     float max_heat_dom = 0.0
+    int peak_dom_bin = -1
     for b = 0 to 119
         float h_val = array.get(heat_grid, b)
         if h_val > max_heat_dom
             max_heat_dom := h_val
+            peak_dom_bin := b
 
     if max_heat_dom > 0
         for step_idx = 0 to 59
@@ -509,17 +513,23 @@ if show_dom_profile and barstate.islast
             float h_val = array.get(heat_grid, b)
             float p_center = heat_base_p + (b - 60) * liq_step
             bool is_bid = p_center <= close
+            bool is_peak_dom = dom_highlight_max and peak_dom_bin >= 0 and math.abs(b - peak_dom_bin) <= 1
 
             int bar_len = math.round((h_val / max_heat_dom) * dom_max_width)
             if bar_len > 0
                 color dom_col = is_bid ? col_bull : col_bear
-                color fill_col = color.new(dom_col, 65)
-                color border_col = color.new(dom_col, 30)
+                color fill_col = is_peak_dom ? color.new(col_poc, 15) : color.new(dom_col, 55)
+                color border_col = is_peak_dom ? col_poc : color.new(dom_col, 20)
+
+                string txt_prefix = is_bid ? "BID: " : "ASK: "
+                string val_txt = dom_show_values ? txt_prefix + f_format_num(h_val * 1000.0) : (is_bid ? "BID" : "ASK")
+                if is_peak_dom
+                    val_txt := val_txt + " ★ PEAK"
 
                 float half_h = liq_step * 0.9
                 box dom_b = box.new(left=dom_x_start, top=p_center + half_h, right=dom_x_start + bar_len, bottom=p_center - half_h,
-                                    bgcolor=fill_col, border_color=border_col, border_width=1,
-                                    text=is_bid ? "BID" : "ASK", text_color=white, text_size=size.auto,
+                                    bgcolor=fill_col, border_color=border_col, border_width=is_peak_dom ? 2 : 1,
+                                    text=val_txt, text_color=is_peak_dom ? dark : white, text_size=size.auto,
                                     text_halign=text.align_center, text_valign=text.align_center)
                 array.push(dom_boxes, dom_b)
 
@@ -574,6 +584,22 @@ f_bsm_greeks(float S, float K, float T, float r, float vol) =>
     float speed      = nz(-gamma / safe_S * (d1 / vol_sqrt_T + 1.0), 0.0)
 
     [call_delta, put_delta, gamma, vanna, call_charm, speed]
+
+// Format Precision Volume Values (1K, 1M, 1B)
+f_format_num(float val) =>
+    if na(val) or val == 0
+        "0"
+    else
+        float abs_v = math.abs(val)
+        string sign = val < 0 ? "-" : ""
+        if abs_v >= 1e9
+            sign + str.tostring(abs_v / 1e9, "#.##") + "B"
+        else if abs_v >= 1e6
+            sign + str.tostring(abs_v / 1e6, "#.##") + "M"
+        else if abs_v >= 1e3
+            sign + str.tostring(abs_v / 1e3, "#.#") + "K"
+        else
+            sign + str.tostring(abs_v, "#")
 
 // Format GEX Currency Values
 f_format_gex(float val) =>
