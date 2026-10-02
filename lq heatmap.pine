@@ -111,6 +111,11 @@ float  lvz_thresh       = input.float(0.15, "Vacuum Sensitivity Threshold", minv
 int    lvz_min_bins     = input.int(3, "Min Contiguous Vacuum Bins", minval=1, maxval=15, group=grp_lvz, tooltip="Jumlah minimum baris harga berturut-turut dengan likuiditas rendah untuk membentuk satu zona vacuum.")
 int    lvz_transp       = input.int(85, "LVZ Glass Transparency (%)", minval=30, maxval=98, step=5, group=grp_lvz, tooltip="Tingkat transparansi visual wadah kaca kontainer Liquidity Vacuum Zone.")
 
+// --- LIQUIDITY DOM PROFILE & SPLIT CONFIGURATION ---
+string grp_dom          = "Liquidity DOM Depth Profile"
+bool   show_dom_profile = input.bool(true, "Show Liquidity DOM Depth Profile", group=grp_dom, tooltip="Tampilkan profil kedalaman likuiditas DOM (Depth of Market resting bid/ask limit orders) bersisian dengan profil GEX.")
+int    dom_max_width    = input.int(25, "Max DOM Profile Width (Bars)", minval=5, maxval=50, group=grp_dom, tooltip="Lebar maksimum horizontal bar kedalaman profil DOM dalam satuan bar chart.")
+
 // --- GEX & DEALER GREEKS OVERLAY CONFIGURATION ---
 string grp_gex          = "GEX & Dealer Greeks Overlay"
 bool   show_gex         = input.bool(true, "Show GEX Overlay & Dealer Greeks", group=grp_gex, tooltip="Aktifkan seluruh mesin kalkulasi Gamma Exposure (GEX) & Dealer Greeks Black-Scholes.")
@@ -124,7 +129,7 @@ float  gex_risk_free    = input.float(4.0, "Risk-Free Rate (%)", minval=0.0, max
 float  gex_scale_mult   = input.float(1.0, "GEX Multiplier Scale", minval=0.1, maxval=100.0, step=0.1, group=grp_gex, tooltip="Faktor pengali skala nominal GEX untuk penyesuaian pasar crypto/forex/saham.")
 int    gex_strikes      = input.int(40, "Strike Grid Resolution", minval=20, maxval=80, group=grp_gex, tooltip="Jumlah baris grid strike harga opsi di sekitar harga saat ini.")
 int    gex_max_width    = input.int(35, "Max Profile Width (Bars)", minval=10, maxval=60, group=grp_gex, tooltip="Lebar maksimum horizontal bar profil GEX dalam satuan jumlah bar chart.")
-int    gex_h_offset     = input.int(15, "GEX Horizontal Offset (Bars)", minval=2, maxval=50, group=grp_gex, tooltip="Jarak geser horizontal kisi profil GEX dari bar terakhir chart ke kanan.")
+int    gex_h_offset     = input.int(15, "Profile Horizontal Offset (Bars)", minval=2, maxval=50, group=grp_gex, tooltip="Jarak geser horizontal kisi profil dari bar terakhir chart ke kanan.")
 
 
 // -----------------------------------------------------------------------------
@@ -420,16 +425,18 @@ fill(p_d32, p_d48, color=get_smooth_heat_color(array.get(heat_grid, 20), false, 
 float gex_atr_14 = ta.atr(14)
 
 // -----------------------------------------------------------------------------
-// 2.5 LIQUIDITY VACUUM ZONE (LVZ) ENGINE
+// 2.5 LIQUIDITY VACUUM ZONE (LVZ) & DOM PROFILE ENGINE
 // -----------------------------------------------------------------------------
-var array<box>   lvz_boxes  = array.new_box()
-var array<label> lvz_labels = array.new_label()
+var array<box> lvz_boxes = array.new_box()
+var array<box> dom_boxes = array.new_box()
 
 f_cleanup_lvz_drawings() =>
     while array.size(lvz_boxes) > 0
         box.delete(array.pop(lvz_boxes))
-    while array.size(lvz_labels) > 0
-        label.delete(array.pop(lvz_labels))
+
+f_cleanup_dom_drawings() =>
+    while array.size(dom_boxes) > 0
+        box.delete(array.pop(dom_boxes))
 
 if show_lvz and barstate.islast
     f_cleanup_lvz_drawings()
@@ -464,11 +471,8 @@ if show_lvz and barstate.islast
 
                     box lvz_b = box.new(left=bar_index - 30, top=p_high, right=box_right, bottom=p_low,
                                         bgcolor=fill_c, border_color=border_c, border_width=1, border_style=line.style_dashed)
-                    label lvz_lbl = label.new(x=box_right, y=(p_high + p_low) / 2, text="⚡ LVZ VACUUM ZONE",
-                                              color=color.new(col_bear, 20), textcolor=white, style=label.style_label_left, size=size.tiny)
 
                     array.push(lvz_boxes, lvz_b)
-                    array.push(lvz_labels, lvz_lbl)
                 contiguous_count := 0
                 start_bin := -1
 
@@ -484,11 +488,38 @@ if show_lvz and barstate.islast
 
             box lvz_b = box.new(left=bar_index - 30, top=p_high, right=box_right, bottom=p_low,
                                 bgcolor=fill_c, border_color=border_c, border_width=1, border_style=line.style_dashed)
-            label lvz_lbl = label.new(x=box_right, y=(p_high + p_low) / 2, text="⚡ LVZ VACUUM ZONE",
-                                      color=color.new(col_bear, 20), textcolor=white, style=label.style_label_left, size=size.tiny)
 
             array.push(lvz_boxes, lvz_b)
-            array.push(lvz_labels, lvz_lbl)
+
+// Render Liquidity DOM Depth Profile
+if show_dom_profile and barstate.islast
+    f_cleanup_dom_drawings()
+    int dom_x_start = bar_index + gex_h_offset
+
+    float max_heat_dom = 0.0
+    for b = 0 to 119
+        float h_val = array.get(heat_grid, b)
+        if h_val > max_heat_dom
+            max_heat_dom := h_val
+
+    if max_heat_dom > 0
+        for b = 0 to 119 step 2
+            float h_val = array.get(heat_grid, b)
+            float p_center = heat_base_p + (b - 60) * liq_step
+            bool is_bid = p_center <= close
+
+            int bar_len = math.round((h_val / max_heat_dom) * dom_max_width)
+            if bar_len > 0
+                color dom_col = is_bid ? col_bull : col_bear
+                color fill_col = color.new(dom_col, 65)
+                color border_col = color.new(dom_col, 30)
+
+                float half_h = liq_step * 0.9
+                box dom_b = box.new(left=dom_x_start, top=p_center + half_h, right=dom_x_start + bar_len, bottom=p_center - half_h,
+                                    bgcolor=fill_col, border_color=border_col, border_width=1,
+                                    text=is_bid ? "BID" : "ASK", text_color=white, text_size=size.auto,
+                                    text_halign=text.align_center, text_valign=text.align_center)
+                array.push(dom_boxes, dom_b)
 
 // -----------------------------------------------------------------------------
 // 3. BSM OPTION GREEKS & GEX CALCULATIONS
@@ -685,9 +716,9 @@ if show_gex and barstate.islast
             min_dist_to_zero := math.abs(net_gex)
             flip_level_price := K
 
-    // Render Advanced GEX Profile Bars on Chart Right Margin
+    // Render Advanced GEX Profile Bars on Chart Right Margin (Split offset if DOM enabled)
     int max_bar_width = gex_max_width
-    int gex_x_start = bar_index + gex_h_offset
+    int gex_x_start = show_dom_profile ? (bar_index + gex_h_offset + dom_max_width + 6) : (bar_index + gex_h_offset)
 
     for i = 0 to gex_strikes - 1
         float K = array.get(strike_prices, i)
