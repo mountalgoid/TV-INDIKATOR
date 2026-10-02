@@ -647,10 +647,11 @@ if show_gex and show_gex_hud and barstate.islast
         "bottom_right" => position.bottom_right
         => position.top_right
 
-    gex_table := table.new(pos_gex, 2, 8, bgcolor=color.new(dark, 85), border_width=1, border_color=color.new(col_poc, 80), frame_color=color.new(purple, 40), frame_width=1)
+    color gex_hdr_bg = color.new(col_bull, 75)
+    gex_table := table.new(pos_gex, 2, 8, bgcolor=color.new(dark, 85), border_width=1, border_color=color.new(col_poc, 80), frame_color=color.new(col_bull, 40), frame_width=1)
 
     table.merge_cells(gex_table, 0, 0, 1, 0)
-    table.cell(gex_table, 0, 0, "GEX & DEALER GREEKS MATRIX", bgcolor=color.new(purple, 75), text_color=white, text_size=size.small, text_formatting=text.format_bold)
+    table.cell(gex_table, 0, 0, "GEX & DEALER GREEKS MATRIX", bgcolor=gex_hdr_bg, text_color=col_poc, text_size=size.small, text_formatting=text.format_bold)
 
     string regime_str = total_net_gex >= 0 ? "LONG GAMMA (Mean Reverting)" : "SHORT GAMMA (Volatile Breakout)"
     color regime_col  = total_net_gex >= 0 ? col_bull : col_bear
