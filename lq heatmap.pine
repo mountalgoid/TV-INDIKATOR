@@ -118,6 +118,7 @@ int    dom_max_width    = input.int(25, "Max DOM Profile Width (Bars)", minval=5
 
 // --- GEX & DEALER GREEKS OVERLAY CONFIGURATION ---
 string grp_gex          = "GEX & Dealer Greeks Overlay"
+bool   show_gex_profile = input.bool(true, "Show GEX Profile Bars", group=grp_gex, tooltip="Aktifkan atau matikan tampilan visual bar profil Gamma Exposure (GEX) pada margin kanan chart.")
 bool   show_gex         = input.bool(true, "Show GEX Overlay & Dealer Greeks", group=grp_gex, tooltip="Aktifkan seluruh mesin kalkulasi Gamma Exposure (GEX) & Dealer Greeks Black-Scholes.")
 string gex_profile_style = input.string("Glass Net Bars", "GEX Profile Style Mode", options=["Glass Net Bars", "Call/Put Split Glass", "Solid Skew Gradient"], group=grp_gex, tooltip="Gaya visual profil GEX: Glass Net Bars (Bar Net Glass), Call/Put Split Glass (Dual Bar Call Put), atau Solid Skew Gradient.")
 bool   highlight_peak_gex= input.bool(true, "Highlight Peak Gamma Strike", group=grp_gex, tooltip="Beri sorotan glowing khusus pada strike harga dengan konsentrasi gamma tertinggi.")
@@ -721,61 +722,62 @@ if show_gex and barstate.islast
     int max_bar_width = gex_max_width
     int gex_x_start = show_dom_profile ? (bar_index + gex_h_offset + dom_max_width + 6) : (bar_index + gex_h_offset)
 
-    for i = 0 to gex_strikes - 1
-        float K = array.get(strike_prices, i)
-        float net_gex = array.get(strike_net_gex, i)
-        float c_gex   = array.get(strike_call_gex, i)
-        float p_gex   = array.get(strike_put_gex, i)
-        bool is_peak  = highlight_peak_gex and not na(peak_gamma_strike) and K == peak_gamma_strike
+    if show_gex_profile
+        for i = 0 to gex_strikes - 1
+            float K = array.get(strike_prices, i)
+            float net_gex = array.get(strike_net_gex, i)
+            float c_gex   = array.get(strike_call_gex, i)
+            float p_gex   = array.get(strike_put_gex, i)
+            bool is_peak  = highlight_peak_gex and not na(peak_gamma_strike) and K == peak_gamma_strike
 
-        float half_h = strike_step * 0.42
+            float half_h = strike_step * 0.42
 
-        if gex_profile_style == "Glass Net Bars"
-            if max_abs_strike_gex > 0
-                int bar_len = math.round((math.abs(net_gex) / max_abs_strike_gex) * max_bar_width)
-                if bar_len > 0
-                    color gex_col = net_gex >= 0 ? col_bull : col_bear
-                    color fill_col = is_peak ? color.new(col_poc, 15) : color.new(gex_col, 60)
-                    color border_col = is_peak ? col_poc : color.new(gex_col, 20)
+            if gex_profile_style == "Glass Net Bars"
+                if max_abs_strike_gex > 0
+                    int bar_len = math.round((math.abs(net_gex) / max_abs_strike_gex) * max_bar_width)
+                    if bar_len > 0
+                        color gex_col = net_gex >= 0 ? col_bull : col_bear
+                        color fill_col = is_peak ? color.new(col_poc, 15) : color.new(gex_col, 60)
+                        color border_col = is_peak ? col_poc : color.new(gex_col, 20)
 
-                    box gex_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + bar_len, bottom=K - half_h,
-                                        bgcolor=fill_col, border_color=border_col, border_width=is_peak ? 2 : 1,
-                                        text=f_format_gex(net_gex) + (is_peak ? " ★ PEAK" : ""), text_color=is_peak ? dark : white, text_size=size.auto,
-                                        text_halign=text.align_center, text_valign=text.align_center)
-                    array.push(gex_boxes, gex_b)
+                        box gex_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + bar_len, bottom=K - half_h,
+                                            bgcolor=fill_col, border_color=border_col, border_width=is_peak ? 2 : 1,
+                                            text=f_format_gex(net_gex) + (is_peak ? " ★ PEAK" : ""), text_color=is_peak ? dark : white, text_size=size.auto,
+                                            text_halign=text.align_center, text_valign=text.align_center)
+                        array.push(gex_boxes, gex_b)
 
-        else if gex_profile_style == "Call/Put Split Glass"
-            float max_split = math.max(max_single_call_gex, max_single_put_gex)
-            if max_split > 0
-                int call_len = math.round((c_gex / max_split) * (max_bar_width / 2))
-                int put_len  = math.round((math.abs(p_gex) / max_split) * (max_bar_width / 2))
+            else if gex_profile_style == "Call/Put Split Glass"
+                float max_split = math.max(max_single_call_gex, max_single_put_gex)
+                if max_split > 0
+                    int call_len = math.round((c_gex / max_split) * (max_bar_width / 2))
+                    int put_len  = math.round((math.abs(p_gex) / max_split) * (max_bar_width / 2))
 
-                if call_len > 0
-                    box c_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + call_len, bottom=K,
-                                      bgcolor=color.new(col_bull, 60), border_color=color.new(col_bull, 20), border_width=1,
-                                      text=f_format_gex(c_gex), text_color=white, text_size=size.auto,
-                                      text_halign=text.align_center, text_valign=text.align_center)
-                    array.push(gex_boxes, c_b)
+                    if call_len > 0
+                        box c_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + call_len, bottom=K,
+                                          bgcolor=color.new(col_bull, 60), border_color=color.new(col_bull, 20), border_width=1,
+                                          text=f_format_gex(c_gex), text_color=white, text_size=size.auto,
+                                          text_halign=text.align_center, text_valign=text.align_center)
+                        array.push(gex_boxes, c_b)
 
-                if put_len > 0
-                    box p_b = box.new(left=gex_x_start, top=K, right=gex_x_start + put_len, bottom=K - half_h,
-                                      bgcolor=color.new(col_bear, 60), border_color=color.new(col_bear, 20), border_width=1,
-                                      text=f_format_gex(p_gex), text_color=white, text_size=size.auto,
-                                      text_halign=text.align_center, text_valign=text.align_center)
-                    array.push(gex_boxes, p_b)
+                    if put_len > 0
+                        box p_b = box.new(left=gex_x_start, top=K, right=gex_x_start + put_len, bottom=K - half_h,
+                                          bgcolor=color.new(col_bear, 60), border_color=color.new(col_bear, 20), border_width=1,
+                                          text=f_format_gex(p_gex), text_color=white, text_size=size.auto,
+                                          text_halign=text.align_center, text_valign=text.align_center)
+                        array.push(gex_boxes, p_b)
 
-        else if gex_profile_style == "Solid Skew Gradient"
-            if max_abs_strike_gex > 0
-                int bar_len = math.round((math.abs(net_gex) / max_abs_strike_gex) * max_bar_width)
-                if bar_len > 0
-                    float norm_ratio = math.min(1.0, math.max(0.0, (net_gex + max_abs_strike_gex) / (2.0 * max_abs_strike_gex)))
-                    color grad_col = color.from_gradient(norm_ratio, 0.0, 1.0, col_bear, col_bull)
+            else if gex_profile_style == "Solid Skew Gradient"
+                if max_abs_strike_gex > 0
+                    int bar_len = math.round((math.abs(net_gex) / max_abs_strike_gex) * max_bar_width)
+                    if bar_len > 0
+                        float norm_ratio = math.min(1.0, math.max(0.0, (net_gex + max_abs_strike_gex) / (2.0 * max_abs_strike_gex)))
+                        color grad_col = color.from_gradient(norm_ratio, 0.0, 1.0, col_bear, col_bull)
 
-                    box grad_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + bar_len, bottom=K - half_h,
-                                         bgcolor=color.new(grad_col, 25), border_color=color.new(grad_col, 10), border_width=1,
-                                         text=f_format_gex(net_gex), text_color=white, text_size=size.auto,
-                                         text_halign=text.align_center, text_valign=text.align_center)
-                    array.push(gex_boxes, grad_b)
+                        box grad_b = box.new(left=gex_x_start, top=K + half_h, right=gex_x_start + bar_len, bottom=K - half_h,
+                                             bgcolor=color.new(grad_col, 25), border_color=color.new(grad_col, 10), border_width=1,
+                                             text=f_format_gex(net_gex), text_color=white, text_size=size.auto,
+                                             text_halign=text.align_center, text_valign=text.align_center)
+                        array.push(gex_boxes, grad_b)
 
     // Render Key Level Overlay Lines & Badges
     int line_x2 = gex_x_start + max_bar_width + 12
