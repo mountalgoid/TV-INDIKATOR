@@ -89,7 +89,7 @@ color transparent_col = color.new(dark, 100)
 // Liquidity Heatmap Settings
 bool   auto_mode        = input.bool(true, "Auto Mode (Dynamic Step)", group=grp_liq)
 bool   show_liq_heatmap = input.bool(true, "Show Liquidity Heatmap", group=grp_liq)
-int    liq_opacity      = input.int(80, "Heatmap Opacity (%)", minval=0, maxval=100, step=5, group=grp_liq)
+int    liq_opacity      = input.int(85, "Heatmap Opacity (%)", minval=0, maxval=100, step=5, group=grp_liq)
 string liq_method       = input.string("Multi-Pivot + Base", "Liquidity Method", options=["Multi-Pivot + Base", "Pivots Only", "Accumulation Base Only"], group=grp_liq)
 int    liq_length       = input.int(3, "Short Pivot Lookback", minval=1, group=grp_liq)
 int    liq_length_long  = input.int(10, "Long Pivot Lookback", minval=2, group=grp_liq)
@@ -145,8 +145,8 @@ bool is_base = range_diff < range_atr * 1.2 and bb_width < bb_width_sma
 
 float base_vwap = (range_high + range_low) / 2
 
-// Precision Grid Step Calculation
-float atr_step = ta.atr(14) * 0.12
+// Super Precision Grid Step Calculation
+float atr_step = ta.atr(14) * 0.10
 float auto_sens = (atr_step / close) * 100
 float final_sens = auto_mode ? math.max(0.005, auto_sens) : heatmap_sens
 float liq_step = (close * final_sens / 100)
@@ -163,21 +163,22 @@ update_heat(float target_p, float amount) =>
         if idx >= 0 and idx < 120
             array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
 
-// Dynamic Time-Varying & Proximity Color Mapping
+// Dynamic Time-Varying & Proximity Color Mapping (Denser, Solid & Ultra-Clear)
 get_liquidity_heat_color(float val, color t_col, int age_bars, float dist_ratio) =>
     float norm_val = math.min(val, 20.0)
-    color c_low  = color.from_gradient(25, 0, 100, dark, t_col)
+    color c_low  = color.from_gradient(35, 0, 100, dark, t_col)
     color c_mid  = t_col
     color c_high = col_poc
 
-    color res = norm_val <= 10.0 ? color.from_gradient(norm_val, 0.5, 10.0, c_low, c_mid) : color.from_gradient(norm_val, 10.0, 20.0, c_mid, c_high)
+    color res = norm_val <= 8.0 ? color.from_gradient(norm_val, 0.2, 8.0, c_low, c_mid) : color.from_gradient(norm_val, 8.0, 20.0, c_mid, c_high)
 
     // Dynamic factor: strength decay over time and proximity enhancement
-    float time_decay = math.max(0.4, 1.0 - (age_bars * 0.001))
-    float prox_boost = math.max(0.5, 1.0 - dist_ratio * 0.4)
+    float time_decay = math.max(0.5, 1.0 - (age_bars * 0.0008))
+    float prox_boost = math.max(0.6, 1.0 - dist_ratio * 0.3)
 
-    float q_weight = math.pow(math.min(1.0, norm_val / 20.0), 0.6) * time_decay * prox_boost
-    int base_alpha = math.round((1.0 - q_weight) * 35 + 5)
+    float q_weight = math.pow(math.min(1.0, norm_val / 20.0), 0.5) * time_decay * prox_boost
+    // Denser, clearer opacity
+    int base_alpha = math.round((1.0 - q_weight) * 18 + 2)
     int final_transp = math.round(100 - (100 - base_alpha) * (liq_opacity / 100.0))
     color.new(res, math.min(100, math.max(0, final_transp)))
 
@@ -200,7 +201,7 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight) =>
                 found := true
                 break
     if not found
-        float zone_half = liq_step * 0.25 // Super precise condensed zone width
+        float zone_half = liq_step * 0.12 // Ultra condensed, super precise zone height
         color c_val = get_heatmap_color(weight, is_long, grid_price, bar_idx)
         l_t = line.new(bar_idx, grid_price + zone_half, bar_index + 10, grid_price + zone_half, color=na, width=1)
         l_b = line.new(bar_idx, grid_price - zone_half, bar_index + 10, grid_price - zone_half, color=na, width=1)
@@ -287,7 +288,7 @@ if show_liq_heatmap
         for i = sz_liq_z - 1 to 0
             LiqZone z = array.get(liq_zones, i)
             if z.active
-                float zone_half = z.step * 0.25
+                float zone_half = z.step * 0.12
                 // Dynamic time-varying partial mitigation / liquidity consumption
                 bool in_zone = z.is_long_liq ? (low <= z.level + zone_half and high >= z.level - zone_half) : (high >= z.level - zone_half and low <= z.level + zone_half)
                 if in_zone
