@@ -518,50 +518,57 @@ if show_dom_profile and barstate.islast
     f_cleanup_dom_drawings()
     int dom_x_start = bar_index + gex_h_offset
 
+    // Smooth heat grid (3-tap window) for continuous dense profile
+    array<float> smooth_heat = array.new_float(120, 0.0)
     float max_heat_dom = 0.0
     int peak_dom_bin = -1
+
     for b = 0 to 119
-        float h_val = array.get(heat_grid, b)
-        if h_val > max_heat_dom
-            max_heat_dom := h_val
+        float prev_v = b > 0 ? array.get(heat_grid, b - 1) : array.get(heat_grid, b)
+        float curr_v = array.get(heat_grid, b)
+        float next_v = b < 119 ? array.get(heat_grid, b + 1) : array.get(heat_grid, b)
+        float sm_v   = (prev_v * 0.25) + (curr_v * 0.50) + (next_v * 0.25)
+        array.set(smooth_heat, b, sm_v)
+        if sm_v > max_heat_dom
+            max_heat_dom := sm_v
             peak_dom_bin := b
 
-    if max_heat_dom > 0
-        float dom_p_top = heat_base_p + (118 - 60) * liq_step + liq_step
-        float dom_p_bot = heat_base_p + (0 - 60) * liq_step - liq_step
+    float dom_p_top = heat_base_p + (119 - 60) * liq_step + liq_step * 0.5
+    float dom_p_bot = heat_base_p + (0 - 60) * liq_step - liq_step * 0.5
 
-        // Clean Outer Glass Boundary Frame
-        box dom_frame = box.new(left=dom_x_start, top=dom_p_top, right=dom_x_start + dom_max_width, bottom=dom_p_bot,
-                                bgcolor=color.new(dark, 92), border_color=color.new(col_poc, 40), border_width=1, border_style=line.style_dashed)
-        array.push(dom_boxes, dom_frame)
+    // Clean Outer Glass Boundary Frame
+    box dom_frame = box.new(left=dom_x_start, top=dom_p_top, right=dom_x_start + dom_max_width, bottom=dom_p_bot,
+                            bgcolor=color.new(dark, 92), border_color=color.new(col_poc, 40), border_width=1, border_style=line.style_dashed)
+    array.push(dom_boxes, dom_frame)
 
-        // Thick Left Vertical Baseline
-        line dom_v_line = line.new(x1=dom_x_start, y1=dom_p_bot, x2=dom_x_start, y2=dom_p_top, color=col_poc, width=3)
-        array.push(dom_lines, dom_v_line)
+    // Thick Left Vertical Baseline
+    line dom_v_line = line.new(x1=dom_x_start, y1=dom_p_bot, x2=dom_x_start, y2=dom_p_top, color=col_poc, width=3)
+    array.push(dom_lines, dom_v_line)
 
-        for b = 0 to 119
-            float h_val = array.get(heat_grid, b)
-            float p_center = heat_base_p + (b - 60) * liq_step
-            bool is_bid = p_center <= close
-            bool is_peak_dom = dom_highlight_max and peak_dom_bin >= 0 and math.abs(b - peak_dom_bin) <= 1
+    for b = 0 to 119
+        float sm_v = array.get(smooth_heat, b)
+        float p_center = heat_base_p + (b - 60) * liq_step
+        bool is_bid = p_center <= close
+        bool is_peak_dom = dom_highlight_max and peak_dom_bin >= 0 and math.abs(b - peak_dom_bin) <= 1
 
-            int bar_len = math.round((h_val / max_heat_dom) * dom_max_width)
-            if bar_len > 0
-                color dom_col = is_bid ? col_bull : col_bear
-                color fill_col = is_peak_dom ? color.new(col_poc, 15) : color.new(dom_col, 55)
-                color border_col = is_peak_dom ? col_poc : color.new(dom_col, 20)
+        float norm_heat = max_heat_dom > 0 ? (sm_v / max_heat_dom) : 0.05
+        int bar_len = math.max(1, math.round(norm_heat * dom_max_width))
 
-                string txt_prefix = is_bid ? "B: " : "A: "
-                string val_txt = dom_show_values ? txt_prefix + f_format_num(h_val * 1000.0) : ""
-                if is_peak_dom
-                    val_txt := val_txt + "★"
+        color dom_col = is_bid ? col_bull : col_bear
+        color fill_col = is_peak_dom ? color.new(col_poc, 15) : color.new(dom_col, 60)
+        color border_col = is_peak_dom ? col_poc : color.new(dom_col, 80)
 
-                float half_h = liq_step * 0.48
-                box dom_b = box.new(left=dom_x_start, top=p_center + half_h, right=dom_x_start + bar_len, bottom=p_center - half_h,
-                                    bgcolor=fill_col, border_color=border_col, border_width=is_peak_dom ? 2 : 1,
-                                    text=val_txt, text_color=is_peak_dom ? dark : white, text_size=size.auto,
-                                    text_halign=text.align_center, text_valign=text.align_center)
-                array.push(dom_boxes, dom_b)
+        string txt_prefix = is_bid ? "B: " : "A: "
+        string val_txt = (dom_show_values and sm_v > 0) ? txt_prefix + f_format_num(sm_v * 1000.0) : ""
+        if is_peak_dom
+            val_txt := val_txt + "★"
+
+        float half_h = liq_step * 0.50
+        box dom_b = box.new(left=dom_x_start, top=p_center + half_h, right=dom_x_start + bar_len, bottom=p_center - half_h,
+                            bgcolor=fill_col, border_color=border_col, border_width=is_peak_dom ? 2 : 1,
+                            text=val_txt, text_color=is_peak_dom ? dark : white, text_size=size.auto,
+                            text_halign=text.align_center, text_valign=text.align_center)
+        array.push(dom_boxes, dom_b)
 
 // -----------------------------------------------------------------------------
 // 3. BSM OPTION GREEKS & GEX CALCULATIONS
