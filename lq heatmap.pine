@@ -450,18 +450,20 @@ var array<box> lvz_boxes = array.new_box()
 var array<box> dom_boxes = array.new_box()
 var array<line> dom_lines = array.new_line()
 
-f_cleanup_lvz_drawings() =>
-    while array.size(lvz_boxes) > 0
-        box.delete(array.pop(lvz_boxes))
+f_cleanup_boxes(array<box> box_arr) =>
+    while array.size(box_arr) > 0
+        box.delete(array.pop(box_arr))
 
-f_cleanup_dom_drawings() =>
-    while array.size(dom_boxes) > 0
-        box.delete(array.pop(dom_boxes))
-    while array.size(dom_lines) > 0
-        line.delete(array.pop(dom_lines))
+f_cleanup_lines(array<line> line_arr) =>
+    while array.size(line_arr) > 0
+        line.delete(array.pop(line_arr))
+
+f_cleanup_labels(array<label> lbl_arr) =>
+    while array.size(lbl_arr) > 0
+        label.delete(array.pop(lbl_arr))
 
 if show_lvz and barstate.islast
-    f_cleanup_lvz_drawings()
+    f_cleanup_boxes(lvz_boxes)
 
     // Compute max heat in heat_grid
     float max_grid_heat = 0.0
@@ -515,21 +517,33 @@ if show_lvz and barstate.islast
 
 // Render Liquidity DOM Depth Profile (Calculated & Redrawn Real-Time on Every Tick)
 if show_dom_profile and barstate.islast
-    f_cleanup_dom_drawings()
+    f_cleanup_boxes(dom_boxes)
+    f_cleanup_lines(dom_lines)
     int dom_x_start = bar_index + gex_h_offset
 
-    // High-precision raw heat grid extraction without smoothing distortion
+    // Aggregate 120 heat grid bins into 40 clean DOM nodes (3 bins per node)
+    int dom_nodes = 40
+    array<float> node_heat = array.new_float(dom_nodes, 0.0)
+    array<float> node_price = array.new_float(dom_nodes, 0.0)
+
     float max_heat_dom = 0.0
-    int peak_dom_bin = -1
+    int peak_dom_node = -1
 
-    for b = 0 to 119
-        float raw_h = array.get(heat_grid, b)
-        if raw_h > max_heat_dom
-            max_heat_dom := raw_h
-            peak_dom_bin := b
+    for n = 0 to dom_nodes - 1
+        int start_b = n * 3
+        float sum_h = array.get(heat_grid, start_b) + array.get(heat_grid, start_b + 1) + array.get(heat_grid, start_b + 2)
+        float avg_h = sum_h / 3.0
+        float mid_p = heat_base_p + ((start_b + 1) - 60) * liq_step
 
-    float dom_p_top = heat_base_p + (119 - 60) * liq_step + liq_step * 0.5
-    float dom_p_bot = heat_base_p + (0 - 60) * liq_step - liq_step * 0.5
+        array.set(node_heat, n, avg_h)
+        array.set(node_price, n, mid_p)
+
+        if avg_h > max_heat_dom
+            max_heat_dom := avg_h
+            peak_dom_node := n
+
+    float dom_p_top = heat_base_p + (119 - 60) * liq_step + liq_step * 1.5
+    float dom_p_bot = heat_base_p + (0 - 60) * liq_step - liq_step * 1.5
 
     // Clean Outer Glass Boundary Frame
     box dom_frame = box.new(left=dom_x_start, top=dom_p_top, right=dom_x_start + dom_max_width, bottom=dom_p_bot,
@@ -540,30 +554,30 @@ if show_dom_profile and barstate.islast
     line dom_v_line = line.new(x1=dom_x_start, y1=dom_p_bot, x2=dom_x_start, y2=dom_p_top, color=col_poc, width=3)
     array.push(dom_lines, dom_v_line)
 
-    for b = 0 to 119
-        float raw_h = array.get(heat_grid, b)
-        float p_center = heat_base_p + (b - 60) * liq_step
+    for n = 0 to dom_nodes - 1
+        float avg_h = array.get(node_heat, n)
+        float p_center = array.get(node_price, n)
         bool is_bid = p_center <= close
-        bool is_peak_dom = dom_highlight_max and peak_dom_bin >= 0 and b == peak_dom_bin
+        bool is_peak_dom = dom_highlight_max and peak_dom_node >= 0 and n == peak_dom_node
 
-        float raw_dom_vol = raw_h * vol_sma * 100.0
-        float norm_heat = max_heat_dom > 0 ? (raw_h / max_heat_dom) : 0.0
+        float raw_dom_vol = avg_h * vol_sma * 100.0
+        float norm_heat = max_heat_dom > 0 ? (avg_h / max_heat_dom) : 0.0
         int bar_len = math.round(norm_heat * dom_max_width)
 
         if bar_len > 0 or is_peak_dom
             color dom_col = is_bid ? col_bull : col_bear
-            color fill_col = is_peak_dom ? color.new(col_poc, 15) : color.new(dom_col, 55)
-            color border_col = is_peak_dom ? col_poc : color.new(dom_col, 80)
+            color fill_col = is_peak_dom ? color.new(col_poc, 15) : color.new(dom_col, 50)
+            color border_col = is_peak_dom ? col_poc : na
 
             string txt_prefix = is_bid ? "B: " : "A: "
-            string val_txt = (dom_show_values and raw_dom_vol > 0) ? txt_prefix + f_format_num(raw_dom_vol) : ""
+            string val_txt = (dom_show_values and (norm_heat >= 0.20 or is_peak_dom) and raw_dom_vol > 0) ? txt_prefix + f_format_num(raw_dom_vol) : ""
             if is_peak_dom
-                val_txt := val_txt + "★"
+                val_txt := val_txt + " ★ PEAK"
 
-            float half_h = liq_step * 0.48
+            float half_h = liq_step * 1.35
             box dom_b = box.new(left=dom_x_start, top=p_center + half_h, right=dom_x_start + math.max(1, bar_len), bottom=p_center - half_h,
-                                bgcolor=fill_col, border_color=border_col, border_width=is_peak_dom ? 2 : 1,
-                                text=val_txt, text_color=is_peak_dom ? dark : white, text_size=size.auto,
+                                bgcolor=fill_col, border_color=border_col, border_width=is_peak_dom ? 2 : 0,
+                                text=val_txt, text_color=is_peak_dom ? dark : white, text_size=size.tiny,
                                 text_halign=text.align_center, text_valign=text.align_center)
             array.push(dom_boxes, dom_b)
 
@@ -653,17 +667,11 @@ var float call_wall_price = na
 var float put_wall_price  = na
 var float flip_level_price = na
 
-f_cleanup_gex_drawings() =>
-    while array.size(gex_boxes) > 0
-        box.delete(array.pop(gex_boxes))
-    while array.size(gex_lines) > 0
-        line.delete(array.pop(gex_lines))
-    while array.size(gex_labels) > 0
-        label.delete(array.pop(gex_labels))
-
 // Dynamic Option Greeks & Strike Matrix (Recalculated Real-Time on Every Price Tick)
 if show_gex and barstate.islast
-    f_cleanup_gex_drawings()
+    f_cleanup_boxes(gex_boxes)
+    f_cleanup_lines(gex_lines)
+    f_cleanup_labels(gex_labels)
 
     // Reset aggregation totals
     total_net_gex := 0.0
