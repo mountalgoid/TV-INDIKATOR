@@ -929,21 +929,17 @@ if show_lvz and barstate.islast
                         passes_validation := composite_cvi >= 50.0 and not wall_blocked
 
                     if passes_validation
-                        int box_right = bar_index + 40
-                        color border_c = color.new(col_poc, 45)
+                        int box_right = bar_index + 38
+                        color border_c = color.new(col_poc, 35)
                         color fill_c   = color.new(col_bear, lvz_transp)
 
-                        box lvz_b = box.new(left=bar_index - 30, top=p_high, right=box_right, bottom=p_low,
-                                            bgcolor=fill_c, border_color=border_c, border_width=1, border_style=line.style_dashed)
+                        string box_txt = lvz_show_labels ? "  ⚡ VACUUM ZONE [CVI: " + str.tostring(composite_cvi, "#") + "%] • Heatmap ✓ | DOM ✓ | GEX ✓" : ""
+
+                        box lvz_b = box.new(left=bar_index - 35, top=p_high, right=box_right, bottom=p_low,
+                                            bgcolor=fill_c, border_color=border_c, border_width=1, border_style=line.style_dashed,
+                                            text=box_txt, text_color=color.new(col_poc, 10), text_size=size.tiny,
+                                            text_halign=text.align_left, text_valign=text.align_center)
                         array.push(lvz_boxes, lvz_b)
-
-                        if lvz_show_labels
-                            string cvi_txt = "LVZ [VACUUM CVI: " + str.tostring(composite_cvi, "#") + "%]"
-                            if lvz_use_dom_val and lvz_use_gex_val
-                                cvi_txt := cvi_txt + "\n✓ Heatmap | ✓ DOM | ✓ GEX"
-                            label lvz_lbl = label.new(bar_index + 5, p_mid, cvi_txt, color=color.new(dark, 40), textcolor=col_poc, style=label.style_label_left, size=size.tiny)
-                            array.push(lvz_labels, lvz_lbl)
-
                 contiguous_count := 0
                 start_bin := -1
 
