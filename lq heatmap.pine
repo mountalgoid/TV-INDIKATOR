@@ -15,12 +15,15 @@ type LiqZone
     float strength
     bool is_long_liq
     bool active
+    float val_score
+    bool is_validated
 
 // -----------------------------------------------------------------------------
 // 1. INPUTS & CONFIGURATION
 // -----------------------------------------------------------------------------
 string GlobalGroup = "Visual Themes & Global"
 string grp_liq     = "Liquidity Boxes & Heatmap Engine"
+string grp_val     = "Tri-Factor Institutional Validation Engine (DOM + GEX)"
 
 // --- THEME SYSTEM ---
 string color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Charts Desk', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea'], group=GlobalGroup, tooltip="Pilih tema warna visual global untuk heatmap, garis level, badge, dan dashboard HUD.")
@@ -95,7 +98,7 @@ string liq_method       = input.string("Multi-Pivot + Base", "Liquidity Method",
 int    liq_length       = input.int(3, "Short Pivot Lookback", minval=1, group=grp_liq, tooltip="Periode lookback untuk mengidentifikasi pivot high/low jangka pendek.")
 int    liq_length_long  = input.int(10, "Long Pivot Lookback", minval=2, group=grp_liq, tooltip="Periode lookback untuk mengidentifikasi pivot high/low utama jangka panjang.")
 float  heatmap_sens     = input.float(0.1, "Heatmap Price Step (%)", minval=0.01, step=0.01, group=grp_liq, tooltip="Sensitivas ukuran interval harga manual jika Auto Mode dimatikan.")
-float  maint_margin     = input.float(0.5, "Maintenance Margin (%)", minval=0.0, maxval=5.0, step=0.1, group=grp_liq, tooltip="Persentase maintenance margin akun untuk estimasi harga likuidasi posisi terungkit.") / 100
+float  maint_margin     = input.float(0.5, "Maintenance Margin (%)", minval=0.0, maxval=5.0, step=0.1, group=grp_liq, tooltip="Persentase maintenance margin akun untuk estimasi harga likuidasi posisi terungkit.") / 100.0
 
 // Multi-Tier Leverage Multipliers
 bool  use_lev_10  = input.bool(true, "Enable 10x Leverage", group=grp_liq, tooltip="Hitung dan tampilkan proyeksi klaster likuidasi posisi leverage 10x.")
@@ -103,6 +106,13 @@ bool  use_lev_25  = input.bool(true, "Enable 25x Leverage", group=grp_liq, toolt
 bool  use_lev_50  = input.bool(true, "Enable 50x Leverage", group=grp_liq, tooltip="Hitung dan tampilkan proyeksi klaster likuidasi posisi leverage 50x.")
 bool  use_lev_75  = input.bool(true, "Enable 75x Leverage", group=grp_liq, tooltip="Hitung dan tampilkan proyeksi klaster likuidasi posisi leverage 75x.")
 bool  use_lev_100 = input.bool(true, "Enable 100x Leverage", group=grp_liq, tooltip="Hitung dan tampilkan proyeksi klaster likuidasi posisi leverage 100x.")
+
+// --- TRI-FACTOR INSTITUTIONAL VALIDATION SETTINGS ---
+bool   use_tri_factor_val = input.bool(true, "Enable Tri-Factor Confluence Validation", group=grp_val, tooltip="Validasi setiap klaster likuidasi menggunakan kombinasi DOM Depth Profile dan level kunci GEX Dealer Greeks (Call Wall, Put Wall, Zero Gamma Flip, Peak Gamma).")
+string val_strictness     = input.string("Balanced", "Validation Strictness Threshold", options=["Institutional (High Precision)", "Balanced", "Permissive"], group=grp_val, tooltip="Tingkat ketatnya batas konfluensi minimum yang dibutuhkan agar zona likuiditas dianggap tervalidasi secara institusional.")
+float  gex_val_weight     = input.float(1.5, "GEX Key Level Multiplier", minval=1.0, maxval=3.0, step=0.1, group=grp_val, tooltip="Pengali pembobotan kekuatan likuiditas saat posisi berhimpit dengan Call/Put Wall atau GEX Flip Level.")
+float  dom_val_weight     = input.float(1.4, "DOM Depth Confluence Multiplier", minval=1.0, maxval=3.0, step=0.1, group=grp_val, tooltip="Pengali pembobotan kekuatan likuiditas saat terdapat kedalaman antrean pesanan DOM yang signifikan.")
+bool   hide_unvalidated   = input.bool(false, "Attenuate Unvalidated Liquidity", group=grp_val, tooltip="Redupkan transparansi dan bobot klaster likuiditas yang tidak didukung oleh data DOM maupun GEX.")
 
 // --- LIQUIDITY VACUUM ZONE (LVZ) CONFIGURATION ---
 string grp_lvz          = "Liquidity Vacuum Zone (LVZ) Engine"
@@ -174,14 +184,6 @@ int    gex_strikes      = input.int(120, "Strike Grid Resolution", minval=20, ma
 int    gex_max_width    = input.int(20, "Max Profile Width (Bars)", minval=10, maxval=60, group=grp_gex, tooltip="Lebar maksimum horizontal bar profil GEX dalam satuan jumlah bar chart.")
 int    gex_h_offset     = input.int(40, "Profile Horizontal Offset (Bars)", minval=2, maxval=50, group=grp_gex, tooltip="Jarak geser horizontal kisi profil dari bar terakhir chart ke kanan.")
 
-
-// -----------------------------------------------------------------------------
-// 2. Liquidity HEATMAP ENGINE
-// -----------------------------------------------------------------------------
-var array<LiqZone> liq_zones = array.new<LiqZone>()
-var array<line> liq_lines_hist = array.new_line()
-var array<linefill> liq_fills_hist = array.new<linefill>()
-
 // -----------------------------------------------------------------------------
 // 1.5 MULTI-TIMEFRAME (MTF) SECURITY DATA ENGINE
 // -----------------------------------------------------------------------------
@@ -205,6 +207,154 @@ float htf_pl_long  = request.security(syminfo.tickerid, htf_tf, ta.pivotlow(low,
 // HTF Trend & Relative Volume
 bool  htf_bull_trend = htf_close >= htf_ema_50
 float htf_rel_vol    = htf_v_sma > 0 ? math.min(3.0, math.max(0.5, htf_volume / htf_v_sma)) : 1.0
+
+// -----------------------------------------------------------------------------
+// 1.6 BSM OPTION GREEKS & DYNAMIC GEX ENGINE
+// -----------------------------------------------------------------------------
+f_cnd(float x) =>
+    if na(x)
+        0.5
+    else
+        float abs_x = math.abs(x)
+        float k = 1.0 / (1.0 + 0.2316419 * abs_x)
+        float poly = k * (0.319381530 + k * (-0.356563782 + k * (1.781477937 + k * (-1.821255978 + k * 1.330274429))))
+        float pdf = math.exp(-0.5 * math.min(100.0, x * x)) / math.sqrt(2.0 * math.pi)
+        float cnd_val = 1.0 - pdf * poly
+        x >= 0.0 ? cnd_val : 1.0 - cnd_val
+
+f_pdf(float x) =>
+    if na(x)
+        0.0
+    else
+        math.exp(-0.5 * math.min(100.0, x * x)) / math.sqrt(2.0 * math.pi)
+
+// Dynamic Unconditional Scope Calculations
+float gex_atr_14 = ta.atr(14)
+float safe_close_prev = nz(close[1], close)
+float safe_ret_ratio = (safe_close_prev > 0 and close > 0) ? close / safe_close_prev : 1.0
+float log_ret = math.log(math.max(1e-5, safe_ret_ratio))
+float raw_stdev = ta.stdev(log_ret, 20)
+float hist_vol = nz(raw_stdev, 0.015) * math.sqrt(365.0)
+float iv_est   = math.max(0.05, math.min(3.0, nz(hist_vol, 0.30)))
+
+// BSM Greeks Solver
+f_bsm_greeks(float S, float K, float T, float r, float vol) =>
+    float safe_S = math.max(1e-4, nz(S, 1.0))
+    float safe_K = math.max(1e-4, nz(K, 1.0))
+    float safe_vol = math.max(0.01, nz(vol, 0.30))
+    float safe_T = math.max(1e-5, nz(T, 0.08))
+
+    float sqrt_T = math.sqrt(safe_T)
+    float vol_sqrt_T = safe_vol * sqrt_T
+    float d1 = (math.log(safe_S / safe_K) + (nz(r, 0.04) + 0.5 * safe_vol * safe_vol) * safe_T) / vol_sqrt_T
+    float d2 = d1 - vol_sqrt_T
+
+    float pdf_d1 = f_pdf(d1)
+    float cnd_d1 = f_cnd(d1)
+
+    float call_delta = nz(cnd_d1, 0.5)
+    float put_delta  = call_delta - 1.0
+    float gamma      = nz(pdf_d1 / (safe_S * vol_sqrt_T), 0.0)
+    float vanna      = nz(-pdf_d1 * d2 / safe_vol, 0.0)
+    float call_charm = nz(-pdf_d1 * (nz(r, 0.04) / vol_sqrt_T - d2 / (2.0 * safe_T)), 0.0)
+    float speed      = nz(-gamma / safe_S * (d1 / vol_sqrt_T + 1.0), 0.0)
+
+    [call_delta, put_delta, gamma, vanna, call_charm, speed]
+
+// Dynamic GEX Key Level Variables
+var float call_wall_price = na
+var float put_wall_price  = na
+var float flip_level_price = na
+var float peak_gamma_strike = na
+
+var float total_net_gex = 0.0
+var float total_call_gex = 0.0
+var float total_put_gex = 0.0
+var float agg_dealer_delta = 0.0
+var float agg_dealer_gamma = 0.0
+var float agg_dealer_vanna = 0.0
+var float agg_dealer_charm = 0.0
+var float agg_dealer_speed = 0.0
+
+// Bar-by-bar GEX key level evaluation
+if show_gex
+    total_net_gex := 0.0
+    total_call_gex := 0.0
+    total_put_gex := 0.0
+    agg_dealer_delta := 0.0
+    agg_dealer_gamma := 0.0
+    agg_dealer_vanna := 0.0
+    agg_dealer_charm := 0.0
+    agg_dealer_speed := 0.0
+
+    float max_c = 0.0
+    float max_p = 0.0
+    float max_abs_gex = 0.0
+    float min_zero_dist = 1e10
+
+    call_wall_price := na
+    put_wall_price := na
+    flip_level_price := close
+    peak_gamma_strike := na
+
+    float T_exp = math.max(1.0 / 365.0, gex_dte / 365.0)
+    float atr_v = math.max(nz(gex_atr_14, close * 0.02), use_mtf_conf ? nz(htf_atr, close * 0.02) : 0.0)
+    float g_range = math.max(atr_v * 10.0, close * 0.15)
+    float s_step = (g_range * 2.0) / math.max(10, gex_strikes)
+    float low_s = math.floor((close - g_range) / s_step) * s_step
+
+    for i = 0 to gex_strikes - 1
+        float K = low_s + i * s_step
+        [c_delta, p_delta, gamma, vanna, charm, speed] = f_bsm_greeks(close, K, T_exp, gex_risk_free, iv_est)
+
+        float base_v_feed = nz(volume) > 0 ? volume : 100000.0
+        float safe_vol_feed = base_v_feed * (use_mtf_conf ? htf_rel_vol : 1.0)
+        float dist_atm = math.abs(close - K) / math.max(1e-4, close * iv_est)
+        float oi_proxy = safe_vol_feed * math.exp(-0.5 * math.min(100.0, dist_atm * dist_atm)) * 100.0
+
+        float skew_factor = 2.0 * (K - close) / math.max(1e-4, close * iv_est)
+        float call_weight = 1.0 / (1.0 + math.exp(math.min(50.0, math.max(-50.0, -skew_factor))))
+        float put_weight  = 1.0 / (1.0 + math.exp(math.min(50.0, math.max(-50.0, skew_factor))))
+
+        float call_oi = oi_proxy * call_weight
+        float put_oi  = oi_proxy * put_weight
+
+        float c_gex = nz(gamma * close * close * call_oi * 0.01 * gex_scale_mult)
+        float p_gex = nz(-gamma * close * close * put_oi * 0.01 * gex_scale_mult)
+        float net_gex = c_gex + p_gex
+
+        total_net_gex += net_gex
+        total_call_gex += c_gex
+        total_put_gex += math.abs(p_gex)
+
+        agg_dealer_delta += nz((-c_delta + (1.0 + p_delta)) * oi_proxy)
+        agg_dealer_gamma += nz(-gamma * oi_proxy)
+        agg_dealer_vanna += nz(-vanna * oi_proxy)
+        agg_dealer_charm += nz(-charm * oi_proxy)
+        agg_dealer_speed += nz(-speed * oi_proxy)
+
+        if c_gex > max_c
+            max_c := c_gex
+            call_wall_price := K
+
+        if math.abs(p_gex) > max_p
+            max_p := math.abs(p_gex)
+            put_wall_price := K
+
+        if math.abs(net_gex) > max_abs_gex
+            max_abs_gex := math.abs(net_gex)
+            peak_gamma_strike := K
+
+        if math.abs(net_gex) < min_zero_dist
+            min_zero_dist := math.abs(net_gex)
+            flip_level_price := K
+
+// -----------------------------------------------------------------------------
+// 2. LIQUIDITY HEATMAP ENGINE & TRI-FACTOR VALIDATION
+// -----------------------------------------------------------------------------
+var array<LiqZone> liq_zones = array.new<LiqZone>()
+var array<line> liq_lines_hist = array.new_line()
+var array<linefill> liq_fills_hist = array.new<linefill>()
 
 // Persistent heat grid for Smooth Background Heatmap Density (120 bins)
 var float[] heat_grid = array.new_float(120, 0.0) // 60 above, 60 below
@@ -238,17 +388,17 @@ float range_low = ta.lowest(low, liq_length_long)
 float range_diff = range_high - range_low
 bool is_base = range_diff < range_atr * 1.2 and bb_width < bb_width_sma
 
-float base_vwap = (range_high + range_low) / 2
+float base_vwap = (range_high + range_low) / 2.0
 
 // Grid Step Calculation
 float atr_step = ta.atr(14) * 0.25
-float auto_sens = (atr_step / close) * 100
+float auto_sens = (atr_step / close) * 100.0
 float final_sens = auto_mode ? math.max(0.01, auto_sens) : heatmap_sens
-float liq_step = (close * final_sens / 100)
+float liq_step = (close * final_sens / 100.0)
 float inv_liq_step = liq_step > 0 ? 1.0 / liq_step : 0.0
 
 // Initialize or shift heat grid base
-if na(heat_base_p) or math.abs(close - heat_base_p) > liq_step * 20
+if na(heat_base_p) or math.abs(close - heat_base_p) > liq_step * 20.0
     heat_base_p := math.round(close * inv_liq_step) * liq_step
     array.fill(heat_grid, 0.0)
 
@@ -257,6 +407,43 @@ update_heat(float target_p, float amount) =>
         int idx = math.round((target_p - heat_base_p) * inv_liq_step) + 60
         if idx >= 0 and idx < 120
             array.set(heat_grid, idx, array.get(heat_grid, idx) + amount)
+
+// Tri-Factor Confluence Evaluator Function
+f_eval_tri_factor(float target_p) =>
+    float score = 1.0
+    bool gex_match = false
+    bool dom_match = false
+
+    // Check GEX Wall Confluence
+    if show_gex
+        float atr_val = nz(gex_atr_14, close * 0.02)
+        float d_cw = not na(call_wall_price) ? math.abs(target_p - call_wall_price) : 1e10
+        float d_pw = not na(put_wall_price) ? math.abs(target_p - put_wall_price) : 1e10
+        float d_fl = not na(flip_level_price) ? math.abs(target_p - flip_level_price) : 1e10
+        float d_pg = not na(peak_gamma_strike) ? math.abs(target_p - peak_gamma_strike) : 1e10
+
+        float min_d = math.min(d_cw, math.min(d_pw, math.min(d_fl, d_pg)))
+        if min_d <= atr_val * 0.75
+            gex_match := true
+            score *= gex_val_weight
+
+    // Check DOM Depth Profile Confluence
+    if inv_liq_step > 0
+        int idx = math.round((target_p - heat_base_p) * inv_liq_step) + 60
+        if idx >= 0 and idx < 120
+            float cur_h = array.get(heat_grid, idx)
+            if cur_h > 2.0
+                dom_match := true
+                score *= dom_val_weight
+
+    float req_min_score = switch val_strictness
+        "Institutional (High Precision)" => 1.8
+        "Balanced"                       => 1.3
+        "Permissive"                     => 1.1
+        => 1.3
+
+    bool validated = not use_tri_factor_val or (score >= req_min_score) or (gex_match and dom_match)
+    [score, validated]
 
 // Dynamic Theme-Integrated Gradient Mapping
 get_liquidity_heat_color(float val, color t_col, bool is_core) =>
@@ -272,23 +459,31 @@ get_liquidity_heat_color(float val, color t_col, bool is_core) =>
     int final_transp = math.round(100 - (100 - base_alpha) * (liq_opacity / 100.0))
     color.new(res, math.min(100, math.max(0, final_transp)))
 
-get_heatmap_color(float s, bool is_long, float level, bool is_core) =>
-    float val = math.min(s, 20.0)
+get_heatmap_color(float s, bool is_long, float level, bool is_core, bool is_val) =>
+    float effective_s = is_val ? s : (hide_unvalidated ? s * 0.3 : s * 0.6)
+    float val = math.min(effective_s, 20.0)
     color t_col = is_long ? col_bull : col_bear
     get_liquidity_heat_color(val, t_col, is_core)
 
 add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight) =>
     float grid_price = math.round(raw_price * inv_liq_step) * liq_step
-    update_heat(grid_price, weight * 1.5)
+
+    [v_score, is_validated] = f_eval_tri_factor(grid_price)
+    float final_weight = weight * (is_validated ? v_score : (hide_unvalidated ? 0.3 : 0.7))
+
+    update_heat(grid_price, final_weight * 1.5)
     bool found = false
     int sz_liq = array.size(liq_zones)
     if sz_liq > 0
         for i = 0 to sz_liq - 1
             LiqZone z = array.get(liq_zones, i)
             if z.active and z.is_long_liq == is_long and math.abs(z.level - grid_price) < (z.step * 0.75)
-                z.strength += weight
-                color c_edge = get_heatmap_color(z.strength, is_long, z.level, false)
-                color c_core = get_heatmap_color(z.strength, is_long, z.level, true)
+                z.strength += final_weight
+                z.val_score := v_score
+                z.is_validated := is_validated
+
+                color c_edge = get_heatmap_color(z.strength, is_long, z.level, false, z.is_validated)
+                color c_core = get_heatmap_color(z.strength, is_long, z.level, true, z.is_validated)
                 if line.get_x1(z.t_ln) == bar_index
                     linefill.set_color(z.f_top, c_edge)
                     linefill.set_color(z.f_bot, c_core)
@@ -310,14 +505,14 @@ add_or_update_liq(float raw_price, bool is_long, int bar_idx, float weight) =>
                 found := true
                 break
     if not found
-        color c_edge = get_heatmap_color(weight, is_long, grid_price, false)
-        color c_core = get_heatmap_color(weight, is_long, grid_price, true)
+        color c_edge = get_heatmap_color(final_weight, is_long, grid_price, false, is_validated)
+        color c_core = get_heatmap_color(final_weight, is_long, grid_price, true, is_validated)
         l_t = line.new(bar_idx, grid_price + liq_step/2, bar_index + 10, grid_price + liq_step/2, color=na, width=1)
         l_m = line.new(bar_idx, grid_price, bar_index + 10, grid_price, color=na, width=1)
         l_b = line.new(bar_idx, grid_price - liq_step/2, bar_index + 10, grid_price - liq_step/2, color=na, width=1)
         f_top = linefill.new(l_t, l_m, color=c_edge)
         f_bot = linefill.new(l_m, l_b, color=c_core)
-        array.push(liq_zones, LiqZone.new(l_t, l_m, l_b, f_top, f_bot, grid_price, liq_step, weight, is_long, true))
+        array.push(liq_zones, LiqZone.new(l_t, l_m, l_b, f_top, f_bot, grid_price, liq_step, final_weight, is_long, true, v_score, is_validated))
 
 // Fire levels on liquidity detection
 if show_liq_heatmap
@@ -331,15 +526,15 @@ if show_liq_heatmap
         float w = rel_vol * (is_eqh ? 2.5 : 1.0) * mtf_mult
         int idx = bar_index[liq_length]
         if use_lev_10
-            add_or_update_liq(ph_short * (1 + 1/10.0 - maint_margin), false, idx, w * 0.8)
+            add_or_update_liq(ph_short * (1.0 + 1.0/10.0 - maint_margin), false, idx, w * 0.8)
         if use_lev_25
-            add_or_update_liq(ph_short * (1 + 1/25.0 - maint_margin), false, idx, w * 1.0)
+            add_or_update_liq(ph_short * (1.0 + 1.0/25.0 - maint_margin), false, idx, w * 1.0)
         if use_lev_50
-            add_or_update_liq(ph_short * (1 + 1/50.0 - maint_margin), false, idx, w * 1.2)
+            add_or_update_liq(ph_short * (1.0 + 1.0/50.0 - maint_margin), false, idx, w * 1.2)
         if use_lev_75
-            add_or_update_liq(ph_short * (1 + 1/75.0 - maint_margin), false, idx, w * 1.4)
+            add_or_update_liq(ph_short * (1.0 + 1.0/75.0 - maint_margin), false, idx, w * 1.4)
         if use_lev_100
-            add_or_update_liq(ph_short * (1 + 1/100.0 - maint_margin), false, idx, w * 1.5)
+            add_or_update_liq(ph_short * (1.0 + 1.0/100.0 - maint_margin), false, idx, w * 1.5)
 
     if calc_pivots and not na(pl_short)
         bool mtf_align = use_mtf_conf and htf_bull_trend
@@ -347,15 +542,15 @@ if show_liq_heatmap
         float w = rel_vol * (is_eql ? 2.5 : 1.0) * mtf_mult
         int idx = bar_index[liq_length]
         if use_lev_10
-            add_or_update_liq(pl_short * (1 - 1/10.0 + maint_margin), true, idx, w * 0.8)
+            add_or_update_liq(pl_short * (1.0 - 1.0/10.0 + maint_margin), true, idx, w * 0.8)
         if use_lev_25
-            add_or_update_liq(pl_short * (1 - 1/25.0 + maint_margin), true, idx, w * 1.0)
+            add_or_update_liq(pl_short * (1.0 - 1.0/25.0 + maint_margin), true, idx, w * 1.0)
         if use_lev_50
-            add_or_update_liq(pl_short * (1 - 1/50.0 + maint_margin), true, idx, w * 1.2)
+            add_or_update_liq(pl_short * (1.0 - 1.0/50.0 + maint_margin), true, idx, w * 1.2)
         if use_lev_75
-            add_or_update_liq(pl_short * (1 - 1/75.0 + maint_margin), true, idx, w * 1.4)
+            add_or_update_liq(pl_short * (1.0 - 1.0/75.0 + maint_margin), true, idx, w * 1.4)
         if use_lev_100
-            add_or_update_liq(pl_short * (1 - 1/100.0 + maint_margin), true, idx, w * 1.5)
+            add_or_update_liq(pl_short * (1.0 - 1.0/100.0 + maint_margin), true, idx, w * 1.5)
 
     // Major Long-term Pivot Liquidity (Higher Weight + MTF Multiplier)
     if calc_pivots and not na(ph_long)
@@ -364,11 +559,11 @@ if show_liq_heatmap
         float w = rel_vol * 2.0 * mtf_mult
         int idx = bar_index[liq_length_long]
         if use_lev_10
-            add_or_update_liq(ph_long * (1 + 1/10.0 - maint_margin), false, idx, w)
+            add_or_update_liq(ph_long * (1.0 + 1.0/10.0 - maint_margin), false, idx, w)
         if use_lev_25
-            add_or_update_liq(ph_long * (1 + 1/25.0 - maint_margin), false, idx, w * 1.2)
+            add_or_update_liq(ph_long * (1.0 + 1.0/25.0 - maint_margin), false, idx, w * 1.2)
         if use_lev_50
-            add_or_update_liq(ph_long * (1 + 1/50.0 - maint_margin), false, idx, w * 1.5)
+            add_or_update_liq(ph_long * (1.0 + 1.0/50.0 - maint_margin), false, idx, w * 1.5)
 
     if calc_pivots and not na(pl_long)
         bool mtf_align = use_mtf_conf and htf_bull_trend
@@ -376,44 +571,44 @@ if show_liq_heatmap
         float w = rel_vol * 2.0 * mtf_mult
         int idx = bar_index[liq_length_long]
         if use_lev_10
-            add_or_update_liq(pl_long * (1 - 1/10.0 + maint_margin), true, idx, w)
+            add_or_update_liq(pl_long * (1.0 - 1.0/10.0 + maint_margin), true, idx, w)
         if use_lev_25
-            add_or_update_liq(pl_long * (1 - 1/25.0 + maint_margin), true, idx, w * 1.2)
+            add_or_update_liq(pl_long * (1.0 - 1.0/25.0 + maint_margin), true, idx, w * 1.2)
         if use_lev_50
-            add_or_update_liq(pl_long * (1 - 1/50.0 + maint_margin), true, idx, w * 1.5)
+            add_or_update_liq(pl_long * (1.0 - 1.0/50.0 + maint_margin), true, idx, w * 1.5)
 
     // Direct HTF Major Pivots Injection Engine
     if calc_pivots and use_mtf_conf and ta.change(htf_high) != 0 and not na(htf_ph_short)
         float htf_w = htf_rel_vol * mtf_weight_mult * 2.0
         if use_lev_25
-            add_or_update_liq(htf_ph_short * (1 + 1/25.0 - maint_margin), false, bar_index, htf_w)
+            add_or_update_liq(htf_ph_short * (1.0 + 1.0/25.0 - maint_margin), false, bar_index, htf_w)
         if use_lev_50
-            add_or_update_liq(htf_ph_short * (1 + 1/50.0 - maint_margin), false, bar_index, htf_w * 1.2)
+            add_or_update_liq(htf_ph_short * (1.0 + 1.0/50.0 - maint_margin), false, bar_index, htf_w * 1.2)
 
     if calc_pivots and use_mtf_conf and ta.change(htf_low) != 0 and not na(htf_pl_short)
         float htf_w = htf_rel_vol * mtf_weight_mult * 2.0
         if use_lev_25
-            add_or_update_liq(htf_pl_short * (1 - 1/25.0 + maint_margin), true, bar_index, htf_w)
+            add_or_update_liq(htf_pl_short * (1.0 - 1.0/25.0 + maint_margin), true, bar_index, htf_w)
         if use_lev_50
-            add_or_update_liq(htf_pl_short * (1 - 1/50.0 + maint_margin), true, bar_index, htf_w * 1.2)
+            add_or_update_liq(htf_pl_short * (1.0 - 1.0/50.0 + maint_margin), true, bar_index, htf_w * 1.2)
 
     // Accumulation Base Liquidity
     if calc_base and is_base and bar_index % 5 == 0
         float base_sum_pv = 0.0
         float base_sum_v = 0.0
         for i = 0 to liq_length_long - 1
-            float p = (high[i] + low[i] + close[i]) / 3
+            float p = (high[i] + low[i] + close[i]) / 3.0
             float v = volume[i]
             base_sum_pv += p * v
             base_sum_v += v
         float calc_base_vwap = base_sum_v > 0 ? base_sum_pv / base_sum_v : base_vwap
 
         if use_lev_25
-            add_or_update_liq(calc_base_vwap * (1 + 1/25.0 - maint_margin), false, bar_index, 0.7)
-            add_or_update_liq(calc_base_vwap * (1 - 1/25.0 + maint_margin), true, bar_index, 0.7)
+            add_or_update_liq(calc_base_vwap * (1.0 + 1.0/25.0 - maint_margin), false, bar_index, 0.7)
+            add_or_update_liq(calc_base_vwap * (1.0 - 1.0/25.0 + maint_margin), true, bar_index, 0.7)
         if use_lev_50
-            add_or_update_liq(calc_base_vwap * (1 + 1/50.0 - maint_margin), false, bar_index, 0.8)
-            add_or_update_liq(calc_base_vwap * (1 - 1/50.0 + maint_margin), true, bar_index, 0.8)
+            add_or_update_liq(calc_base_vwap * (1.0 + 1.0/50.0 - maint_margin), false, bar_index, 0.8)
+            add_or_update_liq(calc_base_vwap * (1.0 - 1.0/50.0 + maint_margin), true, bar_index, 0.8)
         
     int sz_liq_z = array.size(liq_zones)
     if sz_liq_z > 0
@@ -426,8 +621,8 @@ if show_liq_heatmap
                     line.set_x2(z.t_ln, bar_index + 10)
                     line.set_x2(z.m_ln, bar_index + 10)
                     line.set_x2(z.b_ln, bar_index + 10)
-                    linefill.set_color(z.f_top, get_heatmap_color(z.strength, z.is_long_liq, z.level, false))
-                    linefill.set_color(z.f_bot, get_heatmap_color(z.strength, z.is_long_liq, z.level, true))
+                    linefill.set_color(z.f_top, get_heatmap_color(z.strength, z.is_long_liq, z.level, false, z.is_validated))
+                    linefill.set_color(z.f_bot, get_heatmap_color(z.strength, z.is_long_liq, z.level, true, z.is_validated))
                 
                 bool swept = z.is_long_liq ? low <= (z.level + z.step * 0.1) : high >= (z.level - z.step * 0.1)
                 if swept and bar_index > line.get_x1(z.t_ln)
@@ -511,16 +706,13 @@ fill(p_d16, p_d24, color=get_smooth_heat_color(array.get(heat_grid, 40), false, 
 fill(p_d24, p_d32, color=get_smooth_heat_color(array.get(heat_grid, 32), false, heat_base_p - 28 * liq_step))
 fill(p_d32, p_d48, color=get_smooth_heat_color(array.get(heat_grid, 20), false, heat_base_p - 40 * liq_step))
 
-// Dynamic Unconditional Scope Calculations
-float gex_atr_14 = ta.atr(14)
-
 // Format Precision Volume Values (1K, 1M, 1B)
 f_format_num(float val) =>
-    if na(val) or val == 0
+    if na(val) or val == 0.0
         "0"
     else
         float abs_v = math.abs(val)
-        string sign = val < 0 ? "-" : ""
+        string sign = val < 0.0 ? "-" : ""
         if abs_v >= 1e9
             sign + str.tostring(abs_v / 1e9, "#.##") + "B"
         else if abs_v >= 1e6
@@ -559,7 +751,7 @@ if show_lvz and barstate.islast
         if h_val > max_grid_heat
             max_grid_heat := h_val
             
-    if max_grid_heat > 0
+    if max_grid_heat > 0.0
         float vac_limit = max_grid_heat * lvz_thresh
         int contiguous_count = 0
         int start_bin = -1
@@ -576,8 +768,8 @@ if show_lvz and barstate.islast
             else
                 if contiguous_count >= lvz_min_bins and start_bin >= 0
                     int end_bin = start_bin + contiguous_count - 1
-                    float p_low  = heat_base_p + (start_bin - 60) * liq_step - liq_step / 2
-                    float p_high = heat_base_p + (end_bin - 60) * liq_step + liq_step / 2
+                    float p_low  = heat_base_p + (start_bin - 60) * liq_step - liq_step / 2.0
+                    float p_high = heat_base_p + (end_bin - 60) * liq_step + liq_step / 2.0
                     
                     int box_right = bar_index + 40
                     color border_c = color.new(col_poc, 45)
@@ -593,8 +785,8 @@ if show_lvz and barstate.islast
         // Final trailing check
         if contiguous_count >= lvz_min_bins and start_bin >= 0
             int end_bin = start_bin + contiguous_count - 1
-            float p_low  = heat_base_p + (start_bin - 60) * liq_step - liq_step / 2
-            float p_high = heat_base_p + (end_bin - 60) * liq_step + liq_step / 2
+            float p_low  = heat_base_p + (start_bin - 60) * liq_step - liq_step / 2.0
+            float p_high = heat_base_p + (end_bin - 60) * liq_step + liq_step / 2.0
             
             int box_right = bar_index + 40
             color border_c = color.new(col_poc, 45)
@@ -659,7 +851,7 @@ if show_dom_profile and barstate.islast
         bool is_peak_dom = dom_highlight_max and peak_dom_node >= 0 and n == peak_dom_node
 
         float raw_dom_vol = avg_h * vol_sma * (use_mtf_conf ? htf_rel_vol : 1.0) * 100.0
-        float norm_heat = max_heat_dom > 0 ? (avg_h / max_heat_dom) : 0.0
+        float norm_heat = max_heat_dom > 0.0 ? (avg_h / max_heat_dom) : 0.0
         int bar_len = math.round(norm_heat * dom_max_width)
         
         if bar_len > 0 or is_peak_dom
@@ -668,7 +860,7 @@ if show_dom_profile and barstate.islast
             color border_col = is_peak_dom ? col_poc : na
 
             string txt_prefix = is_bid ? "B: " : "A: "
-            bool show_lbl = dom_show_values and (norm_heat >= (dom_nodes > 60 ? 0.35 : 0.20) or is_peak_dom) and raw_dom_vol > 0
+            bool show_lbl = dom_show_values and (norm_heat >= (dom_nodes > 60 ? 0.35 : 0.20) or is_peak_dom) and raw_dom_vol > 0.0
             string val_txt = show_lbl ? txt_prefix + f_format_num(raw_dom_vol) : ""
             if is_peak_dom
                 val_txt := val_txt + (use_mtf_conf ? " ★ PEAK [MTF]" : " ★ PEAK")
@@ -680,64 +872,15 @@ if show_dom_profile and barstate.islast
             array.push(dom_boxes, dom_b)
 
 // -----------------------------------------------------------------------------
-// 3. BSM OPTION GREEKS & GEX CALCULATIONS
+// 3. ADVANCED GEX VISUALS & DEALER GREEKS OVERLAY
 // -----------------------------------------------------------------------------
-f_cnd(float x) =>
-    if na(x)
-        0.5
-    else
-        float abs_x = math.abs(x)
-        float k = 1.0 / (1.0 + 0.2316419 * abs_x)
-        float poly = k * (0.319381530 + k * (-0.356563782 + k * (1.781477937 + k * (-1.821255978 + k * 1.330274429))))
-        float pdf = math.exp(-0.5 * math.min(100.0, x * x)) / math.sqrt(2.0 * math.pi)
-        float cnd_val = 1.0 - pdf * poly
-        x >= 0.0 ? cnd_val : 1.0 - cnd_val
-
-f_pdf(float x) =>
-    if na(x)
-        0.0
-    else
-        math.exp(-0.5 * math.min(100.0, x * x)) / math.sqrt(2.0 * math.pi)
-
-// Annualized Volatility Estimation (log-returns stdev scaled to 365 days)
-float safe_close_prev = nz(close[1], close)
-float safe_ret_ratio = (safe_close_prev > 0 and close > 0) ? close / safe_close_prev : 1.0
-float log_ret = math.log(math.max(1e-5, safe_ret_ratio))
-float raw_stdev = ta.stdev(log_ret, 20)
-float hist_vol = nz(raw_stdev, 0.015) * math.sqrt(365.0)
-float iv_est   = math.max(0.05, math.min(3.0, nz(hist_vol, 0.30)))
-
-// BSM Greeks Solver
-f_bsm_greeks(float S, float K, float T, float r, float vol) =>
-    float safe_S = math.max(1e-4, nz(S, 1.0))
-    float safe_K = math.max(1e-4, nz(K, 1.0))
-    float safe_vol = math.max(0.01, nz(vol, 0.30))
-    float safe_T = math.max(1e-5, nz(T, 0.08))
-    
-    float sqrt_T = math.sqrt(safe_T)
-    float vol_sqrt_T = safe_vol * sqrt_T
-    float d1 = (math.log(safe_S / safe_K) + (nz(r, 0.04) + 0.5 * safe_vol * safe_vol) * safe_T) / vol_sqrt_T
-    float d2 = d1 - vol_sqrt_T
-    
-    float pdf_d1 = f_pdf(d1)
-    float cnd_d1 = f_cnd(d1)
-
-    float call_delta = nz(cnd_d1, 0.5)
-    float put_delta  = call_delta - 1.0
-    float gamma      = nz(pdf_d1 / (safe_S * vol_sqrt_T), 0.0)
-    float vanna      = nz(-pdf_d1 * d2 / safe_vol, 0.0)
-    float call_charm = nz(-pdf_d1 * (nz(r, 0.04) / vol_sqrt_T - d2 / (2.0 * safe_T)), 0.0)
-    float speed      = nz(-gamma / safe_S * (d1 / vol_sqrt_T + 1.0), 0.0)
-    
-    [call_delta, put_delta, gamma, vanna, call_charm, speed]
-
 // Format GEX Currency Values
 f_format_gex(float val) =>
     if na(val)
         "$0"
     else
         float abs_v = math.abs(val)
-        string sign = val < 0 ? "-" : "+"
+        string sign = val < 0.0 ? "-" : "+"
         if abs_v >= 1e9
             sign + str.tostring(abs_v / 1e9, "#.##") + "B"
         else if abs_v >= 1e6
@@ -747,128 +890,65 @@ f_format_gex(float val) =>
         else
             sign + str.tostring(abs_v, "#")
 
-// Dynamic Strike Grid & GEX Aggregation
-var array<box>  gex_boxes  = array.new_box()
-var array<line> gex_lines  = array.new_line()
+// Dynamic Strike Grid & GEX Visualization Rendering
+var array<box>   gex_boxes  = array.new_box()
+var array<line>  gex_lines  = array.new_line()
 var array<label> gex_labels = array.new_label()
 
-var float total_net_gex = 0.0
-var float total_call_gex = 0.0
-var float total_put_gex = 0.0
-var float agg_dealer_delta = 0.0
-var float agg_dealer_gamma = 0.0
-var float agg_dealer_vanna = 0.0
-var float agg_dealer_charm = 0.0
-var float agg_dealer_speed = 0.0
-
-var float call_wall_price = na
-var float put_wall_price  = na
-var float flip_level_price = na
-
-// Dynamic Option Greeks & Strike Matrix (Recalculated Real-Time on Every Price Tick)
 if show_gex and barstate.islast
     f_cleanup_boxes(gex_boxes)
     f_cleanup_lines(gex_lines)
     f_cleanup_labels(gex_labels)
     
-    // Reset aggregation totals
-    total_net_gex := 0.0
-    total_call_gex := 0.0
-    total_put_gex := 0.0
-    agg_dealer_delta := 0.0
-    agg_dealer_gamma := 0.0
-    agg_dealer_vanna := 0.0
-    agg_dealer_charm := 0.0
-    agg_dealer_speed := 0.0
+    float T_exp = math.max(1.0 / 365.0, gex_dte / 365.0)
+    float atr_v = math.max(nz(gex_atr_14, close * 0.02), use_mtf_conf ? nz(htf_atr, close * 0.02) : 0.0)
+    float g_range = math.max(atr_v * 10.0, close * 0.15)
+    float s_step = (g_range * 2.0) / math.max(10, gex_strikes)
+    float low_s = math.floor((close - g_range) / s_step) * s_step
     
-    float max_call_gex = 0.0
-    float max_put_gex  = 0.0
-    call_wall_price := na
-    put_wall_price  := na
-    
-    // Options time to expiration in years
-    float T = math.max(1.0 / 365.0, gex_dte / 365.0)
-    float atr_val = math.max(nz(gex_atr_14, close * 0.02), use_mtf_conf ? nz(htf_atr, close * 0.02) : 0.0)
-    float grid_range = math.max(atr_val * 10.0, close * 0.15)
-    float strike_step = (grid_range * 2.0) / math.max(10, gex_strikes)
-    float lowest_strike = math.floor((close - grid_range) / strike_step) * strike_step
-    
-    // Arrays for profile bars
     array<float> strike_prices = array.new_float(gex_strikes)
     array<float> strike_net_gex = array.new_float(gex_strikes)
     array<float> strike_call_gex = array.new_float(gex_strikes)
     array<float> strike_put_gex = array.new_float(gex_strikes)
-    
-    float min_dist_to_zero = 1e10
-    flip_level_price := close
-    
+
     float max_abs_strike_gex = 0.0
     float max_single_call_gex = 0.0
     float max_single_put_gex = 0.0
-    float peak_gamma_strike = na
-    
+
     for i = 0 to gex_strikes - 1
-        float K = lowest_strike + i * strike_step
+        float K = low_s + i * s_step
         array.set(strike_prices, i, K)
-        
-        [c_delta, p_delta, gamma, vanna, charm, speed] = f_bsm_greeks(close, K, T, gex_risk_free, iv_est)
-        
-        // Open interest model proxy (Call/Put skew distribution relative to ATM with MTF weighting)
+
+        [c_delta, p_delta, gamma, vanna, charm, speed] = f_bsm_greeks(close, K, T_exp, gex_risk_free, iv_est)
+
         float base_v_feed = nz(volume) > 0 ? volume : 100000.0
         float safe_vol_feed = base_v_feed * (use_mtf_conf ? htf_rel_vol : 1.0)
         float dist_atm = math.abs(close - K) / math.max(1e-4, close * iv_est)
         float oi_proxy = safe_vol_feed * math.exp(-0.5 * math.min(100.0, dist_atm * dist_atm)) * 100.0
-        
-        // Call & Put Open Interest skew weighting
+
         float skew_factor = 2.0 * (K - close) / math.max(1e-4, close * iv_est)
         float call_weight = 1.0 / (1.0 + math.exp(math.min(50.0, math.max(-50.0, -skew_factor))))
         float put_weight  = 1.0 / (1.0 + math.exp(math.min(50.0, math.max(-50.0, skew_factor))))
-        
+
         float call_oi = oi_proxy * call_weight
         float put_oi  = oi_proxy * put_weight
-        
-        // Dollar Gamma / GEX per strike (Call GEX + / Put GEX -) multiplied by scale factor
+
         float c_gex = nz(gamma * close * close * call_oi * 0.01 * gex_scale_mult)
         float p_gex = nz(-gamma * close * close * put_oi * 0.01 * gex_scale_mult)
         float net_gex = c_gex + p_gex
-        
+
         array.set(strike_net_gex, i, net_gex)
         array.set(strike_call_gex, i, c_gex)
         array.set(strike_put_gex, i, p_gex)
-        
+
         if math.abs(net_gex) > max_abs_strike_gex
             max_abs_strike_gex := math.abs(net_gex)
-            peak_gamma_strike := K
-            
+
         if c_gex > max_single_call_gex
             max_single_call_gex := c_gex
-            
+
         if math.abs(p_gex) > max_single_put_gex
             max_single_put_gex := math.abs(p_gex)
-            
-        total_net_gex += net_gex
-        total_call_gex += c_gex
-        total_put_gex += math.abs(p_gex)
-        
-        // Dealer Greeks Aggregation (Dealer is short calls, long puts)
-        agg_dealer_delta += nz((-c_delta + (1.0 + p_delta)) * oi_proxy)
-        agg_dealer_gamma += nz(-gamma * oi_proxy)
-        agg_dealer_vanna += nz(-vanna * oi_proxy)
-        agg_dealer_charm += nz(-charm * oi_proxy)
-        agg_dealer_speed += nz(-speed * oi_proxy)
-        
-        // Track Call Wall and Put Wall
-        if c_gex > max_call_gex
-            max_call_gex := c_gex
-            call_wall_price := K
-            
-        if math.abs(p_gex) > max_put_gex
-            max_put_gex := math.abs(p_gex)
-            put_wall_price := K
-            
-        if math.abs(net_gex) < min_dist_to_zero
-            min_dist_to_zero := math.abs(net_gex)
-            flip_level_price := K
 
     // Render Advanced GEX Profile Bars on Chart Right Margin (Split offset if DOM enabled)
     int max_bar_width = gex_max_width
@@ -882,13 +962,13 @@ if show_gex and barstate.islast
             float p_gex   = array.get(strike_put_gex, i)
             bool is_peak  = highlight_peak_gex and not na(peak_gamma_strike) and K == peak_gamma_strike
             
-            float half_h = strike_step * 0.42
+            float half_h = s_step * 0.42
             
             if gex_profile_style == "Glass Net Bars"
-                if max_abs_strike_gex > 0
+                if max_abs_strike_gex > 0.0
                     int bar_len = math.round((math.abs(net_gex) / max_abs_strike_gex) * max_bar_width)
                     if bar_len > 0
-                        color gex_col = net_gex >= 0 ? col_bull : col_bear
+                        color gex_col = net_gex >= 0.0 ? col_bull : col_bear
                         color fill_col = is_peak ? color.new(col_poc, 15) : color.new(gex_col, 60)
                         color border_col = is_peak ? col_poc : color.new(gex_col, 20)
                         
@@ -900,7 +980,7 @@ if show_gex and barstate.islast
 
             else if gex_profile_style == "Call/Put Split Glass"
                 float max_split = math.max(max_single_call_gex, max_single_put_gex)
-                if max_split > 0
+                if max_split > 0.0
                     int call_len = math.round((c_gex / max_split) * (max_bar_width / 2))
                     int put_len  = math.round((math.abs(p_gex) / max_split) * (max_bar_width / 2))
                     
@@ -919,7 +999,7 @@ if show_gex and barstate.islast
                         array.push(gex_boxes, p_b)
 
             else if gex_profile_style == "Solid Skew Gradient"
-                if max_abs_strike_gex > 0
+                if max_abs_strike_gex > 0.0
                     int bar_len = math.round((math.abs(net_gex) / max_abs_strike_gex) * max_bar_width)
                     if bar_len > 0
                         float norm_ratio = math.min(1.0, math.max(0.0, (net_gex + max_abs_strike_gex) / (2.0 * max_abs_strike_gex)))
@@ -967,15 +1047,15 @@ if show_gex and show_gex_hud and barstate.islast
 
     color gex_hdr_bg = color.new(col_bull, 75)
     if na(gex_table)
-        gex_table := table.new(pos_gex, 2, 10, bgcolor=color.new(dark, 85), border_width=1, border_color=color.new(col_poc, 80), frame_color=color.new(col_bull, 40), frame_width=1)
+        gex_table := table.new(pos_gex, 2, 11, bgcolor=color.new(dark, 85), border_width=1, border_color=color.new(col_poc, 80), frame_color=color.new(col_bull, 40), frame_width=1)
     else
         table.set_position(gex_table, pos_gex)
 
     table.merge_cells(gex_table, 0, 0, 1, 0)
     table.cell(gex_table, 0, 0, "GEX & DEALER GREEKS MATRIX", bgcolor=gex_hdr_bg, text_color=col_poc, text_size=size.small, text_formatting=text.format_bold)
 
-    string regime_str = total_net_gex >= 0 ? "LONG GAMMA (Mean Reverting)" : "SHORT GAMMA (Volatile Breakout)"
-    color regime_col  = total_net_gex >= 0 ? col_bull : col_bear
+    string regime_str = total_net_gex >= 0.0 ? "LONG GAMMA (Mean Reverting)" : "SHORT GAMMA (Volatile Breakout)"
+    color regime_col  = total_net_gex >= 0.0 ? col_bull : col_bear
 
     string cw_str = not na(call_wall_price) ? str.tostring(call_wall_price, format.mintick) : "N/A"
     string pw_str = not na(put_wall_price) ? str.tostring(put_wall_price, format.mintick) : "N/A"
@@ -984,30 +1064,35 @@ if show_gex and show_gex_hud and barstate.islast
     table.cell(gex_table, 0, 1, "Market Regime", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
     table.cell(gex_table, 1, 1, regime_str, bgcolor=color.new(dark, 90), text_color=regime_col, text_size=size.small, text_formatting=text.format_bold, text_halign=text.align_right)
 
-    table.cell(gex_table, 0, 2, "MTF Status / TF", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(gex_table, 0, 2, "Tri-Factor Validation", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    string val_status_str = (use_tri_factor_val ? "ACTIVE (" + val_strictness + ")" : "DISABLED")
+    color val_status_col = use_tri_factor_val ? col_bull : col_bear
+    table.cell(gex_table, 1, 2, val_status_str, bgcolor=color.new(dark, 90), text_color=val_status_col, text_size=size.small, text_formatting=text.format_bold, text_halign=text.align_right)
+
+    table.cell(gex_table, 0, 3, "MTF Status / TF", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
     string mtf_status_str = (use_mtf_conf ? "CONFIRMED (" + str.tostring(mtf_weight_mult, "#.#") + "x)" : "DISABLED") + " | " + htf_tf
     color mtf_status_col = use_mtf_conf ? col_bull : col_bear
-    table.cell(gex_table, 1, 2, mtf_status_str, bgcolor=color.new(dark, 90), text_color=mtf_status_col, text_size=size.small, text_formatting=text.format_bold, text_halign=text.align_right)
+    table.cell(gex_table, 1, 3, mtf_status_str, bgcolor=color.new(dark, 90), text_color=mtf_status_col, text_size=size.small, text_formatting=text.format_bold, text_halign=text.align_right)
 
-    table.cell(gex_table, 0, 3, "HTF Market Bias", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(gex_table, 0, 4, "HTF Market Bias", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
     string htf_bias_str = htf_bull_trend ? "BULLISH (Above EMA50)" : "BEARISH (Below EMA50)"
     color htf_bias_col = htf_bull_trend ? col_bull : col_bear
-    table.cell(gex_table, 1, 3, htf_bias_str, bgcolor=color.new(dark, 90), text_color=htf_bias_col, text_size=size.small, text_formatting=text.format_bold, text_halign=text.align_right)
+    table.cell(gex_table, 1, 4, htf_bias_str, bgcolor=color.new(dark, 90), text_color=htf_bias_col, text_size=size.small, text_formatting=text.format_bold, text_halign=text.align_right)
 
-    table.cell(gex_table, 0, 4, "Net GEX ($)", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
-    table.cell(gex_table, 1, 4, f_format_gex(total_net_gex), bgcolor=color.new(dark, 90), text_color=regime_col, text_size=size.small, text_formatting=text.format_bold, text_halign=text.align_right)
+    table.cell(gex_table, 0, 5, "Net GEX ($)", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(gex_table, 1, 5, f_format_gex(total_net_gex), bgcolor=color.new(dark, 90), text_color=regime_col, text_size=size.small, text_formatting=text.format_bold, text_halign=text.align_right)
 
-    table.cell(gex_table, 0, 5, "Call Wall / Put Wall", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
-    table.cell(gex_table, 1, 5, "CW: " + cw_str + " | PW: " + pw_str, bgcolor=color.new(dark, 90), text_color=col_poc, text_size=size.small, text_halign=text.align_right)
+    table.cell(gex_table, 0, 6, "Call Wall / Put Wall", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(gex_table, 1, 6, "CW: " + cw_str + " | PW: " + pw_str, bgcolor=color.new(dark, 90), text_color=col_poc, text_size=size.small, text_halign=text.align_right)
 
-    table.cell(gex_table, 0, 6, "GEX Flip Level (0γ)", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
-    table.cell(gex_table, 1, 6, fl_str, bgcolor=color.new(dark, 90), text_color=col_poc, text_size=size.small, text_halign=text.align_right)
+    table.cell(gex_table, 0, 7, "GEX Flip Level (0γ)", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(gex_table, 1, 7, fl_str, bgcolor=color.new(dark, 90), text_color=col_poc, text_size=size.small, text_halign=text.align_right)
 
-    table.cell(gex_table, 0, 7, "Dealer Delta / Gamma", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
-    table.cell(gex_table, 1, 7, "Δ: " + str.tostring(agg_dealer_delta, "#.##") + " | γ: " + str.tostring(agg_dealer_gamma, "#.####"), bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_right)
+    table.cell(gex_table, 0, 8, "Dealer Delta / Gamma", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(gex_table, 1, 8, "Δ: " + str.tostring(agg_dealer_delta, "#.##") + " | γ: " + str.tostring(agg_dealer_gamma, "#.####"), bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_right)
 
-    table.cell(gex_table, 0, 8, "Dealer Vanna / Charm", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
-    table.cell(gex_table, 1, 8, "v: " + str.tostring(agg_dealer_vanna, "#.##") + " | c: " + str.tostring(agg_dealer_charm, "#.####"), bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_right)
+    table.cell(gex_table, 0, 9, "Dealer Vanna / Charm", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(gex_table, 1, 9, "v: " + str.tostring(agg_dealer_vanna, "#.##") + " | c: " + str.tostring(agg_dealer_charm, "#.####"), bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_right)
 
-    table.cell(gex_table, 0, 9, "Dealer Speed", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
-    table.cell(gex_table, 1, 9, "s: " + str.tostring(agg_dealer_speed, "#.######"), bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_right)
+    table.cell(gex_table, 0, 10, "Dealer Speed", bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_left)
+    table.cell(gex_table, 1, 10, "s: " + str.tostring(agg_dealer_speed, "#.######"), bgcolor=color.new(dark, 90), text_color=white, text_size=size.small, text_halign=text.align_right)
