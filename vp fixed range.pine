@@ -101,6 +101,10 @@ show_lvn_hvn = input.bool(true, "Show HVN and LVN", group=grp_hl)
 hvn_threshold= input.float(1.5, "HVN Volume Multiplier", minval=1.0, step=0.25, group=grp_hl)
 lvn_threshold= input.float(0.1, "LVN Volume Threshold (%)", minval=0.01, maxval=0.5, step=0.01, group=grp_hl)
 
+// ----- BADGE SETTINGS -----
+grp_badge    = "Badge Settings"
+badge_gap    = input.int(3, "Badge Shift Gap (Bars)", minval=0, group=grp_badge, tooltip="Shift the right-hand badges leftward inside the current segment to prevent overlap with the subsequent segment")
+
 // ===== WINDOW LOGIC =====
 windowStart = int(bar_index / length) * length
 isWindowEnd = bar_index == windowStart + length - 1
@@ -256,13 +260,46 @@ if needs_calculations
         
         int local_currentLen = bar_index - windowStart + 1
         for i = 0 to local_currentLen - 1
-            distribute_vol(rows, lo_val, local_inv_step, open[i], high[i], low[i], close[i], volume[i], localVolBins, localBuyBins, localSellBins)
+            array<float> ltf_o_arr = ltf_o[i]
+            array<float> ltf_h_arr = ltf_h[i]
+            array<float> ltf_l_arr = ltf_l[i]
+            array<float> ltf_c_arr = ltf_c[i]
+            array<float> ltf_v_arr = ltf_v[i]
+
+            int ltf_count = not na(ltf_v_arr) ? array.size(ltf_v_arr) : 0
+            float ltf_v_total = 0.0
+            if ltf_count > 0
+                for j = 0 to ltf_count - 1
+                    float _o = array.get(ltf_o_arr, j)
+                    float _h = array.get(ltf_h_arr, j)
+                    float _l = array.get(ltf_l_arr, j)
+                    float _c = array.get(ltf_c_arr, j)
+                    float _v = array.get(ltf_v_arr, j)
+                    ltf_v_total += _v
+                    distribute_vol(rows, lo_val, local_inv_step, _o, _h, _l, _c, _v, localVolBins, localBuyBins, localSellBins)
+
+            float missing_v = math.max(0, volume[i] - ltf_v_total)
+            if missing_v > 0
+                distribute_vol(rows, lo_val, local_inv_step, open[i], high[i], low[i], close[i], missing_v, localVolBins, localBuyBins, localSellBins)
             
         last_hi := hi_val
         last_lo := lo_val
     else
         // Range didn't change! Just incrementally add the current bar's volume
-        distribute_vol(rows, lo_val, local_inv_step, open, high, low, close, volume, localVolBins, localBuyBins, localSellBins)
+        int ltf_count = not na(ltf_v) ? array.size(ltf_v) : 0
+        float ltf_v_total = 0.0
+        if ltf_count > 0
+            for j = 0 to ltf_count - 1
+                float _o = array.get(ltf_o, j)
+                float _h = array.get(ltf_h, j)
+                float _l = array.get(ltf_l, j)
+                float _c = array.get(ltf_c, j)
+                float _v = array.get(ltf_v, j)
+                ltf_v_total += _v
+                distribute_vol(rows, lo_val, local_inv_step, _o, _h, _l, _c, _v, localVolBins, localBuyBins, localSellBins)
+        float missing_v = math.max(0, volume - ltf_v_total)
+        if missing_v > 0
+            distribute_vol(rows, lo_val, local_inv_step, open, high, low, close, missing_v, localVolBins, localBuyBins, localSellBins)
 
     float local_maxVol = array.max(localVolBins)
     int local_pocIdx = array.indexof(localVolBins, local_maxVol)
@@ -376,10 +413,30 @@ draw_profile(bool is_live) =>
     int currentLen = bar_index - windowStart + 1
 
     if is_live
-        // Distribute historical bars of the current window segment
+        // Distribute historical bars of the current window segment using high-accuracy historical LTF arrays
         if currentLen > 1
             for i = 1 to currentLen - 1
-                distribute_vol(rows, lo_val, inv_step, open[i], high[i], low[i], close[i], volume[i], volBins, buyBins, sellBins)
+                array<float> ltf_o_arr = ltf_o[i]
+                array<float> ltf_h_arr = ltf_h[i]
+                array<float> ltf_l_arr = ltf_l[i]
+                array<float> ltf_c_arr = ltf_c[i]
+                array<float> ltf_v_arr = ltf_v[i]
+
+                int ltf_count = not na(ltf_v_arr) ? array.size(ltf_v_arr) : 0
+                float ltf_v_total = 0.0
+                if ltf_count > 0
+                    for j = 0 to ltf_count - 1
+                        float _o = array.get(ltf_o_arr, j)
+                        float _h = array.get(ltf_h_arr, j)
+                        float _l = array.get(ltf_l_arr, j)
+                        float _c = array.get(ltf_c_arr, j)
+                        float _v = array.get(ltf_v_arr, j)
+                        ltf_v_total += _v
+                        distribute_vol(rows, lo_val, inv_step, _o, _h, _l, _c, _v, volBins, buyBins, sellBins)
+
+                float missing_v = math.max(0, volume[i] - ltf_v_total)
+                if missing_v > 0
+                    distribute_vol(rows, lo_val, inv_step, open[i], high[i], low[i], close[i], missing_v, volBins, buyBins, sellBins)
         
         // Distribute the live bar using precise LTF 1m data
         int ltf_count = not na(ltf_v) ? array.size(ltf_v) : 0
@@ -399,17 +456,41 @@ draw_profile(bool is_live) =>
         if missing_v > 0
             distribute_vol(rows, lo_val, inv_step, open, high, low, close, missing_v, volBins, buyBins, sellBins)
     else
-        // Historical finished window segment
+        // Historical finished window segment - distribute ALL bars using precise historical LTF arrays
         for i = 0 to currentLen - 1
-            distribute_vol(rows, lo_val, inv_step, open[i], high[i], low[i], close[i], volume[i], volBins, buyBins, sellBins)
+            array<float> ltf_o_arr = ltf_o[i]
+            array<float> ltf_h_arr = ltf_h[i]
+            array<float> ltf_l_arr = ltf_l[i]
+            array<float> ltf_c_arr = ltf_c[i]
+            array<float> ltf_v_arr = ltf_v[i]
+
+            int ltf_count = not na(ltf_v_arr) ? array.size(ltf_v_arr) : 0
+            float ltf_v_total = 0.0
+            if ltf_count > 0
+                for j = 0 to ltf_count - 1
+                    float _o = array.get(ltf_o_arr, j)
+                    float _h = array.get(ltf_h_arr, j)
+                    float _l = array.get(ltf_l_arr, j)
+                    float _c = array.get(ltf_c_arr, j)
+                    float _v = array.get(ltf_v_arr, j)
+                    ltf_v_total += _v
+                    distribute_vol(rows, lo_val, inv_step, _o, _h, _l, _c, _v, volBins, buyBins, sellBins)
+
+            float missing_v = math.max(0, volume[i] - ltf_v_total)
+            if missing_v > 0
+                distribute_vol(rows, lo_val, inv_step, open[i], high[i], low[i], close[i], missing_v, volBins, buyBins, sellBins)
 
     maxVol   = array.max(volBins)
     totalVol = array.sum(volBins)
-    maxWidth = int(length * width_pct) 
+
+    // Boundaries for right badges
+    boxRight = windowStart + length - badge_gap
+    boxLeft = boxRight - int(length * 0.08)
+    maxWidth = int((boxLeft - windowStart) * width_pct)
     
     // 2. DRAW SPINE & OUTER PROFILE FRAME BOX
     l_spine = line.new(windowStart, lo_val, windowStart, hi_val, color=spine_col, width=4)
-    b_frame = box.new(left=windowStart, bottom=lo_val, right=windowStart + length, top=hi_val,
+    b_frame = box.new(left=windowStart, bottom=lo_val, right=boxLeft, top=hi_val,
                       bgcolor=na, border_color=color.new(spine_col, 60), border_width=1, border_style=line.style_solid)
     if is_live
         array.push(liveLines, l_spine)
@@ -500,23 +581,23 @@ draw_profile(bool is_live) =>
     vahPrice = lo_val + ((hIdx + 1) * step)
     valPrice = lo_val + (lIdx * step)
 
-    // Draw solid levels lines
-    l_poc = line.new(windowStart, pocPrice, windowStart + length, pocPrice, color=col_poc_eff, width=3, style=line.style_solid)
-    l_vah = line.new(windowStart, vahPrice, windowStart + length, vahPrice, color=col_va_eff, style=line.style_solid, width=1)
-    l_val = line.new(windowStart, valPrice, windowStart + length, valPrice, color=col_va_eff, style=line.style_solid, width=1)
+    // Draw solid levels lines ending at boxLeft to prevent overlapping with badges
+    l_poc = line.new(windowStart, pocPrice, boxLeft, pocPrice, color=col_poc_eff, width=3, style=line.style_solid)
+    l_vah = line.new(windowStart, vahPrice, boxLeft, vahPrice, color=col_va_eff, style=line.style_solid, width=1)
+    l_val = line.new(windowStart, valPrice, boxLeft, valPrice, color=col_va_eff, style=line.style_solid, width=1)
     
     if is_live
         array.push(liveLines, l_poc)
         array.push(liveLines, l_vah)
         array.push(liveLines, l_val)
 
-    // Draw transparent backgrounds for VAH-to-Top and VAL-to-Bottom regions
+    // Draw transparent backgrounds for VAH-to-Top and VAL-to-Bottom regions ending at boxLeft
     color top_bg = color.new(col_bear_eff, 90)
     color bot_bg = color.new(col_bull_eff, 90)
 
-    b_vah_top = box.new(left=windowStart, top=hi_val, right=windowStart + length, bottom=vahPrice,
+    b_vah_top = box.new(left=windowStart, top=hi_val, right=boxLeft, bottom=vahPrice,
                         bgcolor=top_bg, border_color=na)
-    b_val_bot = box.new(left=windowStart, top=valPrice, right=windowStart + length, bottom=lo_val,
+    b_val_bot = box.new(left=windowStart, top=valPrice, right=boxLeft, bottom=lo_val,
                         bgcolor=bot_bg, border_color=na)
 
     if is_live
@@ -524,8 +605,6 @@ draw_profile(bool is_live) =>
         array.push(liveBoxes, b_val_bot)
 
     // Boundaries for right badges
-    boxLeft = windowStart + length
-    boxRight = windowStart + length + int(length * 0.12)
     box_height_half = step * 0.4
     color badge_bg = color.new(#0c0d12, 15) // Deep contrast background
 
