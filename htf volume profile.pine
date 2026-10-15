@@ -1,129 +1,675 @@
-//@version=5
-indicator("Real-Time Heatmap VP (Single Plot) - MLTFX", overlay=true)
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © MLTFX
 
-// ===== INPUTS =====
-length      = input.int(200, "Window Length (Bars)", minval=20, tooltip="The number of bars per volume profile session.")
-rows        = input.int(50, "Smoothness (Rows)", minval=10, maxval=100, tooltip="The vertical resolution of the volume profile.") 
-va_pct      = input.float(0.70, "Value Area %", step=0.05, minval=0.10, maxval=1.00)
+//@version=6
+indicator("HTF Volume Profile - Premium Edition", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_bars_back=2000)
 
-// ----- COLORS -----
-grp_col     = "Gradient & Heatmap Settings"
-col_bot     = input.color(#673ab7, "Bottom Color", inline="g", group=grp_col)
-col_top     = input.color(#00bcd4, "Top Color", inline="g", group=grp_col)
-c_poc       = input.color(#ffeb3b, "POC Color", group=grp_col)
+// =============================================================================
+// 1. INPUTS & CONFIGURATION - THEME SYSTEM
+// =============================================================================
+var string GlobalGroup = "Visual Themes & Global Settings"
+color_theme = input.string(defval = 'DEX Deep', title = 'Select Color Theme', options = ['Spartan Edge Theme', 'MountAlgo Themes', 'MountAlgo Neon', 'MountAlgo Frost', 'MountAlgo Cyber', 'Standard Spartan Edge Theme', 'Dark ICT Theme', 'Garuda Gold', 'MountAlgo Super Premium Theme', 'MountAlgo Orange White Theme', 'DEX Deep', 'Deep Sea', 'Gear Protocol'], group=GlobalGroup)
 
-// ===== WINDOW LOGIC =====
-windowStart = int(bar_index / length) * length
+// Core Colors
+color dark   = #000000
+color white  = #c4d3ff
+color green  = #179c74
+color purple = #5134ff
+color gray   = #62647a
+color red    = #f23645
+color yellow = #f3ba2f
+color orange = #ff9800
+color blue   = #1848cc
+color brown  = #8b4513
+color Transparent_Color = color.new(white, 100)
 
-// ===== STORAGE =====
-var int[] bar_to_bin = array.new_int(length, 0)
-var float[] prevVolBins = array.new_float(rows, 0.0)
-var float prevLo = na
-var float prevHi = na
-var int prevPocIdx = 0
-var int prevValIdx = 0
-var int prevVahIdx = 0
+color col_bull = switch color_theme
+    'Spartan Edge Theme' => red
+    'MountAlgo Themes' => purple
+    'MountAlgo Neon' => #5134ff
+    'MountAlgo Frost' => #5134ff
+    'MountAlgo Cyber' => #1848cc
+    'Standard Spartan Edge Theme' => green
+    'Dark ICT Theme' => green
+    'Garuda Gold' => yellow
+    'MountAlgo Super Premium Theme' => purple
+    'MountAlgo Orange White Theme' => orange
+    'DEX Deep' => #a1ff3b
+    'Deep Sea' => blue
+    'Gear Protocol' => white
+    => blue
 
-// ===== CALCULATION & RESCALING =====
-if bar_index == windowStart
-    if bar_index >= length
-        // Extract high/low of previous window exactly
-        float prev_hi = high[1]
-        float prev_lo = low[1]
-        for i = 1 to length
-            prev_hi := math.max(prev_hi, high[i])
-            prev_lo := math.min(prev_lo, low[i])
-        
-        float prev_rng = math.max(prev_hi - prev_lo, syminfo.mintick * 10)
-        float prev_step = prev_rng / rows
-        
-        // Calculate exact volume profile bins
-        array.fill(prevVolBins, 0.0)
-        for i = 1 to length
-            float price_val = (high[i] + low[i] + close[i]) / 3.0
-            float v_val = nz(volume[i])
-            int bin_idx = int((price_val - prev_lo) / prev_step)
-            bin_idx := math.min(rows - 1, math.max(0, bin_idx))
-            array.set(prevVolBins, bin_idx, array.get(prevVolBins, bin_idx) + v_val)
-            
-        float maxVol = array.max(prevVolBins)
-        float totalVol = array.sum(prevVolBins)
-        prevPocIdx := array.indexof(prevVolBins, maxVol)
-        
-        // Calculate Value Area (VAH / VAL)
-        prevVahIdx := prevPocIdx
-        prevValIdx := prevPocIdx
-        float targetVA = totalVol * va_pct
-        float currentVA = maxVol
-        
-        int loopC = 0
-        while currentVA < targetVA and loopC < rows
-            float vUp = (prevVahIdx < rows - 1) ? array.get(prevVolBins, prevVahIdx + 1) : 0.0
-            float vDn = (prevValIdx > 0) ? array.get(prevVolBins, prevValIdx - 1) : 0.0
-            if vUp == 0.0 and vDn == 0.0
-                break
-            if vUp >= vDn
-                currentVA += vUp
-                prevVahIdx := math.min(rows - 1, prevVahIdx + 1)
-            else
-                currentVA += vDn
-                prevValIdx := math.max(0, prevValIdx - 1)
-            loopC += 1
-            
-        prevLo := prev_lo
-        prevHi := prev_hi
-        
-        // Safety guard: if rows >= length, fallback to simple linear mapping
-        if rows >= length
-            for b = 0 to length - 1
-                array.set(bar_to_bin, b, int((b / length) * rows))
-        else
-            // Build bar_to_bin mapping: 
-            // 1. Give each bin 1 base bar to guarantee range coverage
-            // 2. Distribute remaining bars proportionally to volume
-            int remaining_bars = length - rows
-            int[] num_bars_array = array.new_int(rows, 1)
-            
-            if remaining_bars > 0 and totalVol > 0
-                int allocated_extra = 0
-                for r = 0 to rows - 1
-                    float vol = array.get(prevVolBins, r)
-                    int extra = int(math.round((vol / totalVol) * remaining_bars))
-                    array.set(num_bars_array, r, 1 + extra)
-                    allocated_extra += extra
-                    
-                int diff = remaining_bars - allocated_extra
-                if diff != 0
-                    array.set(num_bars_array, prevPocIdx, array.get(num_bars_array, prevPocIdx) + diff)
-                    
-            // Build mapping array
-            int current_bar_idx = 0
-            for r = 0 to rows - 1
-                int num_bars = array.get(num_bars_array, r)
-                for b = 0 to num_bars - 1
-                    if current_bar_idx < length
-                        array.set(bar_to_bin, current_bar_idx, r)
-                        current_bar_idx += 1
+color col_bear = switch color_theme
+    'Spartan Edge Theme' => gray
+    'MountAlgo Themes' => green
+    'MountAlgo Neon' => #ff009a
+    'MountAlgo Frost' => #00e5ff
+    'MountAlgo Cyber' => #ff009a
+    'Standard Spartan Edge Theme' => red
+    'Dark ICT Theme' => gray
+    'Garuda Gold' => gray
+    'MountAlgo Super Premium Theme' => yellow
+    'MountAlgo Orange White Theme' => gray
+    'DEX Deep' => #ff009a
+    'Deep Sea' => gray
+    'Gear Protocol' => gray
+    => white
 
-// ===== PLOT RETRIEVAL =====
-bar_offset = bar_index - windowStart
-float plot_price = na
-color plot_color = na
+color col_poc = switch color_theme
+    'Spartan Edge Theme' => white
+    'MountAlgo Themes' => white
+    'MountAlgo Neon' => white
+    'MountAlgo Frost' => white
+    'MountAlgo Cyber' => white
+    'Standard Spartan Edge Theme' => white
+    'Dark ICT Theme' => white
+    'Garuda Gold' => white
+    'MountAlgo Super Premium Theme' => white
+    'MountAlgo Orange White Theme' => white
+    'DEX Deep' => white
+    'Deep Sea' => white
+    => white
 
-if not na(prevLo) and bar_offset >= 0 and bar_offset < length
-    int r = array.get(bar_to_bin, bar_offset)
-    float prev_rng = prevHi - prevLo
-    float prev_step = prev_rng / rows
-    plot_price := prevLo + (r * prev_step) + (prev_step * 0.5)
-    
-    // Gradient coloring with Value Area and POC highlighting
-    color base_color = color.from_gradient(r, 0, rows - 1, col_bot, col_top)
-    if r == prevPocIdx
-        plot_color := c_poc
-    else if r >= prevValIdx and r <= prevVahIdx
-        plot_color := base_color
+color box_col_bull = color.new(col_bull, 80)
+color box_col_bear = color.new(col_bear, 80)
+color transparent_col = color.new(dark, 100)
+
+mitigated_color            = brown
+mitigated_box_color        = color.new(brown, 80)
+
+// Volume Profile Settings
+var string g_vp = "Volume Profile Settings"
+vp_resolution = input.int(50, "Profile Resolution (Rows)", minval=10, maxval=200, group=g_vp)
+vp_val_percent = input.int(70, "Value Area Volume %", minval=10, maxval=100, group=g_vp)
+vp_type = input.string("Delta", "Profile View Type", options=["Normal", "Delta"], group=g_vp)
+box_width_ratio = input.float(1.5, "Profile Width Ratio", minval=0.1, maxval=10.0, step=0.1, group=g_vp)
+
+// HTF Settings
+var string g_htf = "Higher Timeframe Candle settings"
+show_htf_candle = input.bool(true, "Show HTF Candles", group=g_htf)
+htf_timeframe = input.timeframe("60", "HTF Timeframe", group=g_htf)
+
+// HVN / LVN Config
+show_lvn       = input.bool(true, "Show LVN (Low Volume Nodes)", group=g_vp)
+lvn_threshold  = input.float(0.15, "LVN Threshold (%)", minval=0.01, maxval=0.5, step=0.01, group=g_vp)
+color_lvn      = input.color(color.new(#62647a, 90), "LVN Color", group=g_vp)
+
+show_hvn       = input.bool(true, "Show HVN (High Volume Nodes)", group=g_vp)
+hvn_threshold  = input.float(0.70, "HVN Threshold (%)", minval=0.01, maxval=1.0, step=0.01, group=g_vp)
+color_hvn      = input.color(color.new(#ff9800, 90), "HVN Color", group=g_vp)
+
+// Display Settings
+show_vp_histogram = input.bool(true, "Show VP Histogram", group="Display Settings")
+show_vp_labels = input.bool(true, "Show POC/VAH/VAL Labels", group="Display Settings")
+show_logo = input.bool(true, "Show Logo", group="Logo Settings")
+
+// =============================================================================
+// 2. HELPER FUNCTIONS
+// =============================================================================
+format_vol(float v) =>
+    float abs_v = math.abs(v)
+    string res = ""
+    if abs_v >= 1000000000
+        res := str.tostring(v / 1000000000, "#.##") + "B"
+    else if abs_v >= 1000000
+        res := str.tostring(v / 1000000, "#.##") + "M"
+    else if abs_v >= 1000
+        res := str.tostring(v / 1000, "#.#") + "K"
     else
-        plot_color := color.new(base_color, 75) // Transparansi 75% untuk area non-VA (faded)
+        res := str.tostring(v, "0.##")
+    res
 
-// ===== PLOTTING =====
-plot(plot_price, "Volume Profile Staircase", color=plot_color, linewidth=2, style=plot.style_stepline, editable=true)
+get_tick_volume() => math.max(volume, 0)
+
+f_gradientColor(color baseColor, float val, float maxVal) =>
+    float ratio = maxVal > 0 ? math.abs(val) / maxVal : 0.0
+    int transparency = math.round(95 - (ratio * 75))
+    color.new(baseColor, transparency)
+
+// 3-part wick/body anatomical partitioning heuristic (safe OHLC parameters)
+calc_vol_partition(float vol, float o, float h, float l, float c) =>
+    float range_size = h - l
+    float b_vol = 0.0
+    float s_vol = 0.0
+
+    if range_size > 0
+        float body_high = math.max(o, c)
+        float body_low  = math.min(o, c)
+        float body_size = body_high - body_low
+        float upper_wick = h - body_high
+        float lower_wick = body_low - l
+
+        float w_body = body_size / range_size
+        float w_upper = upper_wick / range_size
+        float w_lower = lower_wick / range_size
+
+        float b_center = (o + c) / 2
+        float body_pos = (b_center - l) / range_size
+        float br_b = c > o ? math.min(0.9, 0.6 + body_pos * 0.3) : (c < o ? math.max(0.1, 0.4 - (1-body_pos) * 0.3) : 0.5)
+
+        b_vol := vol * (w_body * br_b + w_lower * 0.9 + w_upper * 0.1)
+        s_vol := vol * (w_body * (1 - br_b) + w_upper * 0.9 + w_lower * 0.1)
+    else
+        b_vol := vol * 0.5
+        s_vol := vol * 0.5
+    [b_vol, s_vol]
+
+// Directional Volume Profiling for LTF (Strict candle direction)
+get_ltf_v() =>
+    float b_vol = close >= open ? volume : 0.0
+    float s_vol = close < open ? volume : 0.0
+    [open, high, low, close, volume, b_vol, s_vol]
+
+// =============================================================================
+// 3. PRECISION ACCURACY ENGINE (request.security_lower_tf)
+// =============================================================================
+[ltf_o, ltf_h, ltf_l, ltf_c, ltf_v, ltf_b, ltf_s] = request.security_lower_tf(syminfo.tickerid, "1", get_ltf_v())
+
+float ltf_buy_sum  = 0.0
+float ltf_sell_sum = 0.0
+float ltf_v_total  = 0.0
+
+if not na(ltf_v)
+    int ltf_count = array.size(ltf_v)
+    if ltf_count > 0
+        for i = 0 to ltf_count - 1
+            ltf_buy_sum  += array.get(ltf_b, i)
+            ltf_sell_sum += array.get(ltf_s, i)
+            ltf_v_total  += array.get(ltf_v, i)
+
+// Responsive Volume Engine: Sync LTF with actual HTF volume using fallback
+float missing_v = math.max(0, get_tick_volume() - ltf_v_total)
+[miss_b, miss_s] = calc_vol_partition(missing_v, open, high, low, close)
+
+float current_buy_vol = ltf_buy_sum + miss_b
+float current_sell_vol = ltf_sell_sum + miss_s
+
+// =============================================================================
+// 4. DATA AGGREGATION & STORAGE
+// =============================================================================
+var float[] volume_at_price = array.new_float(vp_resolution, 0.0)
+var float[] buy_at_price = array.new_float(vp_resolution, 0.0)
+var float[] sell_at_price = array.new_float(vp_resolution, 0.0)
+
+// Store historical values to recalculate precisely on barstate.islast
+var float[] hist_open  = array.new_float(0)
+var float[] hist_high  = array.new_float(0)
+var float[] hist_low   = array.new_float(0)
+var float[] hist_close = array.new_float(0)
+var float[] hist_vol   = array.new_float(0)
+var int[]   hist_time  = array.new_int(0)
+
+if barstate.isconfirmed
+    array.push(hist_open, open)
+    array.push(hist_high, high)
+    array.push(hist_low, low)
+    array.push(hist_close, close)
+    array.push(hist_vol, volume)
+    array.push(hist_time, time)
+    if array.size(hist_close) > 2000
+        array.shift(hist_open)
+        array.shift(hist_high)
+        array.shift(hist_low)
+        array.shift(hist_close)
+        array.shift(hist_vol)
+        array.shift(hist_time)
+
+// Recalculate everything only on barstate.islast to prevent timeout and maintain high fidelity
+float vp_high = na
+float vp_low = na
+
+// Detect HTF Session transitions
+htf_start_time = time(htf_timeframe)
+is_new_htf = ta.change(htf_start_time) != 0
+var int htf_start_bar_index = 0
+if bar_index == 0
+    htf_start_bar_index := 0
+if is_new_htf
+    htf_start_bar_index := bar_index
+
+// Storage for HTF Candle Lines (2 thin wicks + 1 thick body line)
+var line htf_body_line = na
+var line htf_u_wick_line = na
+var line htf_l_wick_line = na
+
+// Storage for persistent borders
+var box htf_candle_border = na
+var box htf_profile_border = na
+
+// Distribution Heuristic
+distribute_vol_to_bins(int _rows, float _lowest_p, float _inv_row_h, float _o, float _h, float _l, float _c, float _v_total, float _b_total, float _s_total, float[] _bucket_total, float[] _bucket_buy, float[] _bucket_sell) =>
+    float b_high = math.max(_o, _c)
+    float b_low  = math.min(_o, _c)
+    float _range_val = _h - _l
+    int max_idx = _rows - 1
+
+    if max_idx >= 0
+        if _range_val <= 0
+            int idx = math.min(max_idx, math.max(0, math.floor((_c - _lowest_p) * _inv_row_h)))
+            array.set(_bucket_total, idx, array.get(_bucket_total, idx) + _v_total)
+            array.set(_bucket_buy, idx, array.get(_bucket_buy, idx) + _b_total)
+            array.set(_bucket_sell, idx, array.get(_bucket_sell, idx) + _s_total)
+        else
+            float inv_range = 1.0 / _range_val
+            float w_l = (b_low - _l) * inv_range
+            float w_b = (b_high - b_low) * inv_range
+            float w_u = (_h - b_high) * inv_range
+
+            float v_l = _v_total * w_l
+            float v_b = _v_total * w_b
+            float v_u = _v_total * w_u
+
+            float b_center = (_o + _c) * 0.5
+            float body_pos = (b_center - _l) * inv_range
+            float br_b = _c > _o ? math.min(0.9, 0.6 + body_pos * 0.3) : (_c < _o ? math.max(0.1, 0.4 - (1-body_pos) * 0.3) : 0.5)
+
+            if v_l > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((_l - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_l / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.90
+                    float v_j_sell = v_j * 0.10
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_b > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_low - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_b / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * br_b
+                    float v_j_sell = v_j * (1.0 - br_b)
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+            if v_u > 0
+                int idx_l = math.min(max_idx, math.max(0, math.floor((b_high - _lowest_p) * _inv_row_h)))
+                int idx_h = math.min(max_idx, math.max(0, math.floor((_h - _lowest_p) * _inv_row_h)))
+                if idx_l <= idx_h
+                    float v_j = v_u / (idx_h - idx_l + 1)
+                    float v_j_buy = v_j * 0.10
+                    float v_j_sell = v_j * 0.90
+                    for j = idx_l to idx_h
+                        array.set(_bucket_total, j, array.get(_bucket_total, j) + v_j)
+                        array.set(_bucket_buy, j, array.get(_bucket_buy, j) + v_j_buy)
+                        array.set(_bucket_sell, j, array.get(_bucket_sell, j) + v_j_sell)
+
+// Pre-calculate session bounds globally
+var int prev_htf_start_bar_index = 0
+var float rt_htf_highest = na
+var float rt_htf_lowest = na
+var float rt_htf_open = na
+
+if bar_index == 0
+    prev_htf_start_bar_index := 0
+    rt_htf_highest := high
+    rt_htf_lowest := low
+    rt_htf_open := open
+else
+    if is_new_htf
+        prev_htf_start_bar_index := htf_start_bar_index[1]
+
+        rt_htf_highest := high
+        rt_htf_lowest := low
+        rt_htf_open := open
+    else
+        rt_htf_highest := math.max(rt_htf_highest, high)
+        rt_htf_lowest := math.min(rt_htf_lowest, low)
+
+// Dynamic HTF Candle drawing logic (Only draw ONE latest candle and delete/clear previous lines/borders on transition)
+if show_htf_candle
+    // Handle real-time/last session with persistent setters instead of deletion to prevent flicker
+    if barstate.islast
+        color rt_b_color = close >= rt_htf_open ? color.new(col_bull, 20) : color.new(col_bear, 20)
+        color rt_w_color = close >= rt_htf_open ? color.new(col_bull, 10) : color.new(col_bear, 10)
+
+        int axis_x = htf_start_bar_index
+
+        if na(htf_u_wick_line)
+            htf_u_wick_line := line.new(axis_x, rt_htf_highest, axis_x, math.max(rt_htf_open, close), color=rt_w_color, width=2)
+        else
+            line.set_xy1(htf_u_wick_line, axis_x, rt_htf_highest)
+            line.set_xy2(htf_u_wick_line, axis_x, math.max(rt_htf_open, close))
+            line.set_color(htf_u_wick_line, rt_w_color)
+
+        if na(htf_l_wick_line)
+            htf_l_wick_line := line.new(axis_x, math.min(rt_htf_open, close), axis_x, rt_htf_lowest, color=rt_w_color, width=2)
+        else
+            line.set_xy1(htf_l_wick_line, axis_x, math.min(rt_htf_open, close))
+            line.set_xy2(htf_l_wick_line, axis_x, rt_htf_lowest)
+            line.set_color(htf_l_wick_line, rt_w_color)
+
+        if na(htf_body_line)
+            htf_body_line := line.new(axis_x, rt_htf_open, axis_x, close, color=rt_b_color, width=20)
+        else
+            line.set_xy1(htf_body_line, axis_x, rt_htf_open)
+            line.set_xy2(htf_body_line, axis_x, close)
+            line.set_color(htf_body_line, rt_b_color)
+
+        // Draw visual border boundaries around the HTF candle (using box)
+        if na(htf_candle_border)
+            htf_candle_border := box.new(axis_x - 3, rt_htf_highest, axis_x + 3, rt_htf_lowest, border_color=col_poc, border_style=line.style_dashed, border_width=1, bgcolor=Transparent_Color)
+        else
+            box.set_left(htf_candle_border, axis_x - 3)
+            box.set_right(htf_candle_border, axis_x + 3)
+            box.set_top(htf_candle_border, rt_htf_highest)
+            box.set_bottom(htf_candle_border, rt_htf_lowest)
+            box.set_border_color(htf_candle_border, col_poc)
+
+// =============================================================================
+// 5. DRAWING & RENDERING ENGINE
+// =============================================================================
+var box[] vp_boxes = array.new_box()
+var line[] vp_lines = array.new_line()
+var label[] vp_labels = array.new_label()
+
+if barstate.islast
+    // Cleanup drawings
+    if array.size(vp_boxes) > 0
+        for i = 0 to array.size(vp_boxes) - 1
+            box.delete(array.get(vp_boxes, i))
+        array.clear(vp_boxes)
+    if array.size(vp_lines) > 0
+        for i = 0 to array.size(vp_lines) - 1
+            line.delete(array.get(vp_lines, i))
+        array.clear(vp_lines)
+    if array.size(vp_labels) > 0
+        for i = 0 to array.size(vp_labels) - 1
+            label.delete(array.get(vp_labels, i))
+        array.clear(vp_labels)
+
+    // Reset bins
+    array.fill(volume_at_price, 0.0)
+    array.fill(buy_at_price, 0.0)
+    array.fill(sell_at_price, 0.0)
+
+    // Find HTF session start / boundaries
+    int start_hist_idx = htf_start_bar_index
+    // Find absolute low/high bounds of historical bars in current HTF session
+    vp_high := rt_htf_highest
+    vp_low  := rt_htf_lowest
+
+    float p_range = vp_high - vp_low
+    float p_step = p_range > 0 ? p_range / vp_resolution : 0
+    if p_range > 0
+        float inv_p_step = 1.0 / p_step
+        // Distribute historical window bars within current HTF session
+        for k = start_hist_idx to bar_index - 1
+            float o_v = open[bar_index - k]
+            float h_v = high[bar_index - k]
+            float l_v = low[bar_index - k]
+            float c_v = close[bar_index - k]
+            float v_v = volume[bar_index - k]
+            [b_h, s_h] = calc_vol_partition(v_v, o_v, h_v, l_v, c_v)
+            distribute_vol_to_bins(vp_resolution, vp_low, inv_p_step, o_v, h_v, l_v, c_v, v_v, b_h, s_h, volume_at_price, buy_at_price, sell_at_price)
+        // Distribute current bar
+        distribute_vol_to_bins(vp_resolution, vp_low, inv_p_step, open, high, low, close, volume, current_buy_vol, current_sell_vol, volume_at_price, buy_at_price, sell_at_price)
+
+    float total_profile_volume = array.sum(volume_at_price)
+    float max_profile_vol = 0.0
+    int poc_index = 0
+
+    if total_profile_volume > 0
+        max_profile_vol := array.max(volume_at_price)
+        poc_index := array.indexof(volume_at_price, max_profile_vol)
+
+    // Calculate Value Area (VAH / VAL) - Standard 70% rule
+    int va_high_idx = poc_index
+    int va_low_idx = poc_index
+    float target_va_vol = total_profile_volume * (vp_val_percent / 100.0)
+    float current_va_vol = max_profile_vol
+
+    while current_va_vol < target_va_vol
+        float up_vol = (va_high_idx < vp_resolution - 1) ? array.get(volume_at_price, va_high_idx + 1) : 0.0
+        float down_vol = (va_low_idx > 0) ? array.get(volume_at_price, va_low_idx - 1) : 0.0
+
+        if up_vol == 0.0 and down_vol == 0.0
+            break
+
+        if up_vol >= down_vol
+            current_va_vol += up_vol
+            va_high_idx += 1
+        else
+            current_va_vol += down_vol
+            va_low_idx -= 1
+
+    float poc_price = vp_low + (poc_index + 0.5) * p_step
+    float vah_price = vp_low + (va_high_idx + 1) * p_step
+    float val_price = vp_low + va_low_idx * p_step
+
+    if show_vp_histogram and p_range > 0
+        int axis_x = htf_start_bar_index
+        int total_width = bar_index - htf_start_bar_index + 1
+        int profile_max_width = math.round(total_width * box_width_ratio)
+
+        // Draw premium, high-contrast visual border boundary box around the Volume Profile histogram
+        if na(htf_profile_border)
+            htf_profile_border := box.new(axis_x, vp_high, axis_x + profile_max_width, vp_low, border_color=col_poc, border_style=line.style_dashed, border_width=1, bgcolor=Transparent_Color)
+        else
+            box.set_left(htf_profile_border, axis_x)
+            box.set_right(htf_profile_border, axis_x + profile_max_width)
+            box.set_top(htf_profile_border, vp_high)
+            box.set_bottom(htf_profile_border, vp_low)
+            box.set_border_color(htf_profile_border, col_poc)
+
+        for i = 0 to vp_resolution - 1
+            float level_price = vp_low + i * p_step
+            float next_level_price = level_price + p_step
+            float level_vol = array.get(volume_at_price, i)
+            float level_buy = array.get(buy_at_price, i)
+            float level_sell = array.get(sell_at_price, i)
+            float level_delta = level_buy - level_sell
+
+            if level_vol > 0
+                // Color mapping: Delta view or Normal view
+                color base_color = vp_type == "Delta" ? (level_delta >= 0 ? col_bull : col_bear) : col_poc
+                color gradient_color = f_gradientColor(base_color, level_vol, max_profile_vol)
+                int box_width = math.round(level_vol / max_profile_vol * profile_max_width)
+
+                if i < va_low_idx or i > va_high_idx
+                    gradient_color := color.new(gradient_color, 65) // Glass-effect fade out non-VA
+
+                // Create text for volume bins displaying total volume (and delta in Delta mode)
+                string box_text = format_vol(level_vol)
+                if vp_type == "Delta"
+                    box_text := format_vol(level_vol) + " (Δ " + (level_delta >= 0 ? "+" : "") + format_vol(level_delta) + ")"
+
+                box bv1 = box.new(axis_x, next_level_price, axis_x + box_width, level_price, bgcolor=gradient_color, border_color=na, text=box_text, text_color=dark, text_size=size.auto, text_valign="middle")
+                array.push(vp_boxes, bv1)
+
+        // Draw POC / VAH / VAL Lines & Labels
+        if not na(poc_price)
+            int label_x = axis_x + profile_max_width + 5
+            // POC
+            line lpoc = line.new(axis_x, poc_price, axis_x + profile_max_width, poc_price, color=color.new(col_poc, 0), style=line.style_solid, width=2)
+            array.push(vp_lines, lpoc)
+            if show_vp_labels
+                string poc_lbl = "POC: " + str.tostring(poc_price, format.mintick) + " (" + format_vol(max_profile_vol) + ")"
+                label lb_poc = label.new(label_x, poc_price, poc_lbl, color=col_poc, textcolor=dark, style=label.style_label_left, size=size.tiny)
+                array.push(vp_labels, lb_poc)
+
+            // VAH
+            line lvah = line.new(axis_x, vah_price, axis_x + profile_max_width, vah_price, color=color.new(col_bull, 20), style=line.style_dashed, width=1)
+            array.push(vp_lines, lvah)
+            if show_vp_labels
+                float vah_vol = va_high_idx < vp_resolution ? array.get(volume_at_price, va_high_idx) : 0.0
+                string vah_lbl = "VAH: " + str.tostring(vah_price, format.mintick) + " (" + format_vol(vah_vol) + ")"
+                label lb_vah = label.new(label_x, vah_price, vah_lbl, color=col_bull, textcolor=dark, style=label.style_label_left, size=size.tiny)
+                array.push(vp_labels, lb_vah)
+
+            // VAL
+            line lval = line.new(axis_x, val_price, axis_x + profile_max_width, val_price, color=color.new(col_bear, 20), style=line.style_dashed, width=1)
+            array.push(vp_lines, lval)
+            if show_vp_labels
+                float val_vol = va_low_idx >= 0 ? array.get(volume_at_price, va_low_idx) : 0.0
+                string val_lbl = "VAL: " + str.tostring(val_price, format.mintick) + " (" + format_vol(val_vol) + ")"
+                label lb_val = label.new(label_x, val_price, val_lbl, color=col_bear, textcolor=dark, style=label.style_label_left, size=size.tiny)
+                array.push(vp_labels, lb_val)
+
+        // HVN & LVN Detection
+        if show_lvn or show_hvn
+            float avg_profile_vol = array.avg(volume_at_price)
+            float threshold_lvn = max_profile_vol * lvn_threshold
+            float threshold_hvn = max_profile_vol * hvn_threshold
+
+            for i = 1 to vp_resolution - 2
+                float v_prev = array.get(volume_at_price, i - 1)
+                float v_curr = array.get(volume_at_price, i)
+                float v_next = array.get(volume_at_price, i + 1)
+                float level_price_bottom = vp_low + i * p_step
+                float level_price_top = level_price_bottom + p_step
+
+                // HVN detection (excluding POC) - Solid border area box with strict "HVN" text
+                if show_hvn and v_curr > v_prev and v_curr > v_next and v_curr >= threshold_hvn and i != poc_index
+                    box bhvn = box.new(axis_x, level_price_top, axis_x + profile_max_width, level_price_bottom,
+                         border_color=color.new(col_bull, 20), border_style=line.style_solid, border_width=1,
+                         bgcolor=color.new(col_bull, 90), text="HVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign="middle")
+                    array.push(vp_boxes, bhvn)
+
+                // LVN detection - Dashed border area box with strict "LVN" text
+                if show_lvn and v_curr < v_prev and v_curr < v_next and v_curr < threshold_lvn
+                    box blvn = box.new(axis_x, level_price_top, axis_x + profile_max_width, level_price_bottom,
+                         border_color=color.new(col_bear, 20), border_style=line.style_dashed, border_width=1,
+                         bgcolor=color.new(col_bear, 90), text="LVN", text_color=white, text_size=size.tiny, text_halign=text.align_center, text_valign="middle")
+                    array.push(vp_boxes, blvn)
+
+// =============================================================================
+// 6. PREMIUM BREATHING LOGO SYSTEM (PORTED FROM BOOKMAP.PINE)
+// =============================================================================
+color bull_c1 = col_bull
+color bull_c2 = col_bear
+color bear_c1 = col_bull
+color bear_c2 = col_bear
+
+bool  trend_check = ta.ema(close, 2) > ta.ema(open, 2)
+color c_start     = trend_check ? bull_c1 : bear_c1
+color c_end       = trend_check ? bull_c2 : bear_c2
+
+float time_cycle = timenow / 1000
+float breathe    = (math.sin(time_cycle * 3) + 1) / 2
+
+int LG_Line_Widthb = 1
+int periodb        = 200
+
+float logo_base_raw = ta.lowest(low, periodb)
+float logo_range    = ta.highest(high, periodb) - logo_base_raw
+var float h_unit    = na
+
+float target_h = math.max(ta.atr(periodb) * 1.5, logo_range * 0.22)
+h_unit := na(h_unit) ? target_h : h_unit * 0.98 + target_h * 0.02
+
+float logo_base = logo_base_raw - h_unit * 0.2
+
+float point1b  = logo_base + h_unit * 0.71
+float point2b  = logo_base + h_unit * 0.43
+float point3b  = logo_base + h_unit * 0.61
+float point4b  = logo_base + h_unit * 0.32
+float point5b  = logo_base + h_unit * 1.00 // Peak
+float point6b  = logo_base + h_unit * 0.71
+float point7b  = logo_base + h_unit * 0.18 // Base Top
+float point8b  = logo_base + h_unit * 0.21
+float point9b  = logo_base + h_unit * 0.71
+float point1b0 = logo_base + h_unit * 0.86
+
+var line Line1b  = na
+var line Line2b  = na
+var line Line3b  = na
+var line Line4b  = na
+var line Line5b  = na
+var line Line6b  = na
+var line Line7b  = na
+var line Line8b  = na
+var line Line9b  = na
+var line Line1b0 = na
+var line Line1b1 = na
+var line Line1b2 = na
+var line Line1b3 = na
+var line Line1b4 = na
+var line Line1b5 = na
+var line Line1b6 = na
+var line Line1b7 = na
+var line Line1b8 = na
+var label[] brand_labels = array.new_label()
+
+if not na(Line1b)
+    line.delete(Line1b)
+    line.delete(Line2b)
+    line.delete(Line3b)
+    line.delete(Line4b)
+    line.delete(Line5b)
+    line.delete(Line6b)
+    line.delete(Line7b)
+    line.delete(Line8b)
+    line.delete(Line9b)
+    line.delete(Line1b0)
+    line.delete(Line1b1)
+    line.delete(Line1b2)
+    line.delete(Line1b3)
+    line.delete(Line1b4)
+    line.delete(Line1b5)
+    line.delete(Line1b6)
+    line.delete(Line1b7)
+    line.delete(Line1b8)
+    while array.size(brand_labels) > 0
+        label.delete(array.pop(brand_labels))
+
+get_adv_color(step) =>
+    float ratio = step / 18.0
+    float dynamic_ratio = ratio + (breathe * 0.15)
+    if dynamic_ratio > 1
+        dynamic_ratio := 1
+    color.from_gradient(dynamic_ratio, 0, 1, c_start, c_end)
+
+get_fade_alpha(float x_rel) =>
+    float dist = math.abs(x_rel - 32)
+    float ratio = dist / 32.0
+    math.round(80 * (1 - ratio))
+
+// Shift logo layout further right to prevent visual overlap with volume profile boxes
+int l_off = 110
+
+if show_logo and barstate.islast
+    color c_head_sync = get_adv_color(1)
+
+    Line1b := line.new(x1 = bar_index + l_off + 4, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line2b := line.new(x1 = bar_index + l_off + 8, y1 = point7b, x2 = bar_index + l_off + 11, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b, Line2b, color = color.new(c_head_sync, get_fade_alpha(7.5)))
+
+    Line3b := line.new(x1 = bar_index + l_off + 11, y1 = point1b, x2 = bar_index + l_off + 13, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line4b := line.new(x1 = bar_index + l_off + 11, y1 = point2b, x2 = bar_index + l_off + 13, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line3b, Line4b, color = color.new(get_adv_color(3), get_fade_alpha(12.0)))
+
+    Line5b := line.new(x1 = bar_index + l_off + 13, y1 = point3b, x2 = bar_index + l_off + 19, y2 = point5b, color = col_poc, width = LG_Line_Widthb)
+    Line6b := line.new(x1 = bar_index + l_off + 13, y1 = point4b, x2 = bar_index + l_off + 19, y2 = point6b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line5b, Line6b, color = color.new(get_adv_color(5), get_fade_alpha(16.0)))
+
+    Line7b := line.new(x1 = bar_index + l_off + 19, y1 = point5b, x2 = bar_index + l_off + 24, y2 = point3b, color = col_poc, width = LG_Line_Widthb)
+    Line8b := line.new(x1 = bar_index + l_off + 19, y1 = point6b, x2 = bar_index + l_off + 24, y2 = point4b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line7b, Line8b, color = color.new(get_adv_color(7), get_fade_alpha(21.5)))
+
+    Line9b := line.new(x1 = bar_index + l_off + 24, y1 = point3b, x2 = bar_index + l_off + 26, y2 = point1b, color = col_poc, width = LG_Line_Widthb)
+    Line1b0 := line.new(x1 = bar_index + l_off + 24, y1 = point4b, x2 = bar_index + l_off + 26, y2 = point2b, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line9b, Line1b0, color = color.new(get_adv_color(9), get_fade_alpha(25.0)))
+
+    Line1b1 := line.new(x1 = bar_index + l_off + 26, y1 = point1b, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b2 := line.new(x1 = bar_index + l_off + 26, y1 = point2b, x2 = bar_index + l_off + 32, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b1, Line1b2, color = color.new(get_adv_color(11), get_fade_alpha(31.0)))
+
+    Line1b3 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 26, y2 = point7b, color = col_poc, width = LG_Line_Widthb)
+    Line1b4 := line.new(x1 = bar_index + l_off + 0, y1 = logo_base, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    linefill.new(Line1b3, Line1b4, color = color.new(c_head_sync, get_fade_alpha(13.0)))
+
+    Line1b5 := line.new(x1 = bar_index + l_off + 2, y1 = point7b, x2 = bar_index + l_off + 0, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b6 := line.new(x1 = bar_index + l_off + 26, y1 = point7b, x2 = bar_index + l_off + 24, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+    Line1b7 := line.new(x1 = bar_index + l_off + 32, y1 = logo_base, x2 = bar_index + l_off + 36, y2 = logo_base, color = col_poc, width = LG_Line_Widthb)
+
+    label l = label.new(bar_index + l_off + 54, point2b, "MountAlgo", style=label.style_none, textcolor=col_poc, size=size.huge, text_align=text.align_right)
+    array.push(brand_labels, l)
+
+    label glow1 = label.new(bar_index + l_off + 13, point1b0, "●", style=label.style_none, textcolor=color.new(get_adv_color(2), get_fade_alpha(13.0)), size=size.huge)
+    label glow2 = label.new(bar_index + l_off + 13, point1b0, "〇", style=label.style_none, textcolor=col_poc, size=size.huge)
+    array.push(brand_labels, glow1)
+    array.push(brand_labels, glow2)
