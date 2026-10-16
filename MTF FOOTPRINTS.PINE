@@ -503,9 +503,10 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 float sell_width_ratio = max_vol > 0 ? sell_val / max_vol : 0
                 
                 // Render modes: Bid/Ask, Delta, Volume
-                // Under Volume Footprint mode, use total level volume exclusively on the right profile
-                float active_buy_val = footprint_type == "Delta Footprint" ? math.max(0.0, buy_val - sell_val) : (footprint_type == "Volume Footprint" ? vol_val : buy_val)
-                float active_sell_val = footprint_type == "Delta Footprint" ? math.max(0.0, sell_val - buy_val) : (footprint_type == "Volume Footprint" ? 0.0 : sell_val)
+                // Under Volume Footprint & Delta Footprint mode, render exclusively on the right profile
+                float level_delta = buy_val - sell_val
+                float active_buy_val = footprint_type == "Delta Footprint" ? math.abs(level_delta) : (footprint_type == "Volume Footprint" ? vol_val : buy_val)
+                float active_sell_val = footprint_type == "Delta Footprint" ? 0.0 : (footprint_type == "Volume Footprint" ? 0.0 : sell_val)
 
                 float active_buy_ratio = max_vol > 0 ? active_buy_val / max_vol : 0.0
                 float active_sell_ratio = max_vol > 0 ? active_sell_val / max_vol : 0.0
@@ -562,10 +563,13 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
                 // Determine base color for buyer profile.
                 // Under "Volume Footprint" mode, use delta gradient (from bear to bull based on buy volume ratio).
+                // Under "Delta Footprint" mode, use col_bull for positive delta and col_bear for negative delta.
                 color base_col_buy = col_bull
                 if footprint_type == "Volume Footprint"
                     float buy_ratio_gradient = vol_val > 0 ? buy_val / vol_val : 0.5
                     base_col_buy := color.from_gradient(buy_ratio_gradient, 0.0, 1.0, col_bear, col_bull)
+                else if footprint_type == "Delta Footprint"
+                    base_col_buy := level_delta >= 0 ? col_bull : col_bear
 
                 color final_col_buy = (i == poc_idx and show_poc) ? color.new(color_poc, t_alpha_buy) : color.new(base_col_buy, t_alpha_buy)
                 
@@ -576,8 +580,11 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 
                 // Text Volume Labels (using standard formatted volume suffix like 15K, 3M)
                 string txt_vol_buy = ""
-                if show_buy_sell_volume and active_buy_val > 0 and (active_buy_ratio > 0.15 or footprint_type == "Volume Footprint")
-                    txt_vol_buy := format_vol(active_buy_val)
+                if show_buy_sell_volume and active_buy_val > 0 and (active_buy_ratio > 0.15 or footprint_type == "Volume Footprint" or footprint_type == "Delta Footprint")
+                    if footprint_type == "Delta Footprint"
+                        txt_vol_buy := (level_delta >= 0 ? "+" : "") + format_vol(level_delta)
+                    else
+                        txt_vol_buy := format_vol(active_buy_val)
 
                 string txt_vol_sell = ""
                 if show_buy_sell_volume and active_sell_val > 0 and active_sell_ratio > 0.15
