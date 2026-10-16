@@ -511,7 +511,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 float active_buy_ratio = max_vol > 0 ? active_buy_val / max_vol : 0.0
                 float active_sell_ratio = max_vol > 0 ? active_sell_val / max_vol : 0.0
 
-                int buy_line_len = active_buy_val > 0 ? math.max(1, math.round(active_buy_ratio * total_width * box_width)) : 0
+                int buy_line_len = active_buy_val > 0 ? (footprint_type == "Delta Footprint" ? profile_max_width : math.max(1, math.round(active_buy_ratio * total_width * box_width))) : 0
                 int sell_line_len = active_sell_val > 0 ? math.max(1, math.round(active_sell_ratio * total_width * box_width)) : 0
                 
                 int x_buy_1 = buyer_axis_x
