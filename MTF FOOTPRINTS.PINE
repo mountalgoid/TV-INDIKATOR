@@ -660,7 +660,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         float imb_y2 = level_high - imb_margin
                         color imb_color = is_buy_imbalance ? col_bull : col_bear
                         // Place vertical line at the respective footprint boundaries
-                        int imb_x = is_buy_imbalance ? x_buy_2 : x_sell_1
+                        int imb_x = (footprint_type == "Volume Footprint" or footprint_type == "Delta Footprint") ? x_buy_2 : (is_buy_imbalance ? x_buy_2 : x_sell_1)
                         ln_imb = line.new(imb_x, imb_y1, imb_x, imb_y2, color=imb_color, width=imbalance_line_width, style=line.style_solid)
                         array.push(future_lines, ln_imb)
 
@@ -699,7 +699,7 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                         float imb_y1 = level_low + imb_margin
                         float imb_y2 = level_high - imb_margin
                         color imb_color = is_buy_imbalance ? col_bull : col_bear
-                        int imb_x = is_buy_imbalance ? x_buy_2 : x_sell_1
+                        int imb_x = (footprint_type == "Volume Footprint" or footprint_type == "Delta Footprint") ? x_buy_2 : (is_buy_imbalance ? x_buy_2 : x_sell_1)
                         line.new(imb_x, imb_y1, imb_x, imb_y2, color=imb_color, width=imbalance_line_width, style=line.style_solid)
 
                     // S/R candidate logic (Filter: Support must be below current price, Resistance must be above)
