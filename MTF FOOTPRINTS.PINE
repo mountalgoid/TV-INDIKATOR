@@ -386,12 +386,18 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
 
     // POC & VA
     float max_vol = 0.0
+    float max_delta = 0.0
     int poc_idx = 0
     for i = 0 to levels_count - 1
         v_ = array.get(vol_dist, i)
         if v_ > max_vol
             max_vol := v_
             poc_idx := i
+        bv_ = array.get(buy_dist, i)
+        sv_ = math.max(0.0, v_ - bv_)
+        d_ = math.abs(bv_ - sv_)
+        if d_ > max_delta
+            max_delta := d_
             
     // VA Logic
     float target_vol = s_vol * (value_area_pct / 100.0)
@@ -508,10 +514,10 @@ draw_htf_profile(start_idx, end_idx, is_future) =>
                 float active_buy_val = footprint_type == "Delta Footprint" ? math.abs(level_delta) : (footprint_type == "Volume Footprint" ? vol_val : buy_val)
                 float active_sell_val = footprint_type == "Delta Footprint" ? 0.0 : (footprint_type == "Volume Footprint" ? 0.0 : sell_val)
 
-                float active_buy_ratio = max_vol > 0 ? active_buy_val / max_vol : 0.0
+                float active_buy_ratio = footprint_type == "Delta Footprint" ? (max_delta > 0 ? active_buy_val / max_delta : 0.0) : (max_vol > 0 ? active_buy_val / max_vol : 0.0)
                 float active_sell_ratio = max_vol > 0 ? active_sell_val / max_vol : 0.0
 
-                int buy_line_len = active_buy_val > 0 ? (footprint_type == "Delta Footprint" ? profile_max_width : math.max(1, math.round(active_buy_ratio * total_width * box_width))) : 0
+                int buy_line_len = active_buy_val > 0 ? math.max(1, math.round(active_buy_ratio * total_width * box_width)) : 0
                 int sell_line_len = active_sell_val > 0 ? math.max(1, math.round(active_sell_ratio * total_width * box_width)) : 0
                 
                 int x_buy_1 = buyer_axis_x
