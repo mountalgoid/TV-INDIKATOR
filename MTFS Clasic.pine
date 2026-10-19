@@ -1475,7 +1475,8 @@ if array.size(htf_supply_high) > 0
             // Breakout Bullish
             if htf_C > _lvl and htf_C1 <= _lvl
                 array.set(htf_ms_bull_breakout, i, true)
-                htf_next_demand_is_idm := true
+                if not is_idm_node
+                    htf_next_supply_is_idm := true
                 // Visual
                 bool is_msb = htf_trend_bias != 1
                 bool is_sel = is_idm_node ? (show_idm or htf_idm_created_selected) : (is_msb ? htf_MSB_selected : htf_MSC_selected)
@@ -1513,7 +1514,8 @@ if array.size(htf_demand_low) > 0
             // Breakout Bearish
             if htf_C < _lvl and htf_C1 >= _lvl
                 array.set(htf_ms_bear_breakout, i, true)
-                htf_next_supply_is_idm := true
+                if not is_idm_node
+                    htf_next_demand_is_idm := true
                 // Visual
                 bool is_msb = htf_trend_bias != -1
                 bool is_sel = is_idm_node ? (show_idm or htf_idm_created_selected) : (is_msb ? htf_MSB_selected : htf_MSC_selected)
@@ -1551,7 +1553,8 @@ if array.size(ltf_supply_high) > 0
             bool is_idm_node = array.get(ltf_supply_is_idm, i)
             if close > _lvl and close[1] <= _lvl
                 array.set(ltf_ms_bull_breakout, i, true)
-                ltf_next_demand_is_idm := true
+                if not is_idm_node
+                    ltf_next_supply_is_idm := true
                 bool is_msb = ltf_trend_bias != 1
                 bool is_sel = is_idm_node ? (show_idm or ltf_idm_created_selected) : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
                 string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
@@ -1585,7 +1588,8 @@ if array.size(ltf_demand_low) > 0
             bool is_idm_node = array.get(ltf_demand_is_idm, i)
             if close < _lvl and close[1] >= _lvl
                 array.set(ltf_ms_bear_breakout, i, true)
-                ltf_next_supply_is_idm := true
+                if not is_idm_node
+                    ltf_next_demand_is_idm := true
                 bool is_msb = ltf_trend_bias != -1
                 bool is_sel = is_idm_node ? (show_idm or ltf_idm_created_selected) : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
                 string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
