@@ -1392,16 +1392,18 @@ f_mitigate_fvg_universal(true, true, up_fvg_highsHtf, up_fvg_lowsHtf, up_fvg_mit
 //═══════════════════════════════════════════════════════════════════════════════
 // 1. HELPER FUNCTIONS (GLOBAL)
 //═══════════════════════════════════════════════════════════════════════════════
-// Helper: Get Last MS Index untuk menentukan Trend
-get_last_valid_ms_idx(bool[] breakout_arr, label[] lbl_arr) =>
+// Helper: Get Last MS Index untuk menentukan Trend (Eksklusif Major MSB & MSC, IDM Diabaikan)
+get_last_valid_ms_idx(bool[] breakout_arr, label[] lbl_arr, bool[] is_idm_arr = na) =>
     int idx = -1
     int sz = array.size(breakout_arr)
     if sz > 0
         for i = sz - 1 to 0
             if array.get(breakout_arr, i)
-                if i < array.size(lbl_arr)
-                    idx := label.get_x(array.get(lbl_arr, i))
-                break
+                bool is_idm = not na(is_idm_arr) and array.size(is_idm_arr) > i ? array.get(is_idm_arr, i) : false
+                if not is_idm
+                    if i < array.size(lbl_arr)
+                        idx := label.get_x(array.get(lbl_arr, i))
+                    break
     idx
 
 // Helper: Zone Status
@@ -1444,11 +1446,11 @@ get_synchronized_zone_status(float[] arr_sup_h, float[] arr_sup_l, float[] arr_d
 //═══════════════════════════════════════════════════════════════════════════════
 // 2. GLOBAL TREND CALCULATION
 //═══════════════════════════════════════════════════════════════════════════════
-// Kita hitung Trend HTF di sini agar bisa dipakai oleh Candle Color & Dashboard
-int htf_bull_idx_g = get_last_valid_ms_idx(htf_ms_bull_breakout, htf_ms_bull_label)
-int htf_bear_idx_g = get_last_valid_ms_idx(htf_ms_bear_breakout, htf_ms_bear_label)
-int ltf_bull_idx_g = get_last_valid_ms_idx(ltf_ms_bull_breakout, ltf_ms_bull_label)
-int ltf_bear_idx_g = get_last_valid_ms_idx(ltf_ms_bear_breakout, ltf_ms_bear_label)
+// Kita hitung Trend HTF di sini agar bisa dipakai oleh Candle Color & Dashboard (Warna candle hanya sesuai Major MSB/MSC)
+int htf_bull_idx_g = get_last_valid_ms_idx(htf_ms_bull_breakout, htf_ms_bull_label, htf_supply_is_idm)
+int htf_bear_idx_g = get_last_valid_ms_idx(htf_ms_bear_breakout, htf_ms_bear_label, htf_demand_is_idm)
+int ltf_bull_idx_g = get_last_valid_ms_idx(ltf_ms_bull_breakout, ltf_ms_bull_label, ltf_supply_is_idm)
+int ltf_bear_idx_g = get_last_valid_ms_idx(ltf_ms_bear_breakout, ltf_ms_bear_label, ltf_demand_is_idm)
 
 // 1 = Bull, -1 = Bear, 0 = Neutral
 int htf_trend_bias = htf_bull_idx_g > htf_bear_idx_g ? 1 : (htf_bear_idx_g > htf_bull_idx_g ? -1 : 0)
@@ -2069,8 +2071,8 @@ if show_table and barstate.islast
     color htf_col = htf_trend_bias == 1 ? col_bull : (htf_trend_bias == -1 ? col_bear : mitigated_color)
 
     // 2. LTF Trend
-    int ltf_bull_idx = get_last_valid_ms_idx(ltf_ms_bull_breakout, ltf_ms_bull_label)
-    int ltf_bear_idx = get_last_valid_ms_idx(ltf_ms_bear_breakout, ltf_ms_bear_label)
+    int ltf_bull_idx = get_last_valid_ms_idx(ltf_ms_bull_breakout, ltf_ms_bull_label, ltf_supply_is_idm)
+    int ltf_bear_idx = get_last_valid_ms_idx(ltf_ms_bear_breakout, ltf_ms_bear_label, ltf_demand_is_idm)
     string ltf_txt = ltf_bull_idx > ltf_bear_idx ? "BULLISH" : (ltf_bear_idx > ltf_bull_idx ? "BEARISH" : "NEUTRAL")
     color ltf_col = ltf_bull_idx > ltf_bear_idx ? col_bull : (ltf_bear_idx > ltf_bull_idx ? col_bear : mitigated_color)
 
