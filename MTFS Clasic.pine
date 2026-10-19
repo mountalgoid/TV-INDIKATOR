@@ -1468,145 +1468,149 @@ delete_opposite_breakers(bool _is_new_bull, line[] _lns, label[] _lbls, float[] 
 
 // HTF MSB/MSC/IDM
 if array.size(htf_supply_high) > 0
-    int i = array.size(htf_supply_high) - 1
-    float _lvl = array.get(htf_supply_high, i)
-    bool is_idm_node = array.get(htf_supply_is_idm, i)
-    // Breakout Bullish
-    if not array.get(htf_ms_bull_breakout, i) and ta.crossover(htf_C, _lvl)
-        array.set(htf_ms_bull_breakout, i, true)
-        htf_next_demand_is_idm := true
-        // Visual
-        bool is_msb = htf_trend_bias != 1
-        bool is_sel = is_idm_node ? (show_idm or htf_idm_created_selected) : (is_msb ? htf_MSB_selected : htf_MSC_selected)
-        string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
-        string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
-        line.set_x2(array.get(htf_ms_bull_line, i), bar_index)
-        line.set_color(array.get(htf_ms_bull_line, i), is_sel ? col_bull : Transparent_Color)
-        if is_idm_node
-            line.set_style(array.get(htf_ms_bull_line, i), line.style_dotted)
-        label.set_text(array.get(htf_ms_bull_label, i), showms == 'Symbol' ? ms_txt_short + ' ●' : "◈ " + ms_txt + " [HTF] ▲")
-        label.set_textcolor(array.get(htf_ms_bull_label, i), is_sel ? col_bull : Transparent_Color)
-        // Breaker
-        if breaker_htf_selected and not is_idm_node
-            delete_opposite_breakers(true, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
-            array.push(htf_bk_lines, line.new(bar_index, _lvl, last_bar_index + OFF_BREAKERS, _lvl, color=col_bull)), array.push(htf_bk_levels, _lvl)
-            label lb = label.new(last_bar_index + OFF_BREAKERS, _lvl, text="◈ BREAKER NODE [HTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.tiny,color = box_col_bull)
-            label.set_text_formatting(lb, text.format_bold)
-            array.push(htf_bk_labels, lb)
-            array.push(htf_bk_is_bull, true), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
-    // LQS / IDM Sweep Logic
-    else if not array.get(htf_ms_bull_breakout, i) and high >= _lvl
-        bool is_sel_lqs = is_idm_node ? (show_idm or htf_idm_swept_selected) : Htf_lqs_selected
-        line.set_x2(array.get(htf_ms_bull_line, i), bar_index)
-        line.set_color(array.get(htf_ms_bull_line, i), is_sel_lqs ? col_bear : Transparent_Color)
-        if is_idm_node
-            line.set_style(array.get(htf_ms_bull_line, i), line.style_dotted)
-        label.set_text(array.get(htf_ms_bull_label, i), is_idm_node ? (showms == 'Symbol' ? 'IDM ✖' : 'HTF IDM SWEEP') : (showms == 'Symbol' ? '✖' : 'HTF BSL SWEEP'))
-        label.set_textcolor(array.get(htf_ms_bull_label, i), is_sel_lqs ? col_bear : Transparent_Color)
+    for i = array.size(htf_supply_high) - 1 to 0
+        if not array.get(htf_ms_bull_breakout, i)
+            float _lvl = array.get(htf_supply_high, i)
+            bool is_idm_node = array.get(htf_supply_is_idm, i)
+            // Breakout Bullish
+            if htf_C > _lvl and htf_C1 <= _lvl
+                array.set(htf_ms_bull_breakout, i, true)
+                htf_next_demand_is_idm := true
+                // Visual
+                bool is_msb = htf_trend_bias != 1
+                bool is_sel = is_idm_node ? (show_idm or htf_idm_created_selected) : (is_msb ? htf_MSB_selected : htf_MSC_selected)
+                string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
+                string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
+                line.set_x2(array.get(htf_ms_bull_line, i), bar_index)
+                line.set_color(array.get(htf_ms_bull_line, i), is_sel ? col_bull : Transparent_Color)
+                if is_idm_node
+                    line.set_style(array.get(htf_ms_bull_line, i), line.style_dotted)
+                label.set_text(array.get(htf_ms_bull_label, i), showms == 'Symbol' ? ms_txt_short + ' ●' : "◈ " + ms_txt + " [HTF] ▲")
+                label.set_textcolor(array.get(htf_ms_bull_label, i), is_sel ? col_bull : Transparent_Color)
+                // Breaker
+                if breaker_htf_selected and not is_idm_node
+                    delete_opposite_breakers(true, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
+                    array.push(htf_bk_lines, line.new(bar_index, _lvl, last_bar_index + OFF_BREAKERS, _lvl, color=col_bull)), array.push(htf_bk_levels, _lvl)
+                    label lb = label.new(last_bar_index + OFF_BREAKERS, _lvl, text="◈ BREAKER NODE [HTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.tiny,color = box_col_bull)
+                    label.set_text_formatting(lb, text.format_bold)
+                    array.push(htf_bk_labels, lb)
+                    array.push(htf_bk_is_bull, true), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
+            // LQS / IDM Sweep Logic
+            else if high >= _lvl
+                bool is_sel_lqs = is_idm_node ? (show_idm or htf_idm_swept_selected) : Htf_lqs_selected
+                line.set_x2(array.get(htf_ms_bull_line, i), bar_index)
+                line.set_color(array.get(htf_ms_bull_line, i), is_sel_lqs ? col_bear : Transparent_Color)
+                if is_idm_node
+                    line.set_style(array.get(htf_ms_bull_line, i), line.style_dotted)
+                label.set_text(array.get(htf_ms_bull_label, i), is_idm_node ? (showms == 'Symbol' ? 'IDM ✖' : 'HTF IDM SWEEP') : (showms == 'Symbol' ? '✖' : 'HTF BSL SWEEP'))
+                label.set_textcolor(array.get(htf_ms_bull_label, i), is_sel_lqs ? col_bear : Transparent_Color)
 
 if array.size(htf_demand_low) > 0
-    int i = array.size(htf_demand_low) - 1
-    float _lvl = array.get(htf_demand_low, i)
-    bool is_idm_node = array.get(htf_demand_is_idm, i)
-    // Breakout Bearish
-    if not array.get(htf_ms_bear_breakout, i) and ta.crossunder(htf_C, _lvl)
-        array.set(htf_ms_bear_breakout, i, true)
-        htf_next_supply_is_idm := true
-        // Visual
-        bool is_msb = htf_trend_bias != -1
-        bool is_sel = is_idm_node ? (show_idm or htf_idm_created_selected) : (is_msb ? htf_MSB_selected : htf_MSC_selected)
-        string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
-        string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
-        line.set_x2(array.get(htf_ms_bear_line, i), bar_index)
-        line.set_color(array.get(htf_ms_bear_line, i), is_sel ? col_bear : Transparent_Color)
-        if is_idm_node
-            line.set_style(array.get(htf_ms_bear_line, i), line.style_dotted)
-        label.set_text(array.get(htf_ms_bear_label, i), showms == 'Symbol' ? ms_txt_short + ' ●' : "◈ " + ms_txt + " [HTF] ▼")
-        label.set_textcolor(array.get(htf_ms_bear_label, i), is_sel ? col_bear : Transparent_Color)
-        // Breaker
-        if breaker_htf_selected and not is_idm_node
-            delete_opposite_breakers(false, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
-            array.push(htf_bk_lines, line.new(bar_index, _lvl, last_bar_index + OFF_BREAKERS, _lvl, color=col_bear)), array.push(htf_bk_levels, _lvl)
-            label lb = label.new(last_bar_index + OFF_BREAKERS, _lvl, text="◈ BREAKER NODE [HTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.tiny,color = box_col_bear )
-            label.set_text_formatting(lb, text.format_bold)
-            array.push(htf_bk_labels, lb)
-            array.push(htf_bk_is_bull, false), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
-    // LQS / IDM Sweep Logic
-    else if not array.get(htf_ms_bear_breakout, i) and low <= _lvl
-        bool is_sel_lqs = is_idm_node ? (show_idm or htf_idm_swept_selected) : Htf_lqs_selected
-        line.set_x2(array.get(htf_ms_bear_line, i), bar_index)
-        line.set_color(array.get(htf_ms_bear_line, i), is_sel_lqs ? col_bull : Transparent_Color)
-        if is_idm_node
-            line.set_style(array.get(htf_ms_bear_line, i), line.style_dotted)
-        label.set_text(array.get(htf_ms_bear_label, i), is_idm_node ? (showms == 'Symbol' ? 'IDM ✖' : 'HTF IDM SWEEP') : (showms == 'Symbol' ? '✖' : 'HTF SSL SWEEP'))
-        label.set_textcolor(array.get(htf_ms_bear_label, i), is_sel_lqs ? col_bull : Transparent_Color)
+    for i = array.size(htf_demand_low) - 1 to 0
+        if not array.get(htf_ms_bear_breakout, i)
+            float _lvl = array.get(htf_demand_low, i)
+            bool is_idm_node = array.get(htf_demand_is_idm, i)
+            // Breakout Bearish
+            if htf_C < _lvl and htf_C1 >= _lvl
+                array.set(htf_ms_bear_breakout, i, true)
+                htf_next_supply_is_idm := true
+                // Visual
+                bool is_msb = htf_trend_bias != -1
+                bool is_sel = is_idm_node ? (show_idm or htf_idm_created_selected) : (is_msb ? htf_MSB_selected : htf_MSC_selected)
+                string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
+                string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
+                line.set_x2(array.get(htf_ms_bear_line, i), bar_index)
+                line.set_color(array.get(htf_ms_bear_line, i), is_sel ? col_bear : Transparent_Color)
+                if is_idm_node
+                    line.set_style(array.get(htf_ms_bear_line, i), line.style_dotted)
+                label.set_text(array.get(htf_ms_bear_label, i), showms == 'Symbol' ? ms_txt_short + ' ●' : "◈ " + ms_txt + " [HTF] ▼")
+                label.set_textcolor(array.get(htf_ms_bear_label, i), is_sel ? col_bear : Transparent_Color)
+                // Breaker
+                if breaker_htf_selected and not is_idm_node
+                    delete_opposite_breakers(false, htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at)
+                    array.push(htf_bk_lines, line.new(bar_index, _lvl, last_bar_index + OFF_BREAKERS, _lvl, color=col_bear)), array.push(htf_bk_levels, _lvl)
+                    label lb = label.new(last_bar_index + OFF_BREAKERS, _lvl, text="◈ BREAKER NODE [HTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.tiny,color = box_col_bear )
+                    label.set_text_formatting(lb, text.format_bold)
+                    array.push(htf_bk_labels, lb)
+                    array.push(htf_bk_is_bull, false), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
+            // LQS / IDM Sweep Logic
+            else if low <= _lvl
+                bool is_sel_lqs = is_idm_node ? (show_idm or htf_idm_swept_selected) : Htf_lqs_selected
+                line.set_x2(array.get(htf_ms_bear_line, i), bar_index)
+                line.set_color(array.get(htf_ms_bear_line, i), is_sel_lqs ? col_bull : Transparent_Color)
+                if is_idm_node
+                    line.set_style(array.get(htf_ms_bear_line, i), line.style_dotted)
+                label.set_text(array.get(htf_ms_bear_label, i), is_idm_node ? (showms == 'Symbol' ? 'IDM ✖' : 'HTF IDM SWEEP') : (showms == 'Symbol' ? '✖' : 'HTF SSL SWEEP'))
+                label.set_textcolor(array.get(htf_ms_bear_label, i), is_sel_lqs ? col_bull : Transparent_Color)
 
 // LTF MSB/MSC/IDM
 if array.size(ltf_supply_high) > 0
-    int i = array.size(ltf_supply_high) - 1
-    float _lvl = array.get(ltf_supply_high, i)
-    bool is_idm_node = array.get(ltf_supply_is_idm, i)
-    if not array.get(ltf_ms_bull_breakout, i) and ta.crossover(close, _lvl)
-        array.set(ltf_ms_bull_breakout, i, true)
-        ltf_next_demand_is_idm := true
-        bool is_msb = ltf_trend_bias != 1
-        bool is_sel = is_idm_node ? (show_idm or ltf_idm_created_selected) : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
-        string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
-        string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
-        line.set_x2(array.get(ltf_ms_bull_line, i), bar_index)
-        line.set_color(array.get(ltf_ms_bull_line, i), is_sel ? col_bull : Transparent_Color)
-        if is_idm_node
-            line.set_style(array.get(ltf_ms_bull_line, i), line.style_dotted)
-        label.set_text(array.get(ltf_ms_bull_label, i), showms == 'Symbol' ? ms_txt_short + ' 〇' : "◈ " + ms_txt + " [LTF] ▲")
-        label.set_textcolor(array.get(ltf_ms_bull_label, i), is_sel ? col_bull : Transparent_Color)
-        if breaker_ltf_selected and not is_idm_node
-            delete_opposite_breakers(true, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
-            array.push(ltf_bk_lines, line.new(bar_index, _lvl, last_bar_index + OFF_BREAKERS, _lvl, color=col_bull, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
-            label lb = label.new(last_bar_index + OFF_BREAKERS, _lvl, text="◈ BREAKER NODE [LTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.tiny,color = box_col_bull)
-            label.set_text_formatting(lb, text.format_bold)
-            array.push(ltf_bk_labels, lb)
-            array.push(ltf_bk_is_bull, true), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
-    else if not array.get(ltf_ms_bull_breakout, i) and high >= _lvl
-        bool is_sel_lqs = is_idm_node ? (show_idm or ltf_idm_swept_selected) : ltf_lqs_selected
-        line.set_x2(array.get(ltf_ms_bull_line, i), bar_index)
-        line.set_color(array.get(ltf_ms_bull_line, i), is_sel_lqs ? col_bear : Transparent_Color)
-        if is_idm_node
-            line.set_style(array.get(ltf_ms_bull_line, i), line.style_dotted)
-        label.set_text(array.get(ltf_ms_bull_label, i), is_idm_node ? (showms == 'Symbol' ? 'IDM ✖' : 'LTF IDM SWEEP') : (showms == 'Symbol' ? '✖' : 'LTF BSL SWEEP'))
-        label.set_textcolor(array.get(ltf_ms_bull_label, i), is_sel_lqs ? col_bear : Transparent_Color)
+    for i = array.size(ltf_supply_high) - 1 to 0
+        if not array.get(ltf_ms_bull_breakout, i)
+            float _lvl = array.get(ltf_supply_high, i)
+            bool is_idm_node = array.get(ltf_supply_is_idm, i)
+            if close > _lvl and close[1] <= _lvl
+                array.set(ltf_ms_bull_breakout, i, true)
+                ltf_next_demand_is_idm := true
+                bool is_msb = ltf_trend_bias != 1
+                bool is_sel = is_idm_node ? (show_idm or ltf_idm_created_selected) : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
+                string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
+                string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
+                line.set_x2(array.get(ltf_ms_bull_line, i), bar_index)
+                line.set_color(array.get(ltf_ms_bull_line, i), is_sel ? col_bull : Transparent_Color)
+                if is_idm_node
+                    line.set_style(array.get(ltf_ms_bull_line, i), line.style_dotted)
+                label.set_text(array.get(ltf_ms_bull_label, i), showms == 'Symbol' ? ms_txt_short + ' 〇' : "◈ " + ms_txt + " [LTF] ▲")
+                label.set_textcolor(array.get(ltf_ms_bull_label, i), is_sel ? col_bull : Transparent_Color)
+                if breaker_ltf_selected and not is_idm_node
+                    delete_opposite_breakers(true, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
+                    array.push(ltf_bk_lines, line.new(bar_index, _lvl, last_bar_index + OFF_BREAKERS, _lvl, color=col_bull, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
+                    label lb = label.new(last_bar_index + OFF_BREAKERS, _lvl, text="◈ BREAKER NODE [LTF] ▲", textcolor=col_bull, style=label.style_label_left, size=size.tiny,color = box_col_bull)
+                    label.set_text_formatting(lb, text.format_bold)
+                    array.push(ltf_bk_labels, lb)
+                    array.push(ltf_bk_is_bull, true), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
+            else if high >= _lvl
+                bool is_sel_lqs = is_idm_node ? (show_idm or ltf_idm_swept_selected) : ltf_lqs_selected
+                line.set_x2(array.get(ltf_ms_bull_line, i), bar_index)
+                line.set_color(array.get(ltf_ms_bull_line, i), is_sel_lqs ? col_bear : Transparent_Color)
+                if is_idm_node
+                    line.set_style(array.get(ltf_ms_bull_line, i), line.style_dotted)
+                label.set_text(array.get(ltf_ms_bull_label, i), is_idm_node ? (showms == 'Symbol' ? 'IDM ✖' : 'LTF IDM SWEEP') : (showms == 'Symbol' ? '✖' : 'LTF BSL SWEEP'))
+                label.set_textcolor(array.get(ltf_ms_bull_label, i), is_sel_lqs ? col_bear : Transparent_Color)
 
 if array.size(ltf_demand_low) > 0
-    int i = array.size(ltf_demand_low) - 1
-    float _lvl = array.get(ltf_demand_low, i)
-    bool is_idm_node = array.get(ltf_demand_is_idm, i)
-    if not array.get(ltf_ms_bear_breakout, i) and ta.crossunder(close, _lvl)
-        array.set(ltf_ms_bear_breakout, i, true)
-        ltf_next_supply_is_idm := true
-        bool is_msb = ltf_trend_bias != -1
-        bool is_sel = is_idm_node ? (show_idm or ltf_idm_created_selected) : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
-        string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
-        string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
-        line.set_x2(array.get(ltf_ms_bear_line, i), bar_index)
-        line.set_color(array.get(ltf_ms_bear_line, i), is_sel ? col_bear : Transparent_Color)
-        if is_idm_node
-            line.set_style(array.get(ltf_ms_bear_line, i), line.style_dotted)
-        label.set_text(array.get(ltf_ms_bear_label, i), showms == 'Symbol' ? ms_txt_short + ' 〇' : "◈ " + ms_txt + " [LTF] ▼")
-        label.set_textcolor(array.get(ltf_ms_bear_label, i), is_sel ? col_bear : Transparent_Color)
-        if breaker_ltf_selected and not is_idm_node
-            delete_opposite_breakers(false, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
-            array.push(ltf_bk_lines, line.new(bar_index, _lvl, last_bar_index + OFF_BREAKERS, _lvl, color=col_bear, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
-            label lb = label.new(last_bar_index + OFF_BREAKERS, _lvl, text="◈ BREAKER NODE [LTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.tiny,color = box_col_bear)
-            label.set_text_formatting(lb, text.format_bold)
-            array.push(ltf_bk_labels, lb)
-            array.push(ltf_bk_is_bull, false), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
-    else if not array.get(ltf_ms_bear_breakout, i) and low <= _lvl
-        bool is_sel_lqs = is_idm_node ? (show_idm or ltf_idm_swept_selected) : ltf_lqs_selected
-        line.set_x2(array.get(ltf_ms_bear_line, i), bar_index)
-        line.set_color(array.get(ltf_ms_bear_line, i), is_sel_lqs ? col_bull : Transparent_Color)
-        if is_idm_node
-            line.set_style(array.get(ltf_ms_bear_line, i), line.style_dotted)
-        label.set_text(array.get(ltf_ms_bear_label, i), is_idm_node ? (showms == 'Symbol' ? 'IDM ✖' : 'LTF IDM SWEEP') : (showms == 'Symbol' ? '✖' : 'LTF SSL SWEEP'))
-        label.set_textcolor(array.get(ltf_ms_bear_label, i), is_sel_lqs ? col_bull : Transparent_Color)
+    for i = array.size(ltf_demand_low) - 1 to 0
+        if not array.get(ltf_ms_bear_breakout, i)
+            float _lvl = array.get(ltf_demand_low, i)
+            bool is_idm_node = array.get(ltf_demand_is_idm, i)
+            if close < _lvl and close[1] >= _lvl
+                array.set(ltf_ms_bear_breakout, i, true)
+                ltf_next_supply_is_idm := true
+                bool is_msb = ltf_trend_bias != -1
+                bool is_sel = is_idm_node ? (show_idm or ltf_idm_created_selected) : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
+                string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
+                string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
+                line.set_x2(array.get(ltf_ms_bear_line, i), bar_index)
+                line.set_color(array.get(ltf_ms_bear_line, i), is_sel ? col_bear : Transparent_Color)
+                if is_idm_node
+                    line.set_style(array.get(ltf_ms_bear_line, i), line.style_dotted)
+                label.set_text(array.get(ltf_ms_bear_label, i), showms == 'Symbol' ? ms_txt_short + ' 〇' : "◈ " + ms_txt + " [LTF] ▼")
+                label.set_textcolor(array.get(ltf_ms_bear_label, i), is_sel ? col_bear : Transparent_Color)
+                if breaker_ltf_selected and not is_idm_node
+                    delete_opposite_breakers(false, ltf_bk_lines, ltf_bk_labels, ltf_bk_levels, ltf_bk_is_bull, ltf_bk_mitigated, ltf_bk_created_at)
+                    array.push(ltf_bk_lines, line.new(bar_index, _lvl, last_bar_index + OFF_BREAKERS, _lvl, color=col_bear, style=line.style_dotted)), array.push(ltf_bk_levels, _lvl)
+                    label lb = label.new(last_bar_index + OFF_BREAKERS, _lvl, text="◈ BREAKER NODE [LTF] ▼", textcolor=col_bear, style=label.style_label_left, size=size.tiny,color = box_col_bear)
+                    label.set_text_formatting(lb, text.format_bold)
+                    array.push(ltf_bk_labels, lb)
+                    array.push(ltf_bk_is_bull, false), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
+            else if low <= _lvl
+                bool is_sel_lqs = is_idm_node ? (show_idm or ltf_idm_swept_selected) : ltf_lqs_selected
+                line.set_x2(array.get(ltf_ms_bear_line, i), bar_index)
+                line.set_color(array.get(ltf_ms_bear_line, i), is_sel_lqs ? col_bull : Transparent_Color)
+                if is_idm_node
+                    line.set_style(array.get(ltf_ms_bear_line, i), line.style_dotted)
+                label.set_text(array.get(ltf_ms_bear_label, i), is_idm_node ? (showms == 'Symbol' ? 'IDM ✖' : 'LTF IDM SWEEP') : (showms == 'Symbol' ? '✖' : 'LTF SSL SWEEP'))
+                label.set_textcolor(array.get(ltf_ms_bear_label, i), is_sel_lqs ? col_bull : Transparent_Color)
 
 // --- F. BREAKER MANAGEMENT ---
 manage_breakers(htf_bk_lines, htf_bk_labels, htf_bk_levels, htf_bk_is_bull, htf_bk_mitigated, htf_bk_created_at, breaker_htf_selected, "HTF")
