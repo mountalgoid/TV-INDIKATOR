@@ -1571,7 +1571,7 @@ if array.size(htf_demand_low) > 0
             if is_idm_node
                 line.set_style(array.get(htf_ms_bear_line, i), line.style_dotted)
             label.set_text(array.get(htf_ms_bear_label, i), is_idm_node ? (showms == 'Symbol' ? 'IDM ✖' : 'HTF IDM SWEEP') : (showms == 'Symbol' ? '✖' : 'HTF SSL SWEEP'))
-            label.set_textcolor(array.get(htf_ms_bear_line, i), is_sel_lqs ? col_bull : Transparent_Color)
+            label.set_textcolor(array.get(htf_ms_bear_label, i), is_sel_lqs ? col_bull : Transparent_Color)
 
 // LTF MSB/MSC/IDM
 if array.size(ltf_supply_high) > 0
