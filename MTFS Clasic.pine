@@ -185,7 +185,6 @@ htf_str = auto_htf_mode ? get_auto_htf() : get_manual_tf_string(HTFtime_opt)
 minutes_val = f_str_to_minutes(htf_str)
 x_show = input.int(10, '⬤ Show MS Structures', minval = 1, group = GlobalGroup)
 showms = 'Symbol'
-show_idm = input.bool(true, '⬤ Show IDM (Inducement)', group = GlobalGroup)
 gap_threshold = input.float(0.00006, '⬤ Minimum Gap Percentage', minval = 0.0, step = 0.005, tooltip = 'Minimum gap size as a percentage of current price', group = GlobalGroup)
 // UPDATED: Default set to TRUE for Professional
 ifvg_selected_high_prob = input.bool(true, 'High Prob IFVG Only', tooltip = "Only displays IFVG if the Gap size is large enough (2x Threshold)", group = GlobalGroup)
@@ -594,8 +593,7 @@ f_draw_snd_block(bool _is_supply, bool _is_htf, bool _cond, float _top, float _b
         color _bg_col       = _is_supply ? box_col_bear : box_col_bull
         color _main_col     = _is_supply ? col_bear : col_bull
         
-        bool _is_rule_sel   = _is_htf ? (_is_idm ? htf_idm_created_selected : htf_snd_created_selected) : (_is_idm ? ltf_idm_created_selected : ltf_snd_created_selected)
-        bool _is_selected   = (show_idm and _is_idm) or _is_rule_sel
+        bool _is_selected   = _is_htf ? (_is_idm ? htf_idm_created_selected : htf_snd_created_selected) : (_is_idm ? ltf_idm_created_selected : ltf_snd_created_selected)
         bool _show_txt_col  = (_is_htf and _is_selected) or (not _is_htf and ((htf_snd_created_selected or htf_snd_mitigated_selected or htf_fvg_mitigated_selected or htf_idm_created_selected) and _is_selected))
         
         color _final_bg     = _is_selected ? _bg_col : Transparent_Color
@@ -1039,7 +1037,7 @@ f_mitigate_snd_universal(bool _is_supply, bool _is_htf, float[] _levels, bool[] 
                     string _tf_str = _is_htf ? "HTF" : "LTF"
                     string _dir_str = _is_supply ? "▼" : "▲"
                     string _type_str = _is_supply ? "SUPPLY" : "DEMAND"
-                    bool _is_sel_mit = _is_htf ? (_is_idm ? (show_idm or htf_idm_swept_selected) : htf_snd_mitigated_selected) : (_is_idm ? (show_idm or ltf_idm_swept_selected) : ltf_snd_mitigated_selected)
+                    bool _is_sel_mit = _is_htf ? (_is_idm ? htf_idm_swept_selected : htf_snd_mitigated_selected) : (_is_idm ? ltf_idm_swept_selected : ltf_snd_mitigated_selected)
                     bool _complex_col = (not _is_htf) and ((htf_fvg_mitigated_selected or htf_snd_created_selected or htf_snd_mitigated_selected) and ltf_snd_mitigated_selected)
                     color _c_bg = _is_sel_mit ? mitigated_box_color : Transparent_Color
                     color _c_txt = _complex_col ? mitigated_box_color : (_is_sel_mit ? mitigated_color : Transparent_Color)
@@ -1484,16 +1482,16 @@ if array.size(htf_supply_high) > 0
                     line l_dem = array.get(htf_ms_bear_line, prev_dem_idx)
                     label lb_dem = array.get(htf_ms_bear_label, prev_dem_idx)
                     box.set_text(b_dem, showms == 'Symbol' ? "IDM HTF" : "◈ IDM [HTF] ▲")
-                    box.set_bgcolor(b_dem, show_idm ? box_col_bull : Transparent_Color)
-                    box.set_text_color(b_dem, show_idm ? col_bull : Transparent_Color)
+                    box.set_bgcolor(b_dem, htf_idm_created_selected ? box_col_bull : Transparent_Color)
+                    box.set_text_color(b_dem, htf_idm_created_selected ? col_bull : Transparent_Color)
                     line.set_style(l_dem, line.style_dotted)
-                    line.set_color(l_dem, show_idm ? col_bull : Transparent_Color)
+                    line.set_color(l_dem, htf_idm_created_selected ? col_bull : Transparent_Color)
                     label.set_text(lb_dem, showms == 'Symbol' ? "IDM ●" : "◈ IDM [HTF] ▲")
-                    label.set_color(lb_dem, show_idm ? col_bull : Transparent_Color)
-                    label.set_textcolor(lb_dem, show_idm ? col_bull : Transparent_Color)
+                    label.set_color(lb_dem, htf_idm_created_selected ? col_bull : Transparent_Color)
+                    label.set_textcolor(lb_dem, htf_idm_created_selected ? col_bull : Transparent_Color)
             // Visual
             bool is_msb = htf_trend_bias != 1
-            bool is_sel = is_idm_node ? (show_idm or htf_idm_created_selected) : (is_msb ? htf_MSB_selected : htf_MSC_selected)
+            bool is_sel = is_idm_node ? htf_idm_created_selected : (is_msb ? htf_MSB_selected : htf_MSC_selected)
             string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
             string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
             line.set_x2(array.get(htf_ms_bull_line, i), bar_index)
@@ -1512,7 +1510,7 @@ if array.size(htf_supply_high) > 0
                 array.push(htf_bk_is_bull, true), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
         // LQS / IDM Sweep Logic
         else if high >= _lvl
-            bool is_sel_lqs = is_idm_node ? (show_idm or htf_idm_swept_selected) : Htf_lqs_selected
+            bool is_sel_lqs = is_idm_node ? htf_idm_swept_selected : Htf_lqs_selected
             line.set_x2(array.get(htf_ms_bull_line, i), bar_index)
             line.set_color(array.get(htf_ms_bull_line, i), is_sel_lqs ? col_bear : Transparent_Color)
             if is_idm_node
@@ -1537,16 +1535,16 @@ if array.size(htf_demand_low) > 0
                     line l_sup = array.get(htf_ms_bull_line, prev_sup_idx)
                     label lb_sup = array.get(htf_ms_bull_label, prev_sup_idx)
                     box.set_text(b_sup, showms == 'Symbol' ? "IDM HTF" : "◈ IDM [HTF] ▼")
-                    box.set_bgcolor(b_sup, show_idm ? box_col_bear : Transparent_Color)
-                    box.set_text_color(b_sup, show_idm ? col_bear : Transparent_Color)
+                    box.set_bgcolor(b_sup, htf_idm_created_selected ? box_col_bear : Transparent_Color)
+                    box.set_text_color(b_sup, htf_idm_created_selected ? col_bear : Transparent_Color)
                     line.set_style(l_sup, line.style_dotted)
-                    line.set_color(l_sup, show_idm ? col_bear : Transparent_Color)
+                    line.set_color(l_sup, htf_idm_created_selected ? col_bear : Transparent_Color)
                     label.set_text(lb_sup, showms == 'Symbol' ? "IDM ●" : "◈ IDM [HTF] ▼")
-                    label.set_color(lb_sup, show_idm ? col_bear : Transparent_Color)
-                    label.set_textcolor(lb_sup, show_idm ? col_bear : Transparent_Color)
+                    label.set_color(lb_sup, htf_idm_created_selected ? col_bear : Transparent_Color)
+                    label.set_textcolor(lb_sup, htf_idm_created_selected ? col_bear : Transparent_Color)
             // Visual
             bool is_msb = htf_trend_bias != -1
-            bool is_sel = is_idm_node ? (show_idm or htf_idm_created_selected) : (is_msb ? htf_MSB_selected : htf_MSC_selected)
+            bool is_sel = is_idm_node ? htf_idm_created_selected : (is_msb ? htf_MSB_selected : htf_MSC_selected)
             string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
             string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
             line.set_x2(array.get(htf_ms_bear_line, i), bar_index)
@@ -1565,7 +1563,7 @@ if array.size(htf_demand_low) > 0
                 array.push(htf_bk_is_bull, false), array.push(htf_bk_mitigated, false), array.push(htf_bk_created_at, bar_index)
         // LQS / IDM Sweep Logic
         else if low <= _lvl
-            bool is_sel_lqs = is_idm_node ? (show_idm or htf_idm_swept_selected) : Htf_lqs_selected
+            bool is_sel_lqs = is_idm_node ? htf_idm_swept_selected : Htf_lqs_selected
             line.set_x2(array.get(htf_ms_bear_line, i), bar_index)
             line.set_color(array.get(htf_ms_bear_line, i), is_sel_lqs ? col_bull : Transparent_Color)
             if is_idm_node
@@ -1590,15 +1588,15 @@ if array.size(ltf_supply_high) > 0
                     line l_dem = array.get(ltf_ms_bear_line, prev_dem_idx)
                     label lb_dem = array.get(ltf_ms_bear_label, prev_dem_idx)
                     box.set_text(b_dem, showms == 'Symbol' ? "IDM LTF" : "◈ IDM [LTF] ▲")
-                    box.set_bgcolor(b_dem, show_idm ? box_col_bull : Transparent_Color)
-                    box.set_text_color(b_dem, show_idm ? col_bull : Transparent_Color)
+                    box.set_bgcolor(b_dem, ltf_idm_created_selected ? box_col_bull : Transparent_Color)
+                    box.set_text_color(b_dem, ltf_idm_created_selected ? col_bull : Transparent_Color)
                     line.set_style(l_dem, line.style_dotted)
-                    line.set_color(l_dem, show_idm ? col_bull : Transparent_Color)
+                    line.set_color(l_dem, ltf_idm_created_selected ? col_bull : Transparent_Color)
                     label.set_text(lb_dem, showms == 'Symbol' ? "IDM 〇" : "◈ IDM [LTF] ▲")
-                    label.set_color(lb_dem, show_idm ? col_bull : Transparent_Color)
-                    label.set_textcolor(lb_dem, show_idm ? col_bull : Transparent_Color)
+                    label.set_color(lb_dem, ltf_idm_created_selected ? col_bull : Transparent_Color)
+                    label.set_textcolor(lb_dem, ltf_idm_created_selected ? col_bull : Transparent_Color)
             bool is_msb = ltf_trend_bias != 1
-            bool is_sel = is_idm_node ? (show_idm or ltf_idm_created_selected) : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
+            bool is_sel = is_idm_node ? ltf_idm_created_selected : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
             string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
             string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
             line.set_x2(array.get(ltf_ms_bull_line, i), bar_index)
@@ -1615,7 +1613,7 @@ if array.size(ltf_supply_high) > 0
                 array.push(ltf_bk_labels, lb)
                 array.push(ltf_bk_is_bull, true), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
         else if high >= _lvl
-            bool is_sel_lqs = is_idm_node ? (show_idm or ltf_idm_swept_selected) : ltf_lqs_selected
+            bool is_sel_lqs = is_idm_node ? ltf_idm_swept_selected : ltf_lqs_selected
             line.set_x2(array.get(ltf_ms_bull_line, i), bar_index)
             line.set_color(array.get(ltf_ms_bull_line, i), is_sel_lqs ? col_bear : Transparent_Color)
             if is_idm_node
@@ -1639,15 +1637,15 @@ if array.size(ltf_demand_low) > 0
                     line l_sup = array.get(ltf_ms_bull_line, prev_sup_idx)
                     label lb_sup = array.get(ltf_ms_bull_label, prev_sup_idx)
                     box.set_text(b_sup, showms == 'Symbol' ? "IDM LTF" : "◈ IDM [LTF] ▼")
-                    box.set_bgcolor(b_sup, show_idm ? box_col_bear : Transparent_Color)
-                    box.set_text_color(b_sup, show_idm ? col_bear : Transparent_Color)
+                    box.set_bgcolor(b_sup, ltf_idm_created_selected ? box_col_bear : Transparent_Color)
+                    box.set_text_color(b_sup, ltf_idm_created_selected ? col_bear : Transparent_Color)
                     line.set_style(l_sup, line.style_dotted)
-                    line.set_color(l_sup, show_idm ? col_bear : Transparent_Color)
+                    line.set_color(l_sup, ltf_idm_created_selected ? col_bear : Transparent_Color)
                     label.set_text(lb_sup, showms == 'Symbol' ? "IDM 〇" : "◈ IDM [LTF] ▼")
-                    label.set_color(lb_sup, show_idm ? col_bear : Transparent_Color)
-                    label.set_textcolor(lb_sup, show_idm ? col_bear : Transparent_Color)
+                    label.set_color(lb_sup, ltf_idm_created_selected ? col_bear : Transparent_Color)
+                    label.set_textcolor(lb_sup, ltf_idm_created_selected ? col_bear : Transparent_Color)
             bool is_msb = ltf_trend_bias != -1
-            bool is_sel = is_idm_node ? (show_idm or ltf_idm_created_selected) : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
+            bool is_sel = is_idm_node ? ltf_idm_created_selected : (is_msb ? ltf_MSB_selected : ltf_MSC_selected)
             string ms_txt_short = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
             string ms_txt = is_idm_node ? "IDM" : (is_msb ? "MSB" : "MSC")
             line.set_x2(array.get(ltf_ms_bear_line, i), bar_index)
@@ -1664,7 +1662,7 @@ if array.size(ltf_demand_low) > 0
                 array.push(ltf_bk_labels, lb)
                 array.push(ltf_bk_is_bull, false), array.push(ltf_bk_mitigated, false), array.push(ltf_bk_created_at, bar_index)
         else if low <= _lvl
-            bool is_sel_lqs = is_idm_node ? (show_idm or ltf_idm_swept_selected) : ltf_lqs_selected
+            bool is_sel_lqs = is_idm_node ? ltf_idm_swept_selected : ltf_lqs_selected
             line.set_x2(array.get(ltf_ms_bear_line, i), bar_index)
             line.set_color(array.get(ltf_ms_bear_line, i), is_sel_lqs ? col_bull : Transparent_Color)
             if is_idm_node
