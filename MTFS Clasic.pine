@@ -609,6 +609,7 @@ f_draw_snd_block(bool _is_supply, bool _is_htf, bool _cond, float _top, float _b
         
         string _valign = _is_supply ? text.align_top : text.align_bottom
 
+        color _border_col   = _is_selected ? color.new(_main_col, 50) : Transparent_Color
         box _b = box.new(_x1, _top, last_bar_index + OFF_ZONES, _btm, 
              text = _full_text, 
              text_size = size.auto, 
@@ -616,8 +617,8 @@ f_draw_snd_block(bool _is_supply, bool _is_htf, bool _cond, float _top, float _b
              text_halign = text.align_right, 
              bgcolor = _final_bg, 
              text_color = _final_txt, 
-             border_color = _final_border, 
-             border_width = 0,
+             border_color = _border_col,
+             border_width = 1,
              text_formatting = text.format_bold)
         
         // 2. MS Line
@@ -669,6 +670,7 @@ f_draw_fvg_block(bool _is_up, bool _is_htf, bool _cond, float _p1, float _p2, fl
                 _x1 := bar_index
             
             // Draw Box dengan koordinat yang sudah diurutkan (_top, _btm)
+            color _fvg_border = _is_selected ? color.new(_col, 60) : Transparent_Color
             box _b = box.new(_x1, _top, last_bar_index + OFF_ZONES, _btm, 
                  text = showms == 'Symbol' ? _tf_txt + " FVG" + _dir_sym : "◈ FVG NODE [" + _tf_txt + "]\n═══════\n[" + str.tostring(_gap_size, format.mintick) + "]\n═══════", 
                  text_size = size.auto, 
@@ -676,7 +678,7 @@ f_draw_fvg_block(bool _is_up, bool _is_htf, bool _cond, float _p1, float _p2, fl
                  text_halign = text.align_right, 
                  bgcolor = _is_selected ? _bg_col : Transparent_Color, 
                  text_color = _txt_col, 
-                 border_color = Transparent_Color, 
+                 border_color = _fvg_border,
                  border_width = 1,
                  text_formatting = text.format_bold)
                  
@@ -1050,6 +1052,7 @@ f_mitigate_snd_universal(bool _is_supply, bool _is_htf, float[] _levels, bool[] 
                     box.set_right(_b, bar_index)
                     box.set_bgcolor(_b, _c_bg)
                     box.set_text_color(_b, _c_txt)
+                    box.set_border_color(_b, _is_sel_mit ? color.new(mitigated_color, 70) : Transparent_Color)
                     
                     line _l = array.get(_lines, i)
                     line.set_x2(_l, bar_index)
@@ -1078,6 +1081,7 @@ f_mitigate_fvg_universal(bool _is_up, bool _is_htf, float[] _highs, float[] _low
                     box.set_right(_b, bar_index)
                     box.set_bgcolor(_b, _c_bg)
                     box.set_text_color(_b, _c_main)
+                    box.set_border_color(_b, _is_sel ? color.new(mitigated_color, 70) : Transparent_Color)
                     
                     line _l = array.get(_midlines, i)
                     line.set_x2(_l, bar_index)
