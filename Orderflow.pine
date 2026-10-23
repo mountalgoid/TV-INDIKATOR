@@ -200,7 +200,7 @@ bool   show_plotline     = input.bool(false, "Use Micro Trail Price Line", group
 
 // Visuals (Bubbles)
 bool   show_plots            = input.bool(true, "Show Volume Bubbles", group=grp_vis)
-bool   show_bubble_labels    = input.bool(false, "Show Bubble Labels", group=grp_vis)
+bool   show_bubble_labels    = input.bool(true, "Show Bubble Labels", group=grp_vis)
 bool   show_summary_bubble_labels    = input.bool(true, "Show Summary Bubble Labels", group=grp_vis)
 string bubble_label_type     = "Volume"
 bool   filter_large_vol_bubbles = input.bool(false, "Filter Bubbles: Large Volume Only (>0.5)", group=grp_vis)
@@ -1021,31 +1021,54 @@ var label[] rt_bubble_dots = array.new_label()
 var label[] rt_bubble_labels = array.new_label()
 var label rt_lbl_sum = na
 
+// Calculate micro price offset to prevent plotchar dots overlapping vertically when Buy and Sell sub-level prices are identical/near
+float bubble_price_gap = (high - low > 0) ? (high - low) * 0.02 : syminfo.mintick * 2
+
+float buy_sub1_plot_p = buy_sub1_p
+float buy_sub2_plot_p = buy_sub2_p
+float buy_sub3_plot_p = buy_sub3_p
+
+float sell_sub1_plot_p = sell_sub1_p
+float sell_sub2_plot_p = sell_sub2_p
+float sell_sub3_plot_p = sell_sub3_p
+
+if not na(buy_sub1_p) and not na(sell_sub1_p) and math.abs(buy_sub1_p - sell_sub1_p) < bubble_price_gap
+    buy_sub1_plot_p  := buy_sub1_p + bubble_price_gap * 0.5
+    sell_sub1_plot_p := sell_sub1_p - bubble_price_gap * 0.5
+
+if not na(buy_sub2_p) and not na(sell_sub2_p) and math.abs(buy_sub2_p - sell_sub2_p) < bubble_price_gap
+    buy_sub2_plot_p  := buy_sub2_p + bubble_price_gap * 0.5
+    sell_sub2_plot_p := sell_sub2_p - bubble_price_gap * 0.5
+
+if not na(buy_sub3_p) and not na(sell_sub3_p) and math.abs(buy_sub3_p - sell_sub3_p) < bubble_price_gap
+    buy_sub3_plot_p  := buy_sub3_p + bubble_price_gap * 0.5
+    sell_sub3_plot_p := sell_sub3_p - bubble_price_gap * 0.5
+
 if barstate.isconfirmed
-    // Render Volume Text Labels (if enabled)
+    // Render Volume Text Labels (Option A: Left/Right separation with colorful bubble background)
     if show_plots and show_bubble_labels
         int start_bar_idx = math.max(0, last_bar_index - lookback)
         if bar_index >= start_bar_idx
             if show_b
                 if pass_b1 and not na(buy_sub1_p) and buy_sub1_v > 0
-                    string txt_b1 = bubble_label_type == "Symbol" ? "[B]" : ("B ▲" + format_vol(buy_sub1_v))
-                    array.push(bubble_labels, label.new(bar_index, buy_sub1_p, txt_b1, color=color.new(dark, 100), textcolor=col_poc, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
+                    string txt_b1 = bubble_label_type == "Symbol" ? "[B]" : ("B ▲ " + format_vol(buy_sub1_v))
+                    array.push(bubble_labels, label.new(bar_index, buy_sub1_plot_p, txt_b1, color=color.new(col_bull, 20), textcolor=white, style=label.style_label_right, text_formatting = text.format_bold, size=size.auto))
                 if pass_b2 and not na(buy_sub2_p) and buy_sub2_v > 0
-                    string txt_b2 = bubble_label_type == "Symbol" ? "[B]" : ("B ▲" + format_vol(buy_sub2_v))
-                    array.push(bubble_labels, label.new(bar_index, buy_sub2_p, txt_b2, color=color.new(dark, 100), textcolor=col_poc, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
+                    string txt_b2 = bubble_label_type == "Symbol" ? "[B]" : ("B ▲ " + format_vol(buy_sub2_v))
+                    array.push(bubble_labels, label.new(bar_index, buy_sub2_plot_p, txt_b2, color=color.new(col_bull, 20), textcolor=white, style=label.style_label_right, text_formatting = text.format_bold, size=size.auto))
                 if pass_b3 and not na(buy_sub3_p) and buy_sub3_v > 0
-                    string txt_b3 = bubble_label_type == "Symbol" ? "[B]" : ("B ▲" + format_vol(buy_sub3_v))
-                    array.push(bubble_labels, label.new(bar_index, buy_sub3_p, txt_b3, color=color.new(dark, 100), textcolor=col_poc, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
+                    string txt_b3 = bubble_label_type == "Symbol" ? "[B]" : ("B ▲ " + format_vol(buy_sub3_v))
+                    array.push(bubble_labels, label.new(bar_index, buy_sub3_plot_p, txt_b3, color=color.new(col_bull, 20), textcolor=white, style=label.style_label_right, text_formatting = text.format_bold, size=size.auto))
             if show_s
                 if pass_s1 and not na(sell_sub1_p) and sell_sub1_v > 0
-                    string txt_s1 = bubble_label_type == "Symbol" ? "[S]" : ("S ▼" + format_vol(sell_sub1_v))
-                    array.push(bubble_labels, label.new(bar_index, sell_sub1_p, txt_s1, color=color.new(dark, 100), textcolor=col_poc, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
+                    string txt_s1 = bubble_label_type == "Symbol" ? "[S]" : ("S ▼ " + format_vol(sell_sub1_v))
+                    array.push(bubble_labels, label.new(bar_index, sell_sub1_plot_p, txt_s1, color=color.new(col_bear, 20), textcolor=white, style=label.style_label_left, text_formatting = text.format_bold, size=size.auto))
                 if pass_s2 and not na(sell_sub2_p) and sell_sub2_v > 0
-                    string txt_s2 = bubble_label_type == "Symbol" ? "[S]" : ("S ▼" + format_vol(sell_sub2_v))
-                    array.push(bubble_labels, label.new(bar_index, sell_sub2_p, txt_s2, color=color.new(dark, 100), textcolor=col_poc, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
+                    string txt_s2 = bubble_label_type == "Symbol" ? "[S]" : ("S ▼ " + format_vol(sell_sub2_v))
+                    array.push(bubble_labels, label.new(bar_index, sell_sub2_plot_p, txt_s2, color=color.new(col_bear, 20), textcolor=white, style=label.style_label_left, text_formatting = text.format_bold, size=size.auto))
                 if pass_s3 and not na(sell_sub3_p) and sell_sub3_v > 0
-                    string txt_s3 = bubble_label_type == "Symbol" ? "[S]" : ("S ▼" + format_vol(sell_sub3_v))
-                    array.push(bubble_labels, label.new(bar_index, sell_sub3_p, txt_s3, color=color.new(dark, 100), textcolor=col_poc, style=label.style_label_center, text_formatting = text.format_bold, size=size.auto))
+                    string txt_s3 = bubble_label_type == "Symbol" ? "[S]" : ("S ▼ " + format_vol(sell_sub3_v))
+                    array.push(bubble_labels, label.new(bar_index, sell_sub3_plot_p, txt_s3, color=color.new(col_bear, 20), textcolor=white, style=label.style_label_left, text_formatting = text.format_bold, size=size.auto))
 
     // Confirm Summary
     if show_summary_bubble_labels and (vol_intensity_buy > 0 or vol_intensity_sell > 0)
@@ -1082,23 +1105,23 @@ if barstate.isrealtime and not barstate.isconfirmed
         if show_b
             if pass_b1 and not na(buy_sub1_p) and buy_sub1_v > 0
                 string txt_b1 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub1_v))
-                array.push(rt_bubble_labels, label.new(bar_index, buy_sub1_p, txt_b1, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto))
+                array.push(rt_bubble_labels, label.new(bar_index, buy_sub1_plot_p, txt_b1, color=color.new(col_bull, 20), textcolor=white, style=label.style_label_right, size=size.auto))
             if pass_b2 and not na(buy_sub2_p) and buy_sub2_v > 0
                 string txt_b2 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub2_v))
-                array.push(rt_bubble_labels, label.new(bar_index, buy_sub2_p, txt_b2, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto))
+                array.push(rt_bubble_labels, label.new(bar_index, buy_sub2_plot_p, txt_b2, color=color.new(col_bull, 20), textcolor=white, style=label.style_label_right, size=size.auto))
             if pass_b3 and not na(buy_sub3_p) and buy_sub3_v > 0
                 string txt_b3 = bubble_label_type == "Symbol" ? "[B]" : ("B " + format_vol(buy_sub3_v))
-                array.push(rt_bubble_labels, label.new(bar_index, buy_sub3_p, txt_b3, color=color.new(dark, 70), textcolor=col_bull, style=label.style_label_center, size=size.auto))
+                array.push(rt_bubble_labels, label.new(bar_index, buy_sub3_plot_p, txt_b3, color=color.new(col_bull, 20), textcolor=white, style=label.style_label_right, size=size.auto))
         if show_s
             if pass_s1 and not na(sell_sub1_p) and sell_sub1_v > 0
                 string txt_s1 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub1_v))
-                array.push(rt_bubble_labels, label.new(bar_index, sell_sub1_p, txt_s1, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto))
+                array.push(rt_bubble_labels, label.new(bar_index, sell_sub1_plot_p, txt_s1, color=color.new(col_bear, 20), textcolor=white, style=label.style_label_left, size=size.auto))
             if pass_s2 and not na(sell_sub2_p) and sell_sub2_v > 0
                 string txt_s2 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub2_v))
-                array.push(rt_bubble_labels, label.new(bar_index, sell_sub2_p, txt_s2, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto))
+                array.push(rt_bubble_labels, label.new(bar_index, sell_sub2_plot_p, txt_s2, color=color.new(col_bear, 20), textcolor=white, style=label.style_label_left, size=size.auto))
             if pass_s3 and not na(sell_sub3_p) and sell_sub3_v > 0
                 string txt_s3 = bubble_label_type == "Symbol" ? "[S]" : ("S " + format_vol(sell_sub3_v))
-                array.push(rt_bubble_labels, label.new(bar_index, sell_sub3_p, txt_s3, color=color.new(dark, 70), textcolor=col_bear, style=label.style_label_center, size=size.auto))
+                array.push(rt_bubble_labels, label.new(bar_index, sell_sub3_plot_p, txt_s3, color=color.new(col_bear, 20), textcolor=white, style=label.style_label_left, size=size.auto))
 
     // Update Summary RT
     if show_bubble_labels and (vol_intensity_buy > 0 or vol_intensity_sell > 0)
@@ -1131,36 +1154,36 @@ while array.size(bubble_lines) > 400
 while array.size(bubble_summaries) > 400
     label.delete(array.shift(bubble_summaries))
 
-// Multi-Bubble Plotchar Engine (Render Native Chart Dots)
+// Multi-Bubble Plotchar Engine (Render Native Chart Dots via plotchar)
 // Buy Sub 1
-plotchar(show_b and pass_b1 and buy_sub1_intensity > 0.5 ? buy_sub1_p : na, "B1_H", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 0), size=size.small)
-plotchar(show_b and pass_b1 and buy_sub1_intensity <= 0.5 and buy_sub1_intensity > 0.2 ? buy_sub1_p : na, "B1_M", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 0), size=size.tiny)
-plotchar(show_b and pass_b1 and buy_sub1_intensity <= 0.2 and buy_sub1_intensity > 0.05 ? buy_sub1_p : na, "B1_L", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 80), size=size.tiny)
+plotchar(show_b and pass_b1 and buy_sub1_intensity > 0.5 ? buy_sub1_plot_p : na, "B1_H", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 0), size=size.small)
+plotchar(show_b and pass_b1 and buy_sub1_intensity <= 0.5 and buy_sub1_intensity > 0.2 ? buy_sub1_plot_p : na, "B1_M", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 0), size=size.tiny)
+plotchar(show_b and pass_b1 and buy_sub1_intensity <= 0.2 and buy_sub1_intensity > 0.05 ? buy_sub1_plot_p : na, "B1_L", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub1_intensity, true), 80), size=size.tiny)
 
 // Buy Sub 2
-plotchar(show_b and pass_b2 and buy_sub2_intensity > 0.5 ? buy_sub2_p : na, "B2_H", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 0), size=size.small)
-plotchar(show_b and pass_b2 and buy_sub2_intensity <= 0.5 and buy_sub2_intensity > 0.2 ? buy_sub2_p : na, "B2_M", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 0), size=size.tiny)
-plotchar(show_b and pass_b2 and buy_sub2_intensity <= 0.2 and buy_sub2_intensity > 0.05 ? buy_sub2_p : na, "B2_L", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 80), size=size.tiny)
+plotchar(show_b and pass_b2 and buy_sub2_intensity > 0.5 ? buy_sub2_plot_p : na, "B2_H", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 0), size=size.small)
+plotchar(show_b and pass_b2 and buy_sub2_intensity <= 0.5 and buy_sub2_intensity > 0.2 ? buy_sub2_plot_p : na, "B2_M", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 0), size=size.tiny)
+plotchar(show_b and pass_b2 and buy_sub2_intensity <= 0.2 and buy_sub2_intensity > 0.05 ? buy_sub2_plot_p : na, "B2_L", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub2_intensity, true), 80), size=size.tiny)
 
 // Buy Sub 3
-plotchar(show_b and pass_b3 and buy_sub3_intensity > 0.5 ? buy_sub3_p : na, "B3_H", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 0), size=size.small)
-plotchar(show_b and pass_b3 and buy_sub3_intensity <= 0.5 and buy_sub3_intensity > 0.2 ? buy_sub3_p : na, "B3_M", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 0), size=size.tiny)
-plotchar(show_b and pass_b3 and buy_sub3_intensity <= 0.2 and buy_sub3_intensity > 0.05 ? buy_sub3_p : na, "B3_L", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 80), size=size.tiny)
+plotchar(show_b and pass_b3 and buy_sub3_intensity > 0.5 ? buy_sub3_plot_p : na, "B3_H", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 0), size=size.small)
+plotchar(show_b and pass_b3 and buy_sub3_intensity <= 0.5 and buy_sub3_intensity > 0.2 ? buy_sub3_plot_p : na, "B3_M", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 0), size=size.tiny)
+plotchar(show_b and pass_b3 and buy_sub3_intensity <= 0.2 and buy_sub3_intensity > 0.05 ? buy_sub3_plot_p : na, "B3_L", char="•", location=location.absolute, color=color.new(get_bubble_color(buy_sub3_intensity, true), 80), size=size.tiny)
 
 // Sell Sub 1
-plotchar(show_s and pass_s1 and sell_sub1_intensity > 0.5 ? sell_sub1_p : na, "S1_H", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 0), size=size.small)
-plotchar(show_s and pass_s1 and sell_sub1_intensity <= 0.5 and sell_sub1_intensity > 0.2 ? sell_sub1_p : na, "S1_M", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 0), size=size.tiny)
-plotchar(show_s and pass_s1 and sell_sub1_intensity <= 0.2 and sell_sub1_intensity > 0.05 ? sell_sub1_p : na, "S1_L", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 80), size=size.tiny)
+plotchar(show_s and pass_s1 and sell_sub1_intensity > 0.5 ? sell_sub1_plot_p : na, "S1_H", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 0), size=size.small)
+plotchar(show_s and pass_s1 and sell_sub1_intensity <= 0.5 and sell_sub1_intensity > 0.2 ? sell_sub1_plot_p : na, "S1_M", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 0), size=size.tiny)
+plotchar(show_s and pass_s1 and sell_sub1_intensity <= 0.2 and sell_sub1_intensity > 0.05 ? sell_sub1_plot_p : na, "S1_L", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub1_intensity, false), 80), size=size.tiny)
 
 // Sell Sub 2
-plotchar(show_s and pass_s2 and sell_sub2_intensity > 0.5 ? sell_sub2_p : na, "S2_H", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 0), size=size.small)
-plotchar(show_s and pass_s2 and sell_sub2_intensity <= 0.5 and sell_sub2_intensity > 0.2 ? sell_sub2_p : na, "S2_M", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 0), size=size.tiny)
-plotchar(show_s and pass_s2 and sell_sub2_intensity <= 0.2 and sell_sub2_intensity > 0.05 ? sell_sub2_p : na, "S2_L", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 80), size=size.tiny)
+plotchar(show_s and pass_s2 and sell_sub2_intensity > 0.5 ? sell_sub2_plot_p : na, "S2_H", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 0), size=size.small)
+plotchar(show_s and pass_s2 and sell_sub2_intensity <= 0.5 and sell_sub2_intensity > 0.2 ? sell_sub2_plot_p : na, "S2_M", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 0), size=size.tiny)
+plotchar(show_s and pass_s2 and sell_sub2_intensity <= 0.2 and sell_sub2_intensity > 0.05 ? sell_sub2_plot_p : na, "S2_L", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub2_intensity, false), 80), size=size.tiny)
 
 // Sell Sub 3
-plotchar(show_s and pass_s3 and sell_sub3_intensity > 0.5 ? sell_sub3_p : na, "S3_H", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 0), size=size.small)
-plotchar(show_s and pass_s3 and sell_sub3_intensity <= 0.5 and sell_sub3_intensity > 0.2 ? sell_sub3_p : na, "S3_M", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 0), size=size.tiny)
-plotchar(show_s and pass_s3 and sell_sub3_intensity <= 0.2 and sell_sub3_intensity > 0.05 ? sell_sub3_p : na, "S3_L", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 80), size=size.tiny)
+plotchar(show_s and pass_s3 and sell_sub3_intensity > 0.5 ? sell_sub3_plot_p : na, "S3_H", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 0), size=size.small)
+plotchar(show_s and pass_s3 and sell_sub3_intensity <= 0.5 and sell_sub3_intensity > 0.2 ? sell_sub3_plot_p : na, "S3_M", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 0), size=size.tiny)
+plotchar(show_s and pass_s3 and sell_sub3_intensity <= 0.2 and sell_sub3_intensity > 0.05 ? sell_sub3_plot_p : na, "S3_L", char="•", location=location.absolute, color=color.new(get_bubble_color(sell_sub3_intensity, false), 80), size=size.tiny)
 
 // -----------------------------------------------------------------------------
 // 6. SUPER GRADIENT VP + DELTA
